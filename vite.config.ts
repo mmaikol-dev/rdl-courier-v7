@@ -16,7 +16,7 @@ export default defineConfig({
         tailwindcss(),
         VitePWA({
             registerType: 'autoUpdate',
-            includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
+            includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'offline.html'],
             manifest: {
                 name: 'RealDeal Ltd',
                 short_name: 'RealDeal',
@@ -34,6 +34,60 @@ export default defineConfig({
             },
             workbox: {
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+                cleanupOutdatedCaches: true,
+                clientsClaim: true,
+                skipWaiting: true,
+                navigateFallbackDenylist: [/^\/(?:api|broadcasting|sanctum)\b/, /\/storage\//],
+                runtimeCaching: [
+                    {
+                        urlPattern: ({ request, url }) => request.mode === 'navigate' && url.origin === self.location.origin,
+                        handler: 'NetworkFirst',
+                        options: {
+                            cacheName: 'app-pages',
+                            networkTimeoutSeconds: 3,
+                            cacheableResponse: {
+                                statuses: [0, 200],
+                            },
+                            expiration: {
+                                maxEntries: 100,
+                                maxAgeSeconds: 60 * 60 * 24 * 14,
+                            },
+                            precacheFallback: {
+                                fallbackURL: '/offline.html',
+                            },
+                        },
+                    },
+                    {
+                        urlPattern: ({ request, url }) =>
+                            ['script', 'style', 'worker'].includes(request.destination) && url.origin === self.location.origin,
+                        handler: 'StaleWhileRevalidate',
+                        options: {
+                            cacheName: 'app-shell-assets',
+                            cacheableResponse: {
+                                statuses: [0, 200],
+                            },
+                            expiration: {
+                                maxEntries: 150,
+                                maxAgeSeconds: 60 * 60 * 24 * 30,
+                            },
+                        },
+                    },
+                    {
+                        urlPattern: ({ request, url }) =>
+                            ['image', 'font'].includes(request.destination) && url.origin === self.location.origin,
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'app-media',
+                            cacheableResponse: {
+                                statuses: [0, 200],
+                            },
+                            expiration: {
+                                maxEntries: 200,
+                                maxAgeSeconds: 60 * 60 * 24 * 30,
+                            },
+                        },
+                    },
+                ],
             },
         }),
     ],
