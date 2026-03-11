@@ -1,0 +1,8 @@
+[03-Mar-2026 08:37:37 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Support\Facades\Route" not found in /home/realdea1/public_html/routes/api.php:13
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/routes/api.php on line 13
+[03-Mar-2026 08:37:38 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Support\Facades\Route" not found in /home/realdea1/public_html/routes/web.php:37
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/routes/web.php on line 37

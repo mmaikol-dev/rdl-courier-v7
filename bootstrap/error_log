@@ -1,0 +1,112 @@
+[24-Jan-2026 15:41:31 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[24-Jan-2026 15:41:32 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[24-Jan-2026 15:43:43 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[24-Jan-2026 20:11:00 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[24-Jan-2026 20:11:35 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[30-Jan-2026 02:26:14 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[30-Jan-2026 03:54:21 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[30-Jan-2026 03:54:22 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[30-Jan-2026 05:10:32 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[02-Feb-2026 17:05:59 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[06-Feb-2026 01:08:22 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[08-Feb-2026 01:33:37 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[14-Feb-2026 03:07:43 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[14-Feb-2026 03:16:28 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[17-Feb-2026 06:27:52 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[17-Feb-2026 11:04:49 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[17-Feb-2026 11:04:49 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[18-Feb-2026 06:39:59 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[18-Feb-2026 16:54:42 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[24-Feb-2026 19:06:44 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[24-Feb-2026 22:49:26 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[25-Feb-2026 21:31:00 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[01-Mar-2026 05:30:37 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[01-Mar-2026 07:42:27 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[01-Mar-2026 10:31:50 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[03-Mar-2026 23:38:27 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[06-Mar-2026 19:10:48 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10
+[08-Mar-2026 07:17:01 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Foundation\Application" not found in /home/realdea1/public_html/bootstrap/app.php:10
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/bootstrap/app.php on line 10

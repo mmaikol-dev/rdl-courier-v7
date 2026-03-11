@@ -1,0 +1,523 @@
+[31-Aug-2025 20:07:13 UTC] PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0". You are running 8.1.33. in /home/realdea1/public_html/vendor/composer/platform_check.php on line 28
+[31-Aug-2025 20:07:46 UTC] PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0". You are running 8.1.33. in /home/realdea1/public_html/vendor/composer/platform_check.php on line 28
+[31-Aug-2025 20:52:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 20:56:10 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 20:56:13 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 20:58:36 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 20:58:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 20:58:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 20:58:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:11:52 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:19:20 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:21:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:23:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:23:06 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:52:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:52:33 UTC] PHP Warning:  copy(): https:// wrapper is disabled in the server configuration by allow_url_fopen=0 in Command line code on line 1
+[31-Aug-2025 21:52:33 UTC] PHP Warning:  copy(https://getcomposer.org/installer): Failed to open stream: no suitable wrapper could be found in Command line code on line 1
+[31-Aug-2025 21:52:34 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:52:34 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:52:34 UTC] PHP Warning:  unlink(composer-setup.php): No such file or directory in Command line code on line 1
+[31-Aug-2025 21:56:34 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:57:54 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:57:57 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:58:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 21:58:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 22:04:02 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 22:05:13 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 22:05:36 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Aug-2025 22:05:41 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 04:48:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 04:48:57 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 05:32:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 05:32:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 05:34:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 05:34:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 05:34:58 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 06:21:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 06:21:32 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 07:47:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:05:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:05:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:07:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:09:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:09:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:29:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 09:29:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 16:32:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 16:33:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 16:33:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 16:33:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 16:39:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Sep-2025 19:03:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[02-Sep-2025 12:25:02 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[02-Sep-2025 12:26:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[02-Sep-2025 12:30:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[02-Sep-2025 12:30:12 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 09:22:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 09:22:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 09:22:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 09:25:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 09:26:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 20:03:01 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 20:07:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Sep-2025 20:14:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 13:09:02 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 13:13:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 13:15:38 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 13:17:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:16:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:19:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:21:32 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:24:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:25:24 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:32:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:38:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:38:18 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:42:54 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:45:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:45:24 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:59:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 19:59:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 20:05:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 20:05:42 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 20:05:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 20:44:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 20:44:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 21:06:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 21:20:23 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Sep-2025 21:20:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[06-Sep-2025 08:35:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[06-Sep-2025 08:35:17 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[07-Sep-2025 19:04:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[07-Sep-2025 19:04:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[07-Sep-2025 19:05:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Sep-2025 04:56:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Sep-2025 04:56:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Sep-2025 12:55:37 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Sep-2025 12:59:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Sep-2025 13:48:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Sep-2025 05:54:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Sep-2025 06:18:59 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Sep-2025 06:22:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Sep-2025 08:36:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Sep-2025 06:56:57 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Sep-2025 06:58:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Sep-2025 08:17:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[13-Sep-2025 07:37:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[13-Sep-2025 12:15:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[13-Sep-2025 13:50:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 06:10:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 06:18:42 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 06:40:08 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:29:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:29:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:33:13 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:37:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:39:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:41:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:43:57 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:55:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:57:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 21:58:29 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:01:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:01:38 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:01:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:01:54 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:02:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:02:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Sep-2025 22:02:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[16-Sep-2025 05:07:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[16-Sep-2025 05:38:24 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[16-Sep-2025 05:38:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[16-Sep-2025 14:57:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 05:15:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 05:16:10 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 05:45:24 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 10:03:32 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 10:17:20 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 10:34:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 13:52:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 14:47:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 15:04:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Sep-2025 15:04:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[18-Sep-2025 13:25:52 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[18-Sep-2025 13:25:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 06:20:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 06:20:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 08:17:11 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 08:17:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 08:31:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 08:34:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 08:37:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Sep-2025 08:52:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 07:43:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 07:43:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 07:54:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 07:54:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 07:54:34 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 08:06:59 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 08:07:01 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 08:11:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Sep-2025 08:43:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Sep-2025 08:27:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Sep-2025 08:31:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Sep-2025 08:32:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 14:03:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 14:19:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 14:22:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 14:22:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 14:22:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 14:23:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 15:42:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 15:42:09 UTC] PHP Warning:  copy(): https:// wrapper is disabled in the server configuration by allow_url_fopen=0 in Command line code on line 1
+[24-Sep-2025 15:42:09 UTC] PHP Warning:  copy(https://getcomposer.org/installer): Failed to open stream: no suitable wrapper could be found in Command line code on line 1
+[24-Sep-2025 15:42:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 15:42:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Sep-2025 16:16:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Sep-2025 09:25:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Sep-2025 09:25:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Sep-2025 09:25:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Sep-2025 09:27:03 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Sep-2025 09:27:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 10:21:58 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 10:22:01 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 12:26:08 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 12:26:11 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 12:39:12 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 12:39:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Sep-2025 12:53:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:13:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:13:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:17:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:17:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:27:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:31:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:31:18 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:32:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:32:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:36:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 07:36:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:41:27 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:41:29 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:43:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:43:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:44:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:44:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:47:23 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:48:20 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:48:20 UTC] PHP Fatal error:  Cannot use App\Http\controllers\ChatController as ChatController because the name is already in use in /home/realdea1/public_html/routes/web.php on line 13
+[27-Sep-2025 08:48:21 UTC] PHP Fatal error:  Cannot use App\Http\controllers\ChatController as ChatController because the name is already in use in /home/realdea1/public_html/routes/web.php on line 13
+[27-Sep-2025 08:48:31 UTC] PHP Fatal error:  Cannot use App\Http\controllers\ChatController as ChatController because the name is already in use in /home/realdea1/public_html/routes/web.php on line 13
+[27-Sep-2025 08:48:34 UTC] PHP Fatal error:  Cannot use App\Http\controllers\ChatController as ChatController because the name is already in use in /home/realdea1/public_html/routes/web.php on line 13
+[27-Sep-2025 08:48:37 UTC] PHP Fatal error:  Cannot use App\Http\controllers\ChatController as ChatController because the name is already in use in /home/realdea1/public_html/routes/web.php on line 13
+[27-Sep-2025 08:48:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:48:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Sep-2025 08:49:37 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Sep-2025 11:59:54 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Sep-2025 12:00:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Sep-2025 12:01:12 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Sep-2025 12:01:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Sep-2025 12:02:23 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Sep-2025 12:02:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[29-Sep-2025 14:37:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[29-Sep-2025 15:06:44 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[30-Sep-2025 07:16:08 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[30-Sep-2025 08:18:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[30-Sep-2025 10:16:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[30-Sep-2025 10:16:02 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[30-Sep-2025 10:16:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Oct-2025 14:50:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Oct-2025 14:50:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Oct-2025 14:53:09 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Oct-2025 14:53:11 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[01-Oct-2025 14:54:41 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Oct-2025 10:32:36 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Oct-2025 10:32:38 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Oct-2025 10:32:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Oct-2025 10:55:12 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Oct-2025 10:55:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Oct-2025 06:43:01 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Oct-2025 06:43:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Oct-2025 09:58:24 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Oct-2025 09:59:37 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[09-Oct-2025 10:00:10 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[13-Oct-2025 14:19:09 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:19:13 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:19:28 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:19:42 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:19:46 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:19:54 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:03 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:03 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:04 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:04 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:06 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:07 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:07 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:08 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:08 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:16 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:18 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:20 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:21 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:22 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:24 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:24 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:27 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:27 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:27 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:31 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:33 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:37 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:38 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:38 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:48 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:20:56 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:05 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:06 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:07 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:11 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:19 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:22 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:26 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:30 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:30 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:31 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:31 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\MpesaStkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:40 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:21:59 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:06 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:08 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:10 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:10 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:12 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:13 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:14 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:16 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:18 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:20 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:23 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:25 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:30 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:30 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[13-Oct-2025 14:22:34 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Http\Controllers\StkPushController (previously declared in /home/realdea1/public_html/app/Http/Controllers/StkController.php:11) in /home/realdea1/public_html/app/Http/Controllers/StkController.php on line 11
+[14-Oct-2025 04:23:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Oct-2025 09:54:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Oct-2025 09:58:13 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Oct-2025 10:06:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Oct-2025 10:06:17 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[17-Oct-2025 10:19:32 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[18-Oct-2025 06:34:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[18-Oct-2025 06:40:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[19-Oct-2025 14:49:38 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Oct-2025 10:22:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Oct-2025 14:16:54 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Oct-2025 06:07:57 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Oct-2025 06:08:08 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Oct-2025 13:30:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Oct-2025 11:28:52 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Frame/Factory.php on line 198
+[28-Oct-2025 11:29:03 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Helpers.php on line 69
+[28-Oct-2025 11:29:14 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Frame/Factory.php on line 198
+[28-Oct-2025 11:30:25 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Frame/Factory.php on line 198
+[28-Oct-2025 11:30:39 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1977
+[28-Oct-2025 11:31:48 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Helpers.php on line 518
+[28-Oct-2025 11:32:17 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 8192 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1977
+[28-Oct-2025 11:32:50 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1977
+[28-Oct-2025 11:33:04 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Frame/Factory.php on line 198
+[28-Oct-2025 11:33:23 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1977
+[28-Oct-2025 11:34:07 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 8192 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1977
+[28-Oct-2025 11:34:25 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 73728 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/lib/Cpdf.php on line 3915
+[28-Oct-2025 11:36:24 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1518
+[28-Oct-2025 11:37:50 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1527
+[28-Oct-2025 11:43:35 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 8192 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Css/Style.php on line 1907
+[28-Oct-2025 11:44:03 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 7340161 bytes) in /home/realdea1/public_html/vendor/symfony/mime/FileinfoMimeTypeGuesser.php on line 60
+[28-Oct-2025 11:44:43 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 7340161 bytes) in /home/realdea1/public_html/vendor/symfony/mime/FileinfoMimeTypeGuesser.php on line 60
+[28-Oct-2025 08:44:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Oct-2025 11:45:47 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 7340161 bytes) in /home/realdea1/public_html/vendor/symfony/mime/FileinfoMimeTypeGuesser.php on line 60
+[30-Oct-2025 13:57:58 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[30-Oct-2025 13:58:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Nov-2025 13:33:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Nov-2025 13:34:23 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Nov-2025 07:59:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[05-Nov-2025 07:59:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:03:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:03:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:04:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:05:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:05:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:06:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:07:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:09:12 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:09:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:10:20 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:14:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:15:21 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:18:22 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Nov-2025 06:21:17 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[14-Nov-2025 07:02:57 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[14-Nov-2025 07:04:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[20-Nov-2025 17:48:24 Africa/Nairobi] PHP Fatal error:  Allowed memory size of 536870912 bytes exhausted (tried to allocate 20480 bytes) in /home/realdea1/public_html/vendor/dompdf/dompdf/src/Frame.php on line 800
+[21-Nov-2025 15:35:35 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[21-Nov-2025 15:46:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[21-Nov-2025 15:50:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[21-Nov-2025 15:51:42 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[21-Nov-2025 15:53:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[21-Nov-2025 15:53:49 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[21-Nov-2025 16:10:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 07:56:37 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 13:05:33 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 13:46:37 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 13:47:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 13:50:11 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 14:19:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 14:19:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Nov-2025 14:21:52 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Nov-2025 14:59:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Nov-2025 15:02:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[25-Nov-2025 15:04:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Nov-2025 09:21:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[08-Dec-2025 08:51:41 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[08-Dec-2025 08:51:41 UTC] PHP Warning:  copy(): https:// wrapper is disabled in the server configuration by allow_url_fopen=0 in Command line code on line 1
+[08-Dec-2025 08:51:41 UTC] PHP Warning:  copy(https://getcomposer.org/installer): Failed to open stream: no suitable wrapper could be found in Command line code on line 1
+[08-Dec-2025 08:51:41 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[08-Dec-2025 08:51:41 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[08-Dec-2025 08:51:41 UTC] PHP Warning:  unlink(composer-setup.php): No such file or directory in Command line code on line 1
+[08-Dec-2025 09:51:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 09:49:54 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 09:55:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 10:07:28 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 10:11:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 13:11:47 Africa/Nairobi] PHP Fatal error:  Cannot redeclare class App\Console\Commands\SendMerchantOrderSummary (previously declared in /home/realdea1/public_html/app/Console/Commands/SendUpcomingOrdersReminder.php:10) in /home/realdea1/public_html/app/Console/Commands/SendUpcomingOrdersReminder.php on line 10
+[10-Dec-2025 10:14:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 10:14:45 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 10:15:35 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[10-Dec-2025 10:16:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Dec-2025 12:39:13 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Dec-2025 11:33:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[22-Dec-2025 11:33:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Dec-2025 13:14:06 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:25:02 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:26:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:26:27 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:28:07 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:33:15 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:39:52 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 05:42:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 07:05:05 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[24-Dec-2025 07:56:36 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Dec-2025 05:35:40 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Dec-2025 05:40:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Dec-2025 05:41:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Dec-2025 05:42:36 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Dec-2025 08:24:50 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[26-Dec-2025 08:26:13 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[08-Jan-2026 07:41:27 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[08-Jan-2026 07:53:36 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[12-Jan-2026 11:17:29 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Jan-2026 10:11:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[15-Jan-2026 14:16:08 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:39:17 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:41:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:43:01 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:44:24 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:45:23 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:46:38 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:47:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:48:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 12:49:31 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[23-Jan-2026 13:01:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Jan-2026 06:17:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Jan-2026 06:19:38 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:35:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:39:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:39:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:46:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:48:35 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:48:39 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 14:48:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[28-Jan-2026 19:55:43 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:42:14 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:44:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:44:53 UTC] PHP Warning:  copy(): https:// wrapper is disabled in the server configuration by allow_url_fopen=0 in Command line code on line 1
+[31-Jan-2026 07:44:53 UTC] PHP Warning:  copy(https://getcomposer.org/installer): Failed to open stream: no suitable wrapper could be found in Command line code on line 1
+[31-Jan-2026 07:45:48 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:45:48 UTC] PHP Warning:  copy(): https:// wrapper is disabled in the server configuration by allow_url_fopen=0 in Command line code on line 1
+[31-Jan-2026 07:45:48 UTC] PHP Warning:  copy(https://getcomposer.org/installer): Failed to open stream: no suitable wrapper could be found in Command line code on line 1
+[31-Jan-2026 07:46:17 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:48:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:48:47 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 07:49:20 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 08:02:56 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 08:03:03 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 08:06:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 11:32:25 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:32:36 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:32:57 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:33 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:38 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:40 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:53 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:54 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:57 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:57 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:33:57 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:04 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:13 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:30 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:38 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:45 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:47 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:48 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:53 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:54 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:34:57 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:03 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:04 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:05 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:05 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:05 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:05 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:08 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:09 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:21 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:21 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:26 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:27 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 11:35:35 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendChat() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 105
+[31-Jan-2026 13:58:13 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:13 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:13 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:14 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:19 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:19 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:20 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:27 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:37 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:42 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 13:58:43 Africa/Nairobi] PHP Fatal error:  Cannot redeclare App\Http\Controllers\WhatsappController::sendMessage() in /home/realdea1/public_html/app/Http/Controllers/WhatsappController.php on line 271
+[31-Jan-2026 11:13:53 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 12:53:12 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[31-Jan-2026 12:54:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Feb-2026 05:41:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[03-Feb-2026 06:51:41 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[06-Feb-2026 06:46:00 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[06-Feb-2026 07:04:17 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[06-Feb-2026 07:31:46 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 08:40:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 08:40:59 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 08:41:04 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 08:41:10 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 08:42:25 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 09:19:30 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 09:21:19 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 11:43:16 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[11-Feb-2026 11:43:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[12-Feb-2026 15:04:01 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[12-Feb-2026 15:04:06 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Feb-2026 10:16:26 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Feb-2026 10:17:55 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Feb-2026 10:18:02 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Feb-2026 10:18:06 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[27-Feb-2026 10:18:51 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
+[06-Mar-2026 05:36:37 UTC] PHP Warning:  PHP Startup: session.gc_divisor must be greater than 0 in Unknown on line 0
