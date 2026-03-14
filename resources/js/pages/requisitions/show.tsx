@@ -13,56 +13,33 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, CheckCircle, XCircle, DollarSign, AlertCircle, Edit2, Save, X } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, DollarSign, Edit2, Save, X, LoaderCircle } from "lucide-react";
 import { useState, useEffect } from "react";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function RequisitionShow() {
-  const { auth, requisition, flash } = usePage().props as any;
+  const { auth, requisition, flash, duplicateItemsByName = {} } = usePage().props as any;
   const [isUpdating, setIsUpdating] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [modalConfig, setModalConfig] = useState<{
-    type: 'success' | 'error';
-    title: string;
-    message: string;
-  } | null>(null);
-
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
+  const [savingItemId, setSavingItemId] = useState<number | null>(null);
+  const [isGoingBack, setIsGoingBack] = useState(false);
 
-  // Check for flash messages on mount and updates
   useEffect(() => {
     if (flash?.success) {
-      setModalConfig({
-        type: 'success',
-        title: 'Success',
-        message: flash.success,
-      });
-      setShowModal(true);
+      toast.success(flash.success);
     } else if (flash?.error) {
-      setModalConfig({
-        type: 'error',
-        title: 'Error',
-        message: flash.error,
-      });
-      setShowModal(true);
+      toast.error(flash.error);
     } else if (flash?.errors?.message) {
-      setModalConfig({
-        type: 'error',
-        title: 'Error',
-        message: flash.errors.message,
-      });
-      setShowModal(true);
+      toast.error(flash.errors.message);
     }
   }, [flash]);
 
@@ -77,13 +54,15 @@ export default function RequisitionShow() {
       {
         preserveScroll: true,
         onSuccess: () => {
+          toast.success(`Requisition marked as ${status}`);
           setIsUpdating(false);
-          // Reload the page to get fresh data
           router.reload({ only: ['requisition'] });
         },
         onError: () => {
+          toast.error("Failed to update requisition status");
           setIsUpdating(false);
         },
+        onFinish: () => setIsUpdating(false),
       }
     );
   };
@@ -104,19 +83,23 @@ export default function RequisitionShow() {
   };
 
   const saveItemEdit = (itemId: number) => {
+    setSavingItemId(itemId);
     router.patch(
       `/requisitions/${requisition.id}/items/${itemId}`,
       editFormData,
       {
         preserveScroll: true,
         onSuccess: () => {
+          toast.success("Requisition item updated successfully");
           setEditingItemId(null);
           setEditFormData({});
           router.reload({ only: ['requisition'] });
         },
         onError: (errors) => {
           console.error('Failed to update item:', errors);
+          toast.error("Failed to update requisition item");
         },
+        onFinish: () => setSavingItemId(null),
       }
     );
   };
@@ -141,8 +124,11 @@ export default function RequisitionShow() {
     { title: requisition.requisition_number, href: "#" },
   ];
 
+  const currentUserRole = String(auth?.user?.roles ?? "").trim().toLowerCase();
+
   // Check if items can be edited (only pending status and finance role)
-  const canEditItems = requisition.status === 'pending' && auth?.user?.role === 'finance';
+  const canEditItems = requisition.status === 'pending' && currentUserRole === 'finance';
+  const normalizeItemName = (value: string) => value.trim().toLowerCase();
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -153,11 +139,18 @@ export default function RequisitionShow() {
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              onClick={() => router.get("/requisitions")}
+              onClick={() => {
+                setIsGoingBack(true);
+                router.get("/requisitions", {}, {
+                  onError: () => toast.error("Failed to return to requisitions"),
+                  onFinish: () => setIsGoingBack(false),
+                });
+              }}
+              disabled={isGoingBack}
               className="flex items-center gap-2"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back
+              {isGoingBack ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <ArrowLeft className="w-4 h-4" />}
+              {isGoingBack ? "Loading..." : "Back"}
             </Button>
             <h1 className="text-2xl font-bold text-gray-800">
               {requisition.requisition_number}
@@ -165,7 +158,7 @@ export default function RequisitionShow() {
           </div>
 
           <div className="flex items-center gap-2">
-            {requisition.status === 'pending' && auth?.user?.role === 'finance' && (
+            {requisition.status === 'pending' && currentUserRole === 'finance' && (
               <>
                 <Button
                   variant="outline"
@@ -173,7 +166,7 @@ export default function RequisitionShow() {
                   disabled={isUpdating}
                   className="flex items-center gap-2 text-green-600 border-green-600 hover:bg-green-50"
                 >
-                  <CheckCircle className="w-4 h-4" />
+                  {isUpdating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                   {isUpdating ? "Processing..." : "Approve"}
                 </Button>
                 <Button
@@ -182,18 +175,18 @@ export default function RequisitionShow() {
                   disabled={isUpdating}
                   className="flex items-center gap-2 text-red-600 border-red-600 hover:bg-red-50"
                 >
-                  <XCircle className="w-4 h-4" />
+                  {isUpdating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                   {isUpdating ? "Processing..." : "Reject"}
                 </Button>
               </>
             )}
-            {requisition.status === 'approved' && auth?.user?.role === 'finance' && (
+            {requisition.status === 'approved' && currentUserRole === 'finance' && (
               <Button
                 onClick={() => updateStatus('paid')}
                 disabled={isUpdating}
                 className="flex items-center gap-2 text-white"
               >
-                <DollarSign className="w-4 h-4" />
+                {isUpdating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
                 {isUpdating ? "Processing..." : "Mark as Paid"}
               </Button>
             )}
@@ -263,8 +256,12 @@ export default function RequisitionShow() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {requisition.items?.map((item: any, index: number) => (
-                        <TableRow key={item.id}>
+                      {requisition.items?.map((item: any, index: number) => {
+                        const duplicateEntries = duplicateItemsByName[normalizeItemName(item.item_name || '')] || [];
+                        const isDuplicateItem = duplicateEntries.length > 0;
+
+                        return (
+                        <TableRow key={item.id} className={isDuplicateItem ? "bg-red-50/40" : undefined}>
                           <TableCell>{index + 1}</TableCell>
 
                           {editingItemId === item.id ? (
@@ -273,7 +270,7 @@ export default function RequisitionShow() {
                                 <Input
                                   value={editFormData.item_name}
                                   onChange={(e) => setEditFormData({ ...editFormData, item_name: e.target.value })}
-                                  className="min-w-[150px]"
+                                  className={cn("min-w-[150px]", isDuplicateItem && "border-red-400 bg-red-50 text-red-700")}
                                 />
                               </TableCell>
                               <TableCell>
@@ -309,7 +306,25 @@ export default function RequisitionShow() {
                             </>
                           ) : (
                             <>
-                              <TableCell className="font-medium">{item.item_name}</TableCell>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  <span className={isDuplicateItem ? "text-red-700" : undefined}>{item.item_name}</span>
+                                  {isDuplicateItem && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-flex cursor-help items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                          Duplicate
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs">
+                                        <p>
+                                          Found in requisition{duplicateEntries.length > 1 ? "s" : ""}: {duplicateEntries.map((entry: any) => entry.requisition_number).join(", ")}
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell className="text-sm text-gray-600">
                                 {item.description || '-'}
                               </TableCell>
@@ -332,15 +347,17 @@ export default function RequisitionShow() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => saveItemEdit(item.id)}
+                                      disabled={savingItemId === item.id}
                                       className="flex items-center gap-1 text-green-600 border-green-600 hover:bg-green-50"
                                     >
-                                      <Save className="w-3 h-3" />
-                                      Save
+                                      {savingItemId === item.id ? <LoaderCircle className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                      {savingItemId === item.id ? "Saving..." : "Save"}
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       onClick={cancelEditingItem}
+                                      disabled={savingItemId === item.id}
                                       className="flex items-center gap-1"
                                     >
                                       <X className="w-3 h-3" />
@@ -362,7 +379,7 @@ export default function RequisitionShow() {
                             </TableCell>
                           )}
                         </TableRow>
-                      ))}
+                      )})}
                       <TableRow className="bg-gray-50 font-bold">
                         <TableCell colSpan={canEditItems ? 6 : 5} className="text-right">
                           Grand Total
@@ -454,40 +471,6 @@ export default function RequisitionShow() {
         </div>
       </div>
 
-      {/* Success/Error Modal */}
-      <AlertDialog open={showModal} onOpenChange={setShowModal}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3">
-              {modalConfig?.type === 'success' ? (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                  <CheckCircle className="h-6 w-6 text-green-600" />
-                </div>
-              ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-                  <AlertCircle className="h-6 w-6 text-red-600" />
-                </div>
-              )}
-              <div>
-                <AlertDialogTitle className="text-lg">
-                  {modalConfig?.title}
-                </AlertDialogTitle>
-              </div>
-            </div>
-            <AlertDialogDescription className="text-base mt-2">
-              {modalConfig?.message}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction
-              onClick={() => setShowModal(false)}
-              className={modalConfig?.type === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-            >
-              OK
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </AppLayout>
   );
 }

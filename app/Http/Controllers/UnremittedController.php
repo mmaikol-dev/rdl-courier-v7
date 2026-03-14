@@ -33,17 +33,11 @@ class UnremittedController extends Controller
         // from_date = start date
         // to_date   = end date
         // -------------------------
-        if ($request->filled('from_date') && $request->filled('to_date')) {
-            // Range: both start + end
-            $query->whereBetween('delivery_date', [
-                $request->from_date,
-                $request->to_date,
-            ]);
-        } elseif ($request->filled('from_date')) {
-            // Only start date
+        if ($request->filled('from_date')) {
             $query->whereDate('delivery_date', '>=', $request->from_date);
-        } elseif ($request->filled('to_date')) {
-            // Only end date
+        }
+
+        if ($request->filled('to_date')) {
             $query->whereDate('delivery_date', '<=', $request->to_date);
         }
 
@@ -53,6 +47,25 @@ class UnremittedController extends Controller
         $orders = $query->orderByDesc('updated_at')
             ->paginate(100)
             ->withQueryString();
+
+        $orders->through(function ($order) {
+            $rawDeliveryDate = $order->getRawOriginal('delivery_date');
+
+            return [
+                'id' => $order->id,
+                'order_no' => $order->order_no,
+                'client_name' => $order->client_name,
+                'product_name' => $order->product_name,
+                'address' => $order->address,
+                'phone' => $order->phone,
+                'status' => $order->status,
+                'delivery_date' => $rawDeliveryDate ? substr((string) $rawDeliveryDate, 0, 10) : '',
+                'merchant' => $order->merchant,
+                'code' => $order->code,
+                'agent' => $order->agent,
+                'updated_at' => $order->updated_at,
+            ];
+        });
 
         // -------------------------
         //  Merchant List For Filter

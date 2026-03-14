@@ -45,6 +45,7 @@ class HandleInertiaRequests extends Middleware
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
                 'user' => $request->user(),
+                'pendingLoginLocationCapture' => (bool) $request->session()->get('login_location_id'),
             ],
             'ziggy' => fn (): array => [
                 ...(new Ziggy)->toArray(),

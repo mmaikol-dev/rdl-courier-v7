@@ -22,6 +22,7 @@ class StkController extends Controller
         Log::info('Fetching latest sheet orders for STK view');
         $query = SheetOrder::query();
         $selectedAgent = $request->input('agent');
+        $selectedCcName = $request->input('cc_name');
         $user = $request->user();
         $normalizedRole = strtolower(trim((string) ($user?->roles ?? '')));
         
@@ -32,6 +33,10 @@ class StkController extends Controller
 
         if ($request->filled('agent')) {
             $query->where('agent', $selectedAgent);
+        }
+
+        if ($request->filled('cc_name')) {
+            $query->where('cc_email', $selectedCcName);
         }
         
         // 📦 Only show specific statuses
@@ -70,6 +75,7 @@ class StkController extends Controller
             return [
                 'id' => $order->id ?? 0,
                 'order_no' => $order->order_no ?? '',
+                'cc_email' => $order->cc_email ?? '',
                 'client_name' => $order->client_name ?? '',
                 'quantity' => $order->quantity ?? 0,
                 'amount' => $order->amount ?? 0,
@@ -89,11 +95,17 @@ class StkController extends Controller
             ->where('roles', 'agent')
             ->orderBy('name')
             ->get(['id', 'name']);
+
+        $callCenterUsers = User::query()
+            ->where('roles', 'callcenter1')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
         
         return Inertia::render('stk/index', [
             'orders'  => $transformedOrders,
-            'filters' => $request->only(['search', 'status', 'start_date', 'end_date', 'agent']),
+            'filters' => $request->only(['search', 'status', 'start_date', 'end_date', 'agent', 'cc_name']),
             'agents' => $agents,
+            'callCenterUsers' => $callCenterUsers,
         ]);
     }
 

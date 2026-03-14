@@ -59,7 +59,6 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
-
 :root {
     --radius: 0.65rem;
     --background: oklch(1 0 0);
@@ -95,7 +94,7 @@
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
   }
-  
+
   .dark {
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
@@ -129,33 +128,33 @@
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
   }
-  
+
   /* Smooth, modern scrollbar */
 .scrollbar-custom::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   .scrollbar-custom::-webkit-scrollbar-track {
     background: transparent; /* or theme color */
   }
-  
+
   .scrollbar-custom::-webkit-scrollbar-thumb {
     background-color: hsl(var(--muted-foreground)); /* matches shadcn muted color */
     border-radius: 9999px;
     border: 2px solid transparent; /* padding effect */
     background-clip: content-box;
   }
-  
+
   .scrollbar-custom::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--foreground));
   }
-  
+
   /* For Firefox */
   .scrollbar-custom {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground)) transparent;
   }
-  
+
 @layer base {
     * {
         @apply border-border;
@@ -164,5 +163,53 @@
     body {
         @apply bg-background text-foreground;
     }
-    
+  .leaflet-container {
+    @apply !bg-card !font-[inherit];
+    }
+  .leaflet-container a {
+    @apply !text-inherit;
+    }
+  .leaflet-div-icon {
+    @apply !bg-transparent !border-none;
+    }
+  .leaflet-popup-content-wrapper, .leaflet-popup-content, .leaflet-popup-content p {
+    @apply ![all:unset];
+    }
+  .leaflet-popup {
+    @apply !animate-none;
+    }
+  .leaflet-popup-close-button {
+    @apply ring-offset-background focus:ring-ring bg-secondary rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:outline-hidden;
+    }
+  .leaflet-tooltip, .leaflet-draw-tooltip {
+    @apply !bg-foreground !text-background !animate-none !rounded-md !border-none !p-0 !px-3 !py-1.5 !shadow-none;
+    }
+  .leaflet-draw-tooltip:before {
+    @apply bg-foreground !top-1/2 !right-0.5 size-2.5 translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] !border-none;
+    }
+  .leaflet-error-draw-tooltip {
+    @apply !bg-destructive !text-white;
+    }
+  .leaflet-error-draw-tooltip:before {
+    @apply bg-destructive;
+    }
+  .leaflet-draw-tooltip-subtext {
+    @apply !text-background;
+    }
+  .leaflet-popup-tip-container, .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before, .leaflet-tooltip-left:before, .leaflet-tooltip-right:before {
+    @apply hidden;
+    }
+  .leaflet-control-attribution {
+    @apply !bg-muted rounded-md !px-[4px] !py-[2px] text-[10px] !leading-none !text-inherit;
+    }
+  .leaflet-draw-guide-dash {
+    @apply rounded-full;
+    }
+  .leaflet-edit-marker-selected {
+    @apply !border-transparent !bg-transparent;
+    }
+  .marker-cluster div {
+    @apply font-[inherit];
+    }
+
 }

@@ -15,13 +15,6 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-    Select,
-    SelectTrigger,
-    SelectValue,
-    SelectContent,
-    SelectItem,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import {
     Table,
@@ -31,7 +24,7 @@ import {
     TableRow,
     TableCell,
 } from "@/components/ui/table";
-import { PlusCircleIcon, TrashIcon, EyeIcon, FilterIcon, XCircleIcon, CalendarIcon } from "lucide-react";
+import { PlusCircleIcon, TrashIcon, EyeIcon, FilterIcon, XCircleIcon, CalendarIcon, LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
@@ -40,14 +33,112 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
+
+interface SearchableOption {
+    value: string;
+    label: string;
+    keywords?: string;
+}
+
+async function parseJsonResponse(response: Response) {
+    const contentType = response.headers.get("content-type") || "";
+    const body = await response.text();
+
+    if (!contentType.includes("application/json")) {
+        throw new Error(
+            body.startsWith("<!DOCTYPE") || body.startsWith("<html")
+                ? "The server returned HTML instead of JSON."
+                : body || "Unexpected server response.",
+        );
+    }
+
+    return body ? JSON.parse(body) : {};
+}
+
+function SearchableSelect({
+    value,
+    onChange,
+    placeholder,
+    searchPlaceholder,
+    emptyLabel,
+    options,
+}: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
+    searchPlaceholder: string;
+    emptyLabel: string;
+    options: SearchableOption[];
+}) {
+    const [open, setOpen] = useState(false);
+    const selectedOption = options.find((option) => option.value === value);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-full justify-between font-normal"
+                >
+                    <span className={cn("truncate", !selectedOption && "text-muted-foreground")}>
+                        {selectedOption?.label ?? placeholder}
+                    </span>
+                    <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command>
+                    <CommandInput placeholder={searchPlaceholder} />
+                    <CommandList>
+                        <CommandGroup>
+                            {options.length === 0 ? (
+                                <div className="px-2 py-3 text-sm text-muted-foreground">{emptyLabel}</div>
+                            ) : (
+                                options.map((option) => (
+                                    <CommandItem
+                                        key={option.value}
+                                        value={[option.label, option.value, option.keywords].filter(Boolean).join(" ")}
+                                        onSelect={() => {
+                                            onChange(option.value);
+                                            setOpen(false);
+                                        }}
+                                    >
+                                        <CheckIcon
+                                            className={cn(
+                                                "mr-2 h-4 w-4",
+                                                value === option.value ? "opacity-100" : "opacity-0",
+                                            )}
+                                        />
+                                        <span className="truncate">{option.label}</span>
+                                    </CommandItem>
+                                ))
+                            )}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 export default function RequisitionsIndex() {
     const { auth, requisitions, categories, users, filters = {}, flash } = usePage().props as any;
+    const currentUserRole = String(auth?.user?.roles ?? "").trim().toLowerCase();
 
     const [openRequisitionModal, setOpenRequisitionModal] = useState(false);
     const [drawerDirection, setDrawerDirection] = useState<"right" | "bottom">("bottom");
+    const [requisitionRows, setRequisitionRows] = useState<any[]>(requisitions?.data || []);
     const [formData, setFormData] = useState({
         category_id: "",
         user_id: "",
@@ -58,6 +149,13 @@ export default function RequisitionsIndex() {
         { item_name: "", description: "", quantity: 1, unit_price: 0 }
     ]);
     const [openFilterModal, setOpenFilterModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isFiltering, setIsFiltering] = useState(false);
+    const [statusLoadingId, setStatusLoadingId] = useState<number | null>(null);
+    const [viewingId, setViewingId] = useState<number | null>(null);
+    const [openViewModal, setOpenViewModal] = useState(false);
+    const [selectedRequisition, setSelectedRequisition] = useState<any | null>(null);
+    const [selectedDuplicateItemsByName, setSelectedDuplicateItemsByName] = useState<Record<string, any[]>>({});
 
     // Filter states - Initialize from props
     const [filterStatus, setFilterStatus] = useState(filters?.status || "");
@@ -93,6 +191,10 @@ export default function RequisitionsIndex() {
         if (flash?.error) toast.error(flash.error);
     }, [flash?.success, flash?.error]);
 
+    useEffect(() => {
+        setRequisitionRows(requisitions?.data || []);
+    }, [requisitions]);
+
     const addItem = () => {
         setItems([...items, { item_name: "", description: "", quantity: 1, unit_price: 0 }]);
     };
@@ -116,18 +218,25 @@ export default function RequisitionsIndex() {
     };
 
     const handleSubmit = () => {
+        if (isSubmitting) return;
+
+        setIsSubmitting(true);
+
         router.post("/requisitions", {
             ...formData,
             items,
         }, {
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success("Requisition submitted successfully");
                 setOpenRequisitionModal(false);
                 resetForm();
             },
-            onError: () => {
-                toast.error("Failed to submit requisition");
-            }
+            onError: (errors) => {
+                const firstError = Object.values(errors)[0];
+                toast.error(typeof firstError === "string" ? firstError : "Failed to submit requisition");
+            },
+            onFinish: () => setIsSubmitting(false),
         });
     };
 
@@ -142,21 +251,35 @@ export default function RequisitionsIndex() {
     };
 
     const updateStatus = (id: number, status: string) => {
+        if (statusLoadingId !== null) return;
+
+        setStatusLoadingId(id);
         router.patch(`/requisitions/${id}/status`, { status }, {
             onSuccess: () => {
                 toast.success(`Requisition marked as ${status}`);
             },
             onError: () => {
                 toast.error("Failed to update requisition status");
-            }
+            },
+            onFinish: () => setStatusLoadingId(null),
         });
     };
 
     const viewDetails = (id: number) => {
-        router.get(`/requisitions/${id}`);
+        if (viewingId !== null) return;
+
+        setViewingId(id);
+        router.get(`/requisitions/${id}`, {}, {
+            preserveScroll: true,
+            onError: () => {
+                toast.error("Failed to open requisition details");
+            },
+            onFinish: () => setViewingId(null),
+        });
     };
 
     const applyFilters = () => {
+        setIsFiltering(true);
         const params: any = {};
 
         if (filterStatus) params.status = filterStatus;
@@ -164,16 +287,33 @@ export default function RequisitionsIndex() {
         if (dateRange.from) params.date_from = format(dateRange.from, "yyyy-MM-dd");
         if (dateRange.to) params.date_to = format(dateRange.to, "yyyy-MM-dd");
 
-        router.get("/requisitions", params);
-        setOpenFilterModal(false);
+        router.get("/requisitions", params, {
+            onSuccess: () => {
+                toast.success("Filters applied");
+                setOpenFilterModal(false);
+            },
+            onError: () => {
+                toast.error("Failed to apply filters");
+            },
+            onFinish: () => setIsFiltering(false),
+        });
     };
 
     const clearFilters = () => {
+        setIsFiltering(true);
         setFilterStatus("");
         setFilterCategory("");
         setDateRange({ from: undefined, to: undefined });
-        router.get("/requisitions");
-        setOpenFilterModal(false);
+        router.get("/requisitions", {}, {
+            onSuccess: () => {
+                toast.success("Filters cleared");
+                setOpenFilterModal(false);
+            },
+            onError: () => {
+                toast.error("Failed to clear filters");
+            },
+            onFinish: () => setIsFiltering(false),
+        });
     };
 
     const removeFilter = (filterName: string) => {
@@ -198,7 +338,16 @@ export default function RequisitionsIndex() {
             delete params.date_to;
         }
 
-        router.get("/requisitions", params);
+        setIsFiltering(true);
+        router.get("/requisitions", params, {
+            onSuccess: () => {
+                toast.success("Filter updated");
+            },
+            onError: () => {
+                toast.error("Failed to update filter");
+            },
+            onFinish: () => setIsFiltering(false),
+        });
     };
 
     const getStatusBadge = (status: string) => {
@@ -213,11 +362,48 @@ export default function RequisitionsIndex() {
     };
 
     const hasActiveFilters = filterStatus || filterCategory || dateRange.from || dateRange.to;
+    const categoryOptions: SearchableOption[] =
+        categories?.map((cat: any) => ({
+            value: String(cat.id),
+            label: cat.name,
+            keywords: cat.description || "",
+        })) || [];
+    const userOptions: SearchableOption[] =
+        users?.map((user: any) => ({
+            value: String(user.id),
+            label: `${user.name} (${user.email})`,
+            keywords: `${user.name} ${user.email}`,
+        })) || [];
+    const statusOptions: SearchableOption[] = [
+        { value: "pending", label: "Pending" },
+        { value: "approved", label: "Approved" },
+        { value: "rejected", label: "Rejected" },
+        { value: "paid", label: "Paid" },
+    ];
 
     const breadcrumbs = [
         { title: "Requisitions", href: "/requisitions" },
         { title: "Manage", href: "#" },
     ];
+
+    const normalizeItemName = (value: string) => value.trim().toLowerCase();
+
+    const duplicateLookup = new Map<string, string[]>();
+
+    requisitionRows.forEach((requisition: any) => {
+        requisition.items?.forEach((existingItem: any) => {
+            const key = normalizeItemName(existingItem.item_name || "");
+            if (!key) return;
+
+            const matches = duplicateLookup.get(key) || [];
+            const requisitionNumber = requisition.requisition_number || `#${requisition.id}`;
+
+            if (!matches.includes(requisitionNumber)) {
+                matches.push(requisitionNumber);
+                duplicateLookup.set(key, matches);
+            }
+        });
+    });
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -322,8 +508,8 @@ export default function RequisitionsIndex() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {requisitions?.data?.length > 0 ? (
-                                    requisitions.data.map((req: any, index: number) => (
+                                {requisitionRows.length > 0 ? (
+                                    requisitionRows.map((req: any, index: number) => (
                                         <TableRow key={req.id} className="hover:bg-gray-50">
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell className="font-medium">{req.requisition_number}</TableCell>
@@ -343,18 +529,21 @@ export default function RequisitionsIndex() {
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => viewDetails(req.id)}
+                                                        disabled={viewingId === req.id}
                                                         className="flex items-center gap-1"
                                                     >
-                                                        <EyeIcon className="w-4 h-4" />
-                                                        View
+                                                        {viewingId === req.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <EyeIcon className="w-4 h-4" />}
+                                                        {viewingId === req.id ? "Opening..." : "View"}
                                                     </Button>
-                                                    {req.status === 'approved' && auth?.user?.role === 'finance' && (
+                                                    {req.status === 'approved' && currentUserRole === 'finance' && (
                                                         <Button
                                                             size="sm"
                                                             onClick={() => updateStatus(req.id, 'paid')}
+                                                            disabled={statusLoadingId === req.id}
                                                             className="text-white"
                                                         >
-                                                            Mark Paid
+                                                            {statusLoadingId === req.id && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                                                            {statusLoadingId === req.id ? "Updating..." : "Mark Paid"}
                                                         </Button>
                                                     )}
                                                 </div>
@@ -401,14 +590,14 @@ export default function RequisitionsIndex() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium text-gray-700">Category *</label>
-                                        <Select value={formData.category_id} onValueChange={(val) => setFormData({ ...formData, category_id: val })}>
-                                            <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
-                                            <SelectContent>
-                                                {categories?.map((cat: any) => (
-                                                    <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <SearchableSelect
+                                            value={formData.category_id}
+                                            onChange={(value) => setFormData({ ...formData, category_id: value })}
+                                            placeholder="Select category"
+                                            searchPlaceholder="Search category..."
+                                            emptyLabel="No categories found."
+                                            options={categoryOptions}
+                                        />
                                     </div>
 
                                     <div className="space-y-2">
@@ -422,16 +611,14 @@ export default function RequisitionsIndex() {
 
                                     <div className="space-y-2 sm:col-span-2">
                                         <label className="text-sm font-medium text-gray-700">User *</label>
-                                        <Select value={formData.user_id} onValueChange={(val) => setFormData({ ...formData, user_id: val })}>
-                                            <SelectTrigger><SelectValue placeholder="Select User" /></SelectTrigger>
-                                            <SelectContent>
-                                                {users?.map((user: any) => (
-                                                    <SelectItem key={user.id} value={String(user.id)}>
-                                                        {user.name} ({user.email})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <SearchableSelect
+                                            value={formData.user_id}
+                                            onChange={(value) => setFormData({ ...formData, user_id: value })}
+                                            placeholder="Select user"
+                                            searchPlaceholder="Search user..."
+                                            emptyLabel="No users found."
+                                            options={userOptions}
+                                        />
                                     </div>
 
                                     <div className="space-y-2 sm:col-span-2">
@@ -464,16 +651,45 @@ export default function RequisitionsIndex() {
                                 </div>
 
                                 <div className="space-y-4">
-                                    {items.map((item, i) => (
-                                        <Card key={i} className="border-l-4 border-l-blue-500 bg-white">
+                                    {items.map((item, i) => {
+                                        const duplicateRequisitions = duplicateLookup.get(normalizeItemName(item.item_name || "")) || [];
+                                        const isDuplicateItem = duplicateRequisitions.length > 0;
+
+                                        return (
+                                        <Card
+                                            key={i}
+                                            className={cn(
+                                                "border-l-4 bg-white",
+                                                isDuplicateItem
+                                                    ? "border-l-red-500 border-red-200 bg-red-50/40"
+                                                    : "border-l-blue-500"
+                                            )}
+                                        >
                                             <CardContent className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                                                     <div className="space-y-2 md:col-span-2">
-                                                        <label className="text-sm font-medium text-gray-700">Item Name *</label>
+                                                        <div className="flex items-center gap-2">
+                                                            <label className="text-sm font-medium text-gray-700">Item Name *</label>
+                                                            {isDuplicateItem && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="inline-flex cursor-help items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                                                            Duplicate
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent className="max-w-xs">
+                                                                        <p>
+                                                                            Found in requisition{duplicateRequisitions.length > 1 ? "s" : ""}: {duplicateRequisitions.join(", ")}
+                                                                        </p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
+                                                        </div>
                                                         <Input
                                                             value={item.item_name}
                                                             onChange={(e) => handleItemChange(i, "item_name", e.target.value)}
                                                             placeholder="Enter item name"
+                                                            className={isDuplicateItem ? "border-red-400 bg-red-50 text-red-700 placeholder:text-red-400" : ""}
                                                         />
                                                     </div>
 
@@ -527,11 +743,11 @@ export default function RequisitionsIndex() {
                                                 </div>
                                             </CardContent>
                                         </Card>
-                                    ))}
+                                    )})}
                                 </div>
 
                                 <div className="flex justify-between items-center mt-4">
-                                    <Button onClick={addItem} className="flex items-center gap-2">
+                                    <Button onClick={addItem} disabled={isSubmitting} className="flex items-center gap-2">
                                         <PlusCircleIcon className="w-4 h-4" /> Add Item
                                     </Button>
                                     <div className="text-right">
@@ -545,8 +761,11 @@ export default function RequisitionsIndex() {
                     </div>
 
                     <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
-                        <DrawerClose asChild><Button variant="outline">Cancel</Button></DrawerClose>
-                        <Button onClick={handleSubmit} className="text-white">Submit Requisition</Button>
+                        <DrawerClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DrawerClose>
+                        <Button onClick={handleSubmit} disabled={isSubmitting} className="text-white">
+                            {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                            {isSubmitting ? "Submitting..." : "Submit Requisition"}
+                        </Button>
                     </DrawerFooter>
                 </DrawerContent>
             </Drawer>
@@ -561,40 +780,33 @@ export default function RequisitionsIndex() {
                     <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
                         <DrawerTitle className="text-lg font-semibold text-gray-800">Filter Requisitions</DrawerTitle>
                         <DrawerDescription className="text-sm text-gray-500">
-                            Filter by status, category, or date range
+                            Filter by status, category, requested user, or date range
                         </DrawerDescription>
                     </DrawerHeader>
 
                     <div className="p-6 space-y-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Status</label>
-                            <Select value={filterStatus} onValueChange={setFilterStatus}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="approved">Approved</SelectItem>
-                                    <SelectItem value="rejected">Rejected</SelectItem>
-                                    <SelectItem value="paid">Paid</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                value={filterStatus}
+                                onChange={setFilterStatus}
+                                placeholder="Select status"
+                                searchPlaceholder="Search status..."
+                                emptyLabel="No statuses found."
+                                options={statusOptions}
+                            />
                         </div>
 
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Category</label>
-                            <Select value={filterCategory} onValueChange={setFilterCategory}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {categories?.map((cat: any) => (
-                                        <SelectItem key={cat.id} value={String(cat.id)}>
-                                            {cat.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                value={filterCategory}
+                                onChange={setFilterCategory}
+                                placeholder="Select category"
+                                searchPlaceholder="Search category..."
+                                emptyLabel="No categories found."
+                                options={categoryOptions}
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -641,21 +853,164 @@ export default function RequisitionsIndex() {
                         <Button
                             variant="outline"
                             onClick={clearFilters}
-                            disabled={!hasActiveFilters}
+                            disabled={!hasActiveFilters || isFiltering}
                         >
+                            {isFiltering && <LoaderCircle className="w-4 h-4 animate-spin" />}
                             Clear All
                         </Button>
                         <div className="flex gap-2">
                             <DrawerClose asChild>
-                                <Button variant="outline">Cancel</Button>
+                                <Button variant="outline" disabled={isFiltering}>Cancel</Button>
                             </DrawerClose>
                             <Button
                                 onClick={applyFilters}
+                                disabled={isFiltering}
                                 className="text-white"
                             >
-                                Apply Filters
+                                {isFiltering && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                                {isFiltering ? "Applying..." : "Apply Filters"}
                             </Button>
                         </div>
+                    </DrawerFooter>
+                </DrawerContent>
+            </Drawer>
+
+            <Drawer
+                open={openViewModal}
+                onOpenChange={(open) => {
+                    setOpenViewModal(open);
+                    if (!open) {
+                        setSelectedRequisition(null);
+                        setSelectedDuplicateItemsByName({});
+                    }
+                }}
+                direction={drawerDirection}
+            >
+                <DrawerContent
+                    className={`
+            md:max-w-[900px] w-full h-[90vh] md:h-screen
+            md:right-0 md:left-auto md:rounded-l-2xl
+            flex flex-col overflow-hidden bg-white
+          `}
+                >
+                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-xl font-bold text-gray-800">
+                            {selectedRequisition?.requisition_number || "Requisition Details"}
+                        </DrawerTitle>
+                        <DrawerDescription className="text-sm text-muted-foreground">
+                            View requisition details without leaving this page.
+                        </DrawerDescription>
+                    </DrawerHeader>
+
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
+                        {selectedRequisition ? (
+                            <>
+                                <Card className="shadow-sm">
+                                    <CardContent className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-sm text-gray-600">Title</p>
+                                            <p className="font-semibold text-gray-800">{selectedRequisition.title}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-600">Category</p>
+                                            <p className="font-semibold text-gray-800">{selectedRequisition.category?.name || "-"}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-600">Status</p>
+                                            <div className="mt-1">{getStatusBadge(selectedRequisition.status)}</div>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-600">Requisition Date</p>
+                                            <p className="font-semibold text-gray-800">
+                                                {new Date(selectedRequisition.requisition_date).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-600">Requested By</p>
+                                            <p className="font-semibold text-gray-800">{selectedRequisition.user?.name || "-"}</p>
+                                            <p className="text-sm text-gray-600">{selectedRequisition.user?.email || ""}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-600">Total Amount</p>
+                                            <p className="font-semibold text-gray-800">
+                                                KES {Number(selectedRequisition.total_amount || 0).toFixed(2)}
+                                            </p>
+                                        </div>
+                                        {selectedRequisition.description && (
+                                            <div className="md:col-span-2">
+                                                <p className="text-sm text-gray-600">Description</p>
+                                                <p className="text-gray-800">{selectedRequisition.description}</p>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+
+                                <Card className="shadow-sm">
+                                    <CardContent className="p-0">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>#</TableHead>
+                                                    <TableHead>Item Name</TableHead>
+                                                    <TableHead>Description</TableHead>
+                                                    <TableHead className="text-right">Qty</TableHead>
+                                                    <TableHead className="text-right">Unit Price</TableHead>
+                                                    <TableHead className="text-right">Total</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {selectedRequisition.items?.map((item: any, index: number) => {
+                                                    const duplicateEntries = selectedDuplicateItemsByName[normalizeItemName(item.item_name || "")] || [];
+                                                    const isDuplicateItem = duplicateEntries.length > 0;
+
+                                                    return (
+                                                    <TableRow key={item.id} className={isDuplicateItem ? "bg-red-50/40" : undefined}>
+                                                        <TableCell>{index + 1}</TableCell>
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={isDuplicateItem ? "text-red-700" : undefined}>{item.item_name}</span>
+                                                                {isDuplicateItem && (
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <span className="inline-flex cursor-help items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                                                                Duplicate
+                                                                            </span>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent className="max-w-xs">
+                                                                            <p>
+                                                                                Found in requisition{duplicateEntries.length > 1 ? "s" : ""}: {duplicateEntries.map((entry: any) => entry.requisition_number).join(", ")}
+                                                                            </p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>{item.description || "-"}</TableCell>
+                                                        <TableCell className="text-right">{item.quantity}</TableCell>
+                                                        <TableCell className="text-right">
+                                                            KES {Number(item.unit_price || 0).toFixed(2)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-semibold">
+                                                            KES {Number(item.total_price || 0).toFixed(2)}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )})}
+                                            </TableBody>
+                                        </Table>
+                                    </CardContent>
+                                </Card>
+                            </>
+                        ) : (
+                            <Card className="shadow-sm">
+                                <CardContent className="p-6 text-sm text-gray-500">No requisition selected.</CardContent>
+                            </Card>
+                        )}
+                    </div>
+
+                    <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
+                        <DrawerClose asChild>
+                            <Button variant="outline">Close</Button>
+                        </DrawerClose>
                     </DrawerFooter>
                 </DrawerContent>
             </Drawer>

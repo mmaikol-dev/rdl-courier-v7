@@ -10,6 +10,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\AssignController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DailyBudgetController;
 use App\Http\Controllers\RequisitionCategoryController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\RequisitionController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\WaredashController;
 use App\Http\Controllers\TransferController;
+use App\Http\Controllers\UserLocationController;
 use App\Http\Controllers\CallcenterController;
 use App\Http\Controllers\StkController;
 use App\Http\Controllers\UpdateController;
@@ -35,7 +37,12 @@ use App\Http\Middleware\VerifyCsrfToken;
 use Inertia\Inertia;
 
 Route::get('/', function () {
-    return Inertia::render('welcome');
+    return Inertia::render('welcome', [
+        'canResetPassword' => Route::has('password.request'),
+        'loginUrl' => route('login'),
+        'passwordResetUrl' => Route::has('password.request') ? route('password.request') : null,
+        'status' => session('status'),
+    ]);
 })->name('home');
 
 //no auth routes
@@ -48,6 +55,10 @@ Route::get('/', function () {
 
 
 Route::middleware(['auth', 'verified'])->group(function () {
+Route::get('maps', [MapController::class, 'index'])->name('maps.index');
+Route::post('locations/heartbeat', [UserLocationController::class, 'heartbeat'])->name('locations.heartbeat');
+Route::post('locations/login', [UserLocationController::class, 'login'])->name('locations.login');
+
     //dashboard
   
 

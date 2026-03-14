@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -59,6 +61,26 @@ protected static function boot()
                 $model->uuid = (string) Str::uuid();
             }
         });
+    }
+
+    public function locations(): HasMany
+    {
+        return $this->hasMany(UserLocation::class);
+    }
+
+    public function latestLocation(): HasOne
+    {
+        return $this->hasOne(UserLocation::class)->latestOfMany('recorded_at');
+    }
+
+    public function loginLocations(): HasMany
+    {
+        return $this->hasMany(UserLoginLocation::class);
+    }
+
+    public function latestLoginLocation(): HasOne
+    {
+        return $this->hasOne(UserLoginLocation::class)->latestOfMany('logged_in_at');
     }
 
 }

@@ -16,7 +16,17 @@ export default defineConfig({
         tailwindcss(),
         VitePWA({
             registerType: 'autoUpdate',
-            includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'offline.html'],
+            devOptions: {
+                enabled: false,
+            },
+            workbox: {
+                cleanupOutdatedCaches: true,
+                clientsClaim: true,
+                skipWaiting: true,
+                globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+                navigateFallbackDenylist: [/^\/.*$/],
+            },
+            includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
             manifest: {
                 name: 'RealDeal Ltd',
                 short_name: 'RealDeal',
@@ -30,63 +40,6 @@ export default defineConfig({
                     { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
                     { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
                     { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-                ],
-            },
-            workbox: {
-                globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-                cleanupOutdatedCaches: true,
-                clientsClaim: true,
-                skipWaiting: true,
-                navigateFallbackDenylist: [/^\/(?:api|broadcasting|sanctum)\b/, /\/storage\//],
-                runtimeCaching: [
-                    {
-                        urlPattern: ({ request, url }) => request.mode === 'navigate' && url.origin === self.location.origin,
-                        handler: 'NetworkFirst',
-                        options: {
-                            cacheName: 'app-pages',
-                            networkTimeoutSeconds: 3,
-                            cacheableResponse: {
-                                statuses: [0, 200],
-                            },
-                            expiration: {
-                                maxEntries: 100,
-                                maxAgeSeconds: 60 * 60 * 24 * 14,
-                            },
-                            precacheFallback: {
-                                fallbackURL: '/offline.html',
-                            },
-                        },
-                    },
-                    {
-                        urlPattern: ({ request, url }) =>
-                            ['script', 'style', 'worker'].includes(request.destination) && url.origin === self.location.origin,
-                        handler: 'StaleWhileRevalidate',
-                        options: {
-                            cacheName: 'app-shell-assets',
-                            cacheableResponse: {
-                                statuses: [0, 200],
-                            },
-                            expiration: {
-                                maxEntries: 150,
-                                maxAgeSeconds: 60 * 60 * 24 * 30,
-                            },
-                        },
-                    },
-                    {
-                        urlPattern: ({ request, url }) =>
-                            ['image', 'font'].includes(request.destination) && url.origin === self.location.origin,
-                        handler: 'CacheFirst',
-                        options: {
-                            cacheName: 'app-media',
-                            cacheableResponse: {
-                                statuses: [0, 200],
-                            },
-                            expiration: {
-                                maxEntries: 200,
-                                maxAgeSeconds: 60 * 60 * 24 * 30,
-                            },
-                        },
-                    },
                 ],
             },
         }),

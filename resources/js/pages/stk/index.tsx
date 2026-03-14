@@ -55,6 +55,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 interface SheetOrder {
   id: number;
   order_no: string;
+  cc_email?: string;
   client_name: string;
   quantity: number;
   amount: number;
@@ -89,22 +90,24 @@ const parseLocalDate = (value?: string) => {
 
 export default function Index() {
   const { props } = usePage();
-  const { orders, filters, auth, agents } = props as unknown as {
+  const { orders, filters, auth, agents, callCenterUsers } = props as unknown as {
     orders: { data: SheetOrder[] };
-    filters: { search?: string; agent?: string; start_date?: string; end_date?: string };
+    filters: { search?: string; agent?: string; cc_name?: string; start_date?: string; end_date?: string };
     auth?: { user?: { id: number; roles?: string } };
     agents: Array<{ id: number; name: string }>;
+    callCenterUsers: Array<{ id: number; name: string; email: string }>;
   };
 
   const userId = auth?.user?.id || 'guest';
   const currentUserRole = String(auth?.user?.roles ?? '').trim().toLowerCase();
   const showAgentFilter = currentUserRole !== 'agent';
-  const showConfirmationColors = currentUserRole !== 'agent';
   const storageKey = `mpesa-orders-arrangement-user-${userId}`;
 
   const [searchValue, setSearchValue] = React.useState(filters?.search || '');
   const [selectedAgent, setSelectedAgent] = React.useState(filters?.agent || '');
+  const [selectedCcName, setSelectedCcName] = React.useState(filters?.cc_name || '');
   const [agentPopoverOpen, setAgentPopoverOpen] = React.useState(false);
+  const [ccPopoverOpen, setCcPopoverOpen] = React.useState(false);
   const [deliveryDateRange, setDeliveryDateRange] = React.useState<DateRange | undefined>({
     from: parseLocalDate(filters?.start_date),
     to: parseLocalDate(filters?.end_date),
@@ -129,8 +132,6 @@ export default function Index() {
   const filteredOrders = orderedItems;
 
   const getConfirmationBadge = (confirmed: number) => {
-    if (!showConfirmationColors) return null;
-
     return Number(confirmed) === 1
       ? {
           label: 'Confirmed',
@@ -316,6 +317,7 @@ export default function Index() {
     router.get('/stk', {
       search: searchValue.trim() || undefined,
       agent: selectedAgent || undefined,
+      cc_name: selectedCcName || undefined,
       start_date: deliveryDateRange?.from ? format(deliveryDateRange.from, 'yyyy-MM-dd') : undefined,
       end_date: deliveryDateRange?.to ? format(deliveryDateRange.to, 'yyyy-MM-dd') : undefined,
     }, {
@@ -329,6 +331,7 @@ export default function Index() {
     setIsSearching(true);
     setSearchValue('');
     setSelectedAgent('');
+    setSelectedCcName('');
     setDeliveryDateRange(undefined);
     router.get('/stk', {}, {
       preserveState: true,
@@ -436,6 +439,53 @@ export default function Index() {
                   </PopoverContent>
                 </Popover>
               )}
+              <Popover open={ccPopoverOpen} onOpenChange={setCcPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full sm:w-72 justify-between"
+                  >
+                    <span className="truncate">
+                      {selectedCcName
+                        ? callCenterUsers.find((user) => user.name === selectedCcName)?.name || selectedCcName
+                        : 'Filter by call center user'}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[320px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search call center user..." />
+                    <CommandList>
+                      <CommandGroup>
+                        <CommandItem
+                          value="all-call-center-users"
+                          onSelect={() => {
+                            setSelectedCcName('');
+                            setCcPopoverOpen(false);
+                          }}
+                        >
+                          All call center users
+                        </CommandItem>
+                        {callCenterUsers.map((user) => (
+                          <CommandItem
+                            key={user.id}
+                            value={`${user.name} ${user.email}`}
+                            onSelect={() => {
+                              setSelectedCcName(user.name);
+                              setCcPopoverOpen(false);
+                            }}
+                            className={cn(selectedCcName === user.name && 'bg-accent')}
+                          >
+                            {user.name} ({user.email})
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -578,12 +628,17 @@ export default function Index() {
                             <GripVertical className="h-4 w-4 text-muted-foreground" />
                           </TableCell>
                           <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <span>{order.order_no}</span>
-                              {confirmationBadge && (
-                                <Badge className={`${confirmationBadge.className} text-[10px] px-1.5 py-0`}>
-                                  {confirmationBadge.label}
-                                </Badge>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span>{order.order_no}</span>
+                                {confirmationBadge && (
+                                  <Badge className={`${confirmationBadge.className} text-[10px] px-1.5 py-0`}>
+                                    {confirmationBadge.label}
+                                  </Badge>
+                                )}
+                              </div>
+                              {order.cc_email && (
+                                <span className="text-xs text-muted-foreground">{order.cc_email}</span>
                               )}
                             </div>
                           </TableCell>
@@ -753,6 +808,12 @@ export default function Index() {
                                         <p className="font-medium">{order.delivery_date}</p>
                                       </div>
                                     )}
+                                    {order.cc_email && (
+                                      <div className="col-span-2">
+                                        <span className="text-muted-foreground text-xs">CC Email:</span>
+                                        <p className="font-medium break-all">{order.cc_email}</p>
+                                      </div>
+                                    )}
                                   </div>
                                   <Separator />
                                   <div className="space-y-2">
@@ -852,6 +913,9 @@ export default function Index() {
                           <Hash className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
                           <span className="truncate">{order.order_no}</span>
                         </CardTitle>
+                        {order.cc_email && (
+                          <p className="text-xs text-muted-foreground truncate">{order.cc_email}</p>
+                        )}
                         {confirmationBadge && (
                           <Badge className={`w-fit ${confirmationBadge.className} text-[10px] px-1.5 py-0`}>
                             {confirmationBadge.label}
@@ -1290,6 +1354,57 @@ export default function Index() {
                 </Popover>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label>Call Center User</Label>
+              <Popover open={ccPopoverOpen} onOpenChange={setCcPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between"
+                  >
+                    <span className="truncate">
+                      {selectedCcName
+                        ? callCenterUsers.find((user) => user.name === selectedCcName)?.name || selectedCcName
+                        : 'Filter by call center user'}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[320px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search call center user..." />
+                    <CommandList>
+                      <CommandGroup>
+                        <CommandItem
+                          value="all-call-center-users-mobile"
+                          onSelect={() => {
+                            setSelectedCcName('');
+                            setCcPopoverOpen(false);
+                          }}
+                        >
+                          All call center users
+                        </CommandItem>
+                        {callCenterUsers.map((user) => (
+                          <CommandItem
+                            key={user.id}
+                            value={`${user.name} ${user.email}`}
+                            onSelect={() => {
+                              setSelectedCcName(user.name);
+                              setCcPopoverOpen(false);
+                            }}
+                            className={cn(selectedCcName === user.name && 'bg-accent')}
+                          >
+                            {user.name} ({user.email})
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
             <div className="space-y-2">
               <Label>Delivery date range</Label>
               <Popover>

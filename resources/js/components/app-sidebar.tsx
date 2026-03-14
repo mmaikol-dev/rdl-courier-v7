@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
+import { type User } from '@/types';
 import {
   Sidebar,
   SidebarContent,
@@ -46,6 +47,7 @@ import {
   CoinsIcon,
   PenLineIcon,
   PrinterIcon,
+  MapIcon,
 } from 'lucide-react';
 
 // --- grouped nav items by department ---
@@ -69,6 +71,7 @@ const departmentNav = [
        { title: 'Updates', href: '/updates', icon: RefreshCcwIcon },
       { title: 'Re/Assign Orders', href: '/assign', icon: ReplaceAllIcon },
       { title: 'Dispatch', href: '/dispatch', icon: Waypoints },
+      { title: 'Maps', href: '/maps', icon: MapIcon },
       { title: 'Sheets', href: '/sheets', icon: FileSpreadsheetIcon },
       { title: 'Import Orders', href: '/import', icon: PlusIcon },
       { title: 'Whatsapp Chats', href: '/whatsapp', icon: MessagesSquareIcon },
@@ -101,7 +104,7 @@ const departmentNav = [
 ];
 
 export function AppSidebar() {
-  const { auth } = usePage().props;
+  const { auth } = usePage<{ auth?: { user?: User } }>().props;
   const user = auth?.user;
   const isAgent = String(user?.roles ?? '').trim().toLowerCase() === 'agent';
 
@@ -120,7 +123,7 @@ export function AppSidebar() {
       // Default: show all
       return dept;
     })
-    .filter(Boolean); // remove null values
+    .filter((dept): dept is (typeof departmentNav)[number] => dept !== null);
 
   return (
     <Sidebar collapsible="icon" variant="inset">

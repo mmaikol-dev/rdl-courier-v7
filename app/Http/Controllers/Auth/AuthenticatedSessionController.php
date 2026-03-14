@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\UserLoginLocation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,6 +33,19 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
 
         $request->session()->regenerate();
+
+        $loginLocation = UserLoginLocation::create([
+            'user_id' => $request->user()->id,
+            'source' => 'server',
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'logged_in_at' => now(),
+            'meta' => [
+                'awaiting_browser_location' => true,
+            ],
+        ]);
+
+        $request->session()->put('login_location_id', $loginLocation->id);
 
         $user = $request->user();
         $redirectTo = strtolower(trim((string) ($user?->roles ?? ''))) === 'agent'

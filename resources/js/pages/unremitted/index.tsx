@@ -6,7 +6,7 @@ import { Head, usePage, router } from '@inertiajs/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { FilterIcon, RefreshCwIcon, ChevronsUpDown, Check } from "lucide-react";
+import { FilterIcon, RefreshCwIcon, ChevronsUpDown, Check, LoaderCircle } from "lucide-react";
 import * as React from 'react';
 import { format } from "date-fns";
 import { type DateRange } from 'react-day-picker';
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/pagination";
 import {
   Command,
+  CommandEmpty,
   CommandGroup,
   CommandItem,
   CommandList,
@@ -28,6 +29,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from '@/hooks/use-mobile';
+import { toast } from 'sonner';
 
 const BASE_COLUMNS = [
   'order_no', 'client_name', 'product_name', 'amount', 'phone',
@@ -89,34 +91,73 @@ export default function Index() {
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>();
   const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
   const [merchantOpen, setMerchantOpen] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isApplyingFilters, setIsApplyingFilters] = React.useState(false);
+  const [remittingOrderId, setRemittingOrderId] = React.useState<number | null>(null);
+
+  const normalizeDate = React.useCallback((date?: Date) => {
+    if (!date) return undefined;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+  }, []);
+
+  const normalizeDateRange = React.useCallback((range?: DateRange) => {
+    if (!range) return undefined;
+
+    return {
+      from: normalizeDate(range.from),
+      to: normalizeDate(range.to),
+    };
+  }, [normalizeDate]);
 
   const formatDate = (date: Date) => format(date, "yyyy-MM-dd");
 
   const applyFilters = () => {
+    setIsApplyingFilters(true);
     router.get('/unremitted', {
       ...filters,
       from_date: dateRange?.from ? formatDate(dateRange.from) : undefined,
       to_date: dateRange?.to ? formatDate(dateRange.to) : undefined,
-    }, { preserveState: true });
+    }, {
+      preserveState: true,
+      onSuccess: () => toast.success('Filters applied'),
+      onError: () => toast.error('Failed to apply filters'),
+      onFinish: () => setIsApplyingFilters(false),
+    });
     setFilterDialogOpen(false);
   };
 
   const clearFilters = () => {
     setFilters({});
     setDateRange(undefined);
-    router.get('/unremitted', {}, { preserveState: true });
+    setIsApplyingFilters(true);
+    router.get('/unremitted', {}, {
+      preserveState: true,
+      onSuccess: () => toast.success('Filters cleared'),
+      onError: () => toast.error('Failed to clear filters'),
+      onFinish: () => setIsApplyingFilters(false),
+    });
   };
 
   const refreshOrders = () => {
-    router.get('/unremitted', {}, { preserveState: true });
+    setIsRefreshing(true);
+    router.get('/unremitted', {}, {
+      preserveState: true,
+      onSuccess: () => toast.success('Orders refreshed'),
+      onError: () => toast.error('Failed to refresh orders'),
+      onFinish: () => setIsRefreshing(false),
+    });
   };
 
   // Remit Handler
   const handleRemit = (orderId: number, checked: boolean) => {
+    setRemittingOrderId(orderId);
     router.put(`/sheetorders/${orderId}`, { agent: checked ? "Remitted" : "" }, {
       preserveState: true,
       preserveScroll: true,
       only: ['orders'],
+      onSuccess: () => toast.success(checked ? 'Order marked as remitted' : 'Remittance removed'),
+      onError: () => toast.error('Failed to update remittance'),
+      onFinish: () => setRemittingOrderId(null),
     });
   };
 
@@ -154,8 +195,8 @@ export default function Index() {
                 <FilterIcon className="h-4 w-4" />
                 Filters
               </Button>
-              <Button variant="outline" className="h-9 gap-2" onClick={refreshOrders}>
-                <RefreshCwIcon className="h-4 w-4" />
+              <Button variant="outline" className="h-9 gap-2" onClick={refreshOrders} disabled={isRefreshing}>
+                {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
                 Refresh
               </Button>
             </div>
@@ -206,8 +247,10 @@ export default function Index() {
                         <TableCell key={col} className="min-w-[120px] border border-slate-100 text-center">
                           <Checkbox
                             checked={order.agent === "Remitted"}
+                            disabled={remittingOrderId === order.id}
                             onCheckedChange={checked => handleRemit(order.id, !!checked)}
                           />
+                          {remittingOrderId === order.id ? <LoaderCircle className="mx-auto mt-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
                         </TableCell>
                       );
                     }
@@ -278,7 +321,7 @@ export default function Index() {
                       role="combobox"
                       className="w-full justify-between"
                     >
-                      {filters.merchant || "Select Merchant"}
+                      {typeof filters.merchant === 'string' && filters.merchant ? filters.merchant : "Select Merchant"}
                       <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50 shrink-0" />
                     </Button>
                   </PopoverTrigger>
@@ -286,6 +329,7 @@ export default function Index() {
                     <Command>
                       <CommandInput placeholder="Search merchant..." />
                       <CommandList>
+                        <CommandEmpty>No merchants found.</CommandEmpty>
                         <CommandGroup>
                           {merchantUsers.length > 0 ? (
                             merchantUsers.map((merchant: string, idx: number) => (
@@ -360,7 +404,7 @@ export default function Index() {
                       mode="range"
                       numberOfMonths={isMobile ? 1 : 2}
                       selected={dateRange}
-                      onSelect={setDateRange}
+                      onSelect={(range) => setDateRange(normalizeDateRange(range))}
                     />
                   </PopoverContent>
                 </Popover>
@@ -370,10 +414,14 @@ export default function Index() {
 
             {/* Actions */}
             <div className="flex justify-end gap-2 mt-6">
-              <Button variant="outline" onClick={clearFilters}>
+              <Button variant="outline" onClick={clearFilters} disabled={isApplyingFilters}>
+                {isApplyingFilters ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                 Clear
               </Button>
-              <Button onClick={applyFilters}>Apply</Button>
+              <Button onClick={applyFilters} disabled={isApplyingFilters}>
+                {isApplyingFilters ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Apply
+              </Button>
             </div>
 
           </DialogContent>

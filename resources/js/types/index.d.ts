@@ -3,6 +3,7 @@ import type { Config } from 'ziggy-js';
 
 export interface Auth {
     user: User;
+    pendingLoginLocationCapture?: boolean;
 }
 
 export interface BreadcrumbItem {
@@ -35,6 +36,7 @@ export interface User {
     id: number;
     name: string;
     email: string;
+    roles?: string;
     avatar?: string;
     email_verified_at: string | null;
     created_at: string;

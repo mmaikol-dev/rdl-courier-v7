@@ -4,18 +4,26 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, usePage, router } from '@inertiajs/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { FilterIcon, RefreshCwIcon } from "lucide-react";
+import { FilterIcon, RefreshCwIcon, ChevronsUpDown, Check, LoaderCircle } from "lucide-react";
 import * as React from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from "date-fns";
 import { type DateRange } from 'react-day-picker';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Checkbox } from "@/components/ui/checkbox";
 import { useIsMobile } from '@/hooks/use-mobile';
+import { toast } from 'sonner';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 import {
   Pagination,
   PaginationContent,
@@ -71,6 +79,25 @@ export default function Index() {
   const [editing, setEditing] = React.useState<{ order: SheetOrder; field: keyof SheetOrder } | null>(null);
   const [editValue, setEditValue] = React.useState('');
   const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
+  const [merchantOpen, setMerchantOpen] = React.useState(false);
+  const [statusOpen, setStatusOpen] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isApplyingFilters, setIsApplyingFilters] = React.useState(false);
+  const [isSavingStatus, setIsSavingStatus] = React.useState(false);
+
+  const normalizeDate = React.useCallback((date?: Date) => {
+    if (!date) return undefined;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+  }, []);
+
+  const normalizeDateRange = React.useCallback((range?: DateRange) => {
+    if (!range) return undefined;
+
+    return {
+      from: normalizeDate(range.from),
+      to: normalizeDate(range.to),
+    };
+  }, [normalizeDate]);
 
   const updateMultiSelectFilter = React.useCallback((key: string, value: string, checked: boolean) => {
     setFilters(prev => {
@@ -88,22 +115,40 @@ export default function Index() {
   }, []);
 
   const applyFilters = React.useCallback(() => {
+    setIsApplyingFilters(true);
     router.get('/undelivered', {
       ...filters,
       from_date: dateRange?.from ? formatDate(dateRange.from) : undefined,
       to_date: dateRange?.to ? formatDate(dateRange.to) : undefined,
-    }, { preserveState: true });
+    }, {
+      preserveState: true,
+      onSuccess: () => toast.success('Filters applied'),
+      onError: () => toast.error('Failed to apply filters'),
+      onFinish: () => setIsApplyingFilters(false),
+    });
     setFilterDialogOpen(false);
   }, [filters, dateRange, formatDate]);
 
   const clearFilters = React.useCallback(() => {
     setFilters({});
     setDateRange(undefined);
-    router.get('/undelivered', {}, { preserveState: true });
+    setIsApplyingFilters(true);
+    router.get('/undelivered', {}, {
+      preserveState: true,
+      onSuccess: () => toast.success('Filters cleared'),
+      onError: () => toast.error('Failed to clear filters'),
+      onFinish: () => setIsApplyingFilters(false),
+    });
   }, []);
 
   const refreshOrders = React.useCallback(() => {
-    router.get('/undelivered', {}, { preserveState: true });
+    setIsRefreshing(true);
+    router.get('/undelivered', {}, {
+      preserveState: true,
+      onSuccess: () => toast.success('Orders refreshed'),
+      onError: () => toast.error('Failed to refresh orders'),
+      onFinish: () => setIsRefreshing(false),
+    });
   }, []);
 
   const handleEdit = (order: SheetOrder, field: keyof SheetOrder) => {
@@ -114,14 +159,19 @@ export default function Index() {
 
   const handleCloseEditModal = React.useCallback(() => {
     if (editing && editValue !== String(editing.order[editing.field] || '')) {
+      setIsSavingStatus(true);
       router.put(`/sheetorders/${editing.order.id}`, { [editing.field]: editValue }, {
         preserveState: true,
         preserveScroll: true,
         only: ['orders'],
+        onSuccess: () => toast.success('Order status updated'),
+        onError: () => toast.error('Failed to update order status'),
+        onFinish: () => setIsSavingStatus(false),
       });
     }
     setEditing(null);
     setEditValue('');
+    setStatusOpen(false);
   }, [editing, editValue]);
 
   const dashboardMetrics = React.useMemo(() => {
@@ -164,8 +214,8 @@ export default function Index() {
                 <FilterIcon className="h-4 w-4" />
                 Filters
               </Button>
-              <Button variant="outline" className="h-9 gap-2" onClick={refreshOrders}>
-                <RefreshCwIcon className="h-4 w-4" />
+              <Button variant="outline" className="h-9 gap-2" onClick={refreshOrders} disabled={isRefreshing}>
+                {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
                 Refresh
               </Button>
             </div>
@@ -269,49 +319,54 @@ export default function Index() {
             </DialogHeader>
             <div className="grid gap-4 mt-2">
               {/* Merchant filter */}
-              <Popover>
+              <Popover open={merchantOpen} onOpenChange={setMerchantOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full text-left">
+                  <Button variant="outline" className="w-full justify-between text-left">
                     {filters.merchant && (filters.merchant as string[]).length > 0
                       ? (filters.merchant as string[]).join(', ')
                       : 'Merchant(s)'}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[calc(100vw-3rem)] sm:w-60 p-2">
-                  <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-                    {merchantUsers.map((name: string) => (
-                      <label key={name} className="flex items-center space-x-2">
-                        <Checkbox
-                          checked={(filters.merchant as string[] || []).includes(name)}
-                          onCheckedChange={checked =>
-                            updateMultiSelectFilter('merchant', name, !!checked)
-                          }
-                        />
-                        <span>{name}</span>
-                      </label>
-                    ))}
-                  </div>
+                <PopoverContent className="w-[calc(100vw-3rem)] p-0 sm:w-72">
+                  <Command>
+                    <CommandInput placeholder="Search merchants..." />
+                    <CommandList>
+                      <CommandEmpty>No merchants found.</CommandEmpty>
+                      <CommandGroup>
+                        {merchantUsers.map((name: string) => {
+                          const selected = ((filters.merchant as string[]) || []).includes(name);
+                          return (
+                            <CommandItem
+                              key={name}
+                              value={name}
+                              onSelect={() => updateMultiSelectFilter('merchant', name, !selected)}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", selected ? "opacity-100" : "opacity-0")} />
+                              <span className="truncate">{name}</span>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
                 </PopoverContent>
               </Popover>
 
               {/* Delivery Date filter */}
               <Popover>
                 <PopoverTrigger asChild>
-                  <Input
-                    readOnly
-                    placeholder="Select date range"
-                    value={
-                      dateRange?.from && dateRange?.to
-                        ? `${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`
-                        : 'Delivery date'
-                    }
-                  />
+                  <Button variant="outline" className="w-full justify-start text-left font-normal">
+                    {dateRange?.from && dateRange?.to
+                      ? `${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`
+                      : 'Delivery date'}
+                  </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[calc(100vw-3rem)] sm:w-auto p-2">
                   <Calendar
                     mode="range"
                     selected={dateRange}
-                    onSelect={setDateRange}
+                    onSelect={(range) => setDateRange(normalizeDateRange(range))}
                     numberOfMonths={isMobile ? 1 : 2}
                     className="rounded-lg border shadow-sm"
                   />
@@ -319,8 +374,14 @@ export default function Index() {
               </Popover>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={clearFilters}>Clear</Button>
-              <Button onClick={applyFilters}>Apply</Button>
+              <Button variant="outline" onClick={clearFilters} disabled={isApplyingFilters}>
+                {isApplyingFilters ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Clear
+              </Button>
+              <Button onClick={applyFilters} disabled={isApplyingFilters}>
+                {isApplyingFilters ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Apply
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -333,16 +394,43 @@ export default function Index() {
             <DialogHeader>
               <DialogTitle>Edit Status for Order #{editing.order.order_no}</DialogTitle>
             </DialogHeader>
-            <Select value={editValue} onValueChange={setEditValue}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map(status => (
-                  <SelectItem key={status} value={status}>{status}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between">
+                  {editValue || 'Select status'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0">
+                <Command>
+                  <CommandInput placeholder="Search status..." />
+                  <CommandList>
+                    <CommandEmpty>No status found.</CommandEmpty>
+                    <CommandGroup>
+                      {STATUS_OPTIONS.map((status) => (
+                        <CommandItem
+                          key={status}
+                          value={status}
+                          onSelect={() => {
+                            setEditValue(status);
+                            setStatusOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", editValue === status ? "opacity-100" : "opacity-0")} />
+                          {status}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <div className="flex justify-end">
+              <Button onClick={handleCloseEditModal} disabled={isSavingStatus}>
+                {isSavingStatus ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Save
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}

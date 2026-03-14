@@ -6,6 +6,7 @@ use App\Models\Requisition;
 use App\Models\DailyBudget;
 use App\Models\BudgetTransaction;
 use App\Models\RequisitionCategory;
+use App\Models\RequisitionItem;
 use App\Models\User;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
@@ -118,6 +119,15 @@ class RequisitionController extends Controller
                 ]);
             }
 
+            $requisition->load(['category', 'user', 'items', 'dailyBudget']);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Requisition created successfully',
+                    'requisition' => $requisition,
+                ], 201);
+            }
+
             return redirect()->route('requisitions.index')
                 ->with('success', 'Requisition created successfully');
 
@@ -128,6 +138,12 @@ class RequisitionController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Error creating requisition: ' . $e->getMessage(),
+                ], 500);
+            }
+
             return redirect()->back()
                 ->with('error', 'Error creating requisition: ' . $e->getMessage());
         }
@@ -135,8 +151,51 @@ class RequisitionController extends Controller
 
     public function show(Requisition $requisition)
     {
+        $requisition->load(['category', 'user', 'items', 'dailyBudget', 'approver']);
+
+        $itemNames = $requisition->items
+            ->pluck('item_name')
+            ->filter()
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $duplicateItemsByName = [];
+
+        if ($itemNames->isNotEmpty()) {
+            $duplicateRows = RequisitionItem::query()
+                ->select('requisition_items.item_name', 'requisitions.id as requisition_id', 'requisitions.requisition_number')
+                ->join('requisitions', 'requisitions.id', '=', 'requisition_items.requisition_id')
+                ->where('requisition_items.requisition_id', '!=', $requisition->id)
+                ->whereIn(DB::raw('LOWER(TRIM(requisition_items.item_name))'), $itemNames->map(fn ($name) => mb_strtolower($name))->all())
+                ->get();
+
+            foreach ($duplicateRows as $row) {
+                $key = mb_strtolower(trim((string) $row->item_name));
+                $duplicateItemsByName[$key] ??= [];
+
+                $entry = [
+                    'id' => $row->requisition_id,
+                    'requisition_number' => $row->requisition_number ?: ('#' . $row->requisition_id),
+                ];
+
+                if (!collect($duplicateItemsByName[$key])->contains(fn ($existing) => $existing['id'] === $entry['id'])) {
+                    $duplicateItemsByName[$key][] = $entry;
+                }
+            }
+        }
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'requisition' => $requisition,
+                'duplicateItemsByName' => $duplicateItemsByName,
+            ]);
+        }
+
         return Inertia::render('requisitions/show', [
-            'requisition' => $requisition->load(['category', 'user', 'items', 'dailyBudget', 'approver'])
+            'requisition' => $requisition,
+            'duplicateItemsByName' => $duplicateItemsByName,
         ]);
     }
 

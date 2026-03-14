@@ -3,6 +3,7 @@
 import AppLayout from "@/layouts/app-layout";
 import { Head, usePage, router } from "@inertiajs/react";
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Drawer,
   DrawerContent,
@@ -14,13 +15,6 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -30,11 +24,103 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
-import { PlusCircleIcon, TrashIcon, EyeIcon, ListIcon, Grid3x3Icon } from "lucide-react";
+import { PlusCircleIcon, TrashIcon, EyeIcon, ListIcon, Grid3x3Icon, LoaderCircle, CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+
+interface SearchableOption {
+  value: string;
+  label: string;
+  keywords?: string;
+}
+
+function SearchableSelect({
+  value,
+  onChange,
+  placeholder,
+  searchPlaceholder,
+  emptyLabel,
+  options,
+  clearLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+  options: SearchableOption[];
+  clearLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.value === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-auto min-h-10 w-full justify-between gap-2 py-2 font-normal"
+        >
+          <span className={cn("flex-1 whitespace-normal break-words text-left", !selectedOption && "text-muted-foreground")}>
+            {selectedOption?.label ?? placeholder}
+          </span>
+          <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandGroup>
+              {clearLabel ? (
+                <CommandItem
+                  value={clearLabel}
+                  onSelect={() => {
+                    onChange("");
+                    setOpen(false);
+                  }}
+                >
+                  <CheckIcon className={cn("mr-2 h-4 w-4", value === "" ? "opacity-100" : "opacity-0")} />
+                  <span className="whitespace-normal break-words">{clearLabel}</span>
+                </CommandItem>
+              ) : null}
+              {options.length === 0 ? (
+                <div className="px-2 py-3 text-sm text-muted-foreground">{emptyLabel}</div>
+              ) : (
+                options.map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    value={[option.label, option.value, option.keywords].filter(Boolean).join(" ")}
+                    onSelect={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                  >
+                    <CheckIcon
+                      className={cn("mr-2 h-4 w-4", value === option.value ? "opacity-100" : "opacity-0")}
+                    />
+                    <span className="whitespace-normal break-words">{option.label}</span>
+                  </CommandItem>
+                ))
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function TransferIndex() {
-  const { auth, products, agents, transfers, groupedTransfers, view } = usePage().props as any;
+  const { auth, products, agents, transfers, groupedTransfers, view, flash } = usePage().props as any;
 
   const [openTransferModal, setOpenTransferModal] = useState(false);
   const [drawerDirection, setDrawerDirection] = useState<"right" | "bottom">("bottom");
@@ -45,8 +131,23 @@ export default function TransferIndex() {
   const [filterProduct, setFilterProduct] = useState("");
   const [filterAgent, setFilterAgent] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [isTogglingView, setIsTogglingView] = useState(false);
+  const [viewingKey, setViewingKey] = useState<string | null>(null);
   
   const currentView = view || 'grouped';
+
+  const productOptions: SearchableOption[] = (products || []).map((product: any) => ({
+    value: String(product.id),
+    label: product.name,
+    keywords: [product.unit_id].filter(Boolean).join(" "),
+  }));
+
+  const agentOptions: SearchableOption[] = (agents || []).map((agent: any) => ({
+    value: String(agent.id),
+    label: agent.name,
+  }));
 
   useEffect(() => {
     const handleResize = () => {
@@ -57,6 +158,17 @@ export default function TransferIndex() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    if (flash?.success) toast.success(flash.success);
+    if (flash?.error) toast.error(flash.error);
+    if (flash?.errors) {
+      const firstError = Object.values(flash.errors)[0];
+      if (typeof firstError === "string") {
+        toast.error(firstError);
+      }
+    }
+  }, [flash]);
+
   const addRow = () => setRows([...rows, { product_id: "", quantity: "", agent_id: "", merchant: "" }]);
   const removeRow = (index: number) => setRows(rows.filter((_, i) => i !== index));
 
@@ -66,19 +178,36 @@ export default function TransferIndex() {
   
     if (field === "product_id") {
       const selectedProduct = products.find((p: any) => String(p.id) === value);
-      console.log('Selected Product:', selectedProduct);
-      console.log('Unit ID:', selectedProduct?.unit_id);
       (updated[index] as any).merchant = selectedProduct ? selectedProduct.unit_id || "" : "";
     }
   
     setRows(updated);
   };
+
   const handleSubmit = () => {
-    router.post("/transfers", { region, from, transfers: rows });
-    setOpenTransferModal(false);
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    router.post("/transfers", { region, from, transfers: rows }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setOpenTransferModal(false);
+        setRegion("");
+        setFrom("");
+        setRows([{ product_id: "", quantity: "", agent_id: "", merchant: "" }]);
+      },
+      onError: (errors) => {
+        const firstError = Object.values(errors)[0];
+        toast.error(typeof firstError === "string" ? firstError : "Failed to create transfer");
+      },
+      onFinish: () => setIsSubmitting(false),
+    });
   };
 
   const toggleView = () => {
+    if (isTogglingView) return;
+
+    setIsTogglingView(true);
     const newView = currentView === 'grouped' ? 'detailed' : 'grouped';
     router.get("/transfer", { 
       view: newView,
@@ -87,12 +216,21 @@ export default function TransferIndex() {
       date: filterDate
     }, {
       preserveState: true,
-      preserveScroll: true
+      preserveScroll: true,
+      onError: () => toast.error("Failed to switch transfer view"),
+      onFinish: () => setIsTogglingView(false),
     });
   };
 
   const viewDetails = (productId: number, agentId: number) => {
-    router.get(`/transfers/${productId}/${agentId}`);
+    const nextViewingKey = `${productId}-${agentId}`;
+    if (viewingKey !== null) return;
+
+    setViewingKey(nextViewingKey);
+    router.get(`/transfers/${productId}/${agentId}`, {}, {
+      onError: () => toast.error("Failed to open transfer details"),
+      onFinish: () => setViewingKey(null),
+    });
   };
 
   const breadcrumbs = [
@@ -109,8 +247,10 @@ export default function TransferIndex() {
           <Button
             variant={currentView === 'grouped' ? 'default' : 'outline'}
             onClick={toggleView}
+            disabled={isTogglingView}
             className="flex items-center gap-2"
           >
+            {isTogglingView ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
             {currentView === 'grouped' ? (
               <>
                 <Grid3x3Icon className="w-4 h-4" />
@@ -190,10 +330,15 @@ export default function TransferIndex() {
                             variant="outline"
                             size="sm"
                             onClick={() => viewDetails(item.product_id, item.agent_id)}
+                            disabled={viewingKey === `${item.product_id}-${item.agent_id}`}
                             className="flex items-center gap-1"
                           >
-                            <EyeIcon className="w-4 h-4" />
-                            View Details
+                            {viewingKey === `${item.product_id}-${item.agent_id}` ? (
+                              <LoaderCircle className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <EyeIcon className="w-4 h-4" />
+                            )}
+                            {viewingKey === `${item.product_id}-${item.agent_id}` ? "Opening..." : "View Details"}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -306,14 +451,14 @@ export default function TransferIndex() {
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Product *</label>
-                            <Select value={row.product_id} onValueChange={(val) => handleChange(i, "product_id", val)}>
-                              <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
-                              <SelectContent>
-                                {products.map((p: any) => (
-                                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                              value={row.product_id}
+                              onChange={(val) => handleChange(i, "product_id", val)}
+                              placeholder="Select product"
+                              searchPlaceholder="Search products..."
+                              emptyLabel="No products found."
+                              options={productOptions}
+                            />
                           </div>
 
                           <div className="space-y-2">
@@ -339,14 +484,14 @@ export default function TransferIndex() {
 
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Agent *</label>
-                            <Select value={row.agent_id} onValueChange={(val) => handleChange(i, "agent_id", val)}>
-                              <SelectTrigger><SelectValue placeholder="Select Agent" /></SelectTrigger>
-                              <SelectContent>
-                                {agents.map((a: any) => (
-                                  <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                              value={row.agent_id}
+                              onChange={(val) => handleChange(i, "agent_id", val)}
+                              placeholder="Select agent"
+                              searchPlaceholder="Search agents..."
+                              emptyLabel="No agents found."
+                              options={agentOptions}
+                            />
                           </div>
 
                           <Button
@@ -374,7 +519,10 @@ export default function TransferIndex() {
 
           <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
             <DrawerClose asChild><Button variant="outline">Cancel</Button></DrawerClose>
-            <Button onClick={handleSubmit} className="text-white">Submit Transfer</Button>
+            <Button onClick={handleSubmit} disabled={isSubmitting} className="text-white">
+              {isSubmitting ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
+              {isSubmitting ? "Submitting..." : "Submit Transfer"}
+            </Button>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
@@ -396,34 +544,28 @@ export default function TransferIndex() {
           <div className="p-6 space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Product</label>
-              <Select value={filterProduct} onValueChange={setFilterProduct}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((p: any) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={filterProduct}
+                onChange={setFilterProduct}
+                placeholder="All products"
+                searchPlaceholder="Search products..."
+                emptyLabel="No products found."
+                options={productOptions}
+                clearLabel="All products"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Agent</label>
-              <Select value={filterAgent} onValueChange={setFilterAgent}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.map((a: any) => (
-                    <SelectItem key={a.id} value={String(a.id)}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={filterAgent}
+                onChange={setFilterAgent}
+                placeholder="All agents"
+                searchPlaceholder="Search agents..."
+                emptyLabel="No agents found."
+                options={agentOptions}
+                clearLabel="All agents"
+              />
             </div>
 
             <div className="space-y-2">
@@ -442,17 +584,30 @@ export default function TransferIndex() {
             </DrawerClose>
             <Button
               onClick={() => {
+                if (isFiltering) return;
+
+                setIsFiltering(true);
                 router.get("/transfer", {
                   product_id: filterProduct,
                   agent_id: filterAgent,
                   date: filterDate,
                   view: currentView
+                }, {
+                  preserveState: true,
+                  preserveScroll: true,
+                  onSuccess: () => {
+                    toast.success("Filters applied");
+                    setOpenFilterModal(false);
+                  },
+                  onError: () => toast.error("Failed to apply filters"),
+                  onFinish: () => setIsFiltering(false),
                 });
-                setOpenFilterModal(false);
               }}
+              disabled={isFiltering}
               className="text-white"
             >
-              Apply Filters
+              {isFiltering ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
+              {isFiltering ? "Applying..." : "Apply Filters"}
             </Button>
           </DrawerFooter>
         </DrawerContent>
