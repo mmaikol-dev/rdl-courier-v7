@@ -281,6 +281,10 @@ composer run dev
 
 > `composer run dev` starts the Laravel server, queue worker, and Vite dev server concurrently.
 
+## Deployment Notes
+
+For Railway deployment setup, common build errors, and the fixes used in this project, see [`RAILWAY_SETUP.md`](/home/atlas/Downloads/rdl-mcp%20(2)/RAILWAY_SETUP.md).
+
 ---
 
 ## Notes
