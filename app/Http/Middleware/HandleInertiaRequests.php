@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SidebarRolePermission;
+use App\Support\SidebarRegistry;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -38,14 +40,29 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
+        $user = $request->user()?->loadMissing('country');
+        $role = $user?->roles;
+        $normalizedRole = SidebarRegistry::normalizeRole($role);
+        $visibleItems = SidebarRolePermission::query()
+            ->where('role', $role)
+            ->value('visible_items');
+
+        if (! is_array($visibleItems)) {
+            $visibleItems = SidebarRegistry::defaultVisibleKeysForRole($normalizedRole);
+        }
 
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
                 'pendingLoginLocationCapture' => (bool) $request->session()->get('login_location_id'),
+            ],
+            'sidebar' => [
+                'role' => $role,
+                'visibleItems' => $visibleItems,
+                'canManage' => SidebarRegistry::canManage($normalizedRole),
             ],
             'ziggy' => fn (): array => [
                 ...(new Ziggy)->toArray(),

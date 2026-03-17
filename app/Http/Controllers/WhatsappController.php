@@ -13,6 +13,11 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsappController extends Controller
 {
+    private function wasenderClient(): \WasenderApi\WasenderClient
+    {
+        return new \WasenderApi\WasenderClient((string) config('services.wasender.api_key', ''));
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -67,9 +72,7 @@ public function sendChat(Request $request)
 
         Log::info("📞 Formatted phone: {$formattedPhone}");
 
-        // Initialize WasenderAPI client
-        $apiKey = 'e7f29a701c81288d561f882c1bdb3720bd1cd39e33751c68d88b9eeaeb139e76';
-        $client = new \WasenderApi\WasenderClient($apiKey);
+        $client = $this->wasenderClient();
 
         // Send message via WasenderAPI
         $response = $client->sendText($formattedPhone, $messageText);
@@ -501,9 +504,7 @@ public function sendMessage($id)
         
         Log::info("📝 Message content:", ['message' => $message]);
 
-        // Initialize WasenderAPI client
-        $apiKey = 'e7f29a701c81288d561f882c1bdb3720bd1cd39e33751c68d88b9eeaeb139e76';
-        $client = new \WasenderApi\WasenderClient($apiKey);
+        $client = $this->wasenderClient();
 
         // Send message via WasenderAPI
         $response = $client->sendText($phone, $message);

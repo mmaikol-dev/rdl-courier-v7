@@ -11,23 +11,29 @@ use Exception;
 
 class CallcenterController extends Controller
 {
+    private function credentials(): array
+    {
+        return [
+            'username' => (string) config('services.africastalking.username', ''),
+            'api_key' => (string) config('services.africastalking.callcenter_api_key', ''),
+            'from' => (string) config('services.africastalking.callcenter_from', ''),
+        ];
+    }
+
     public function makeCall(Request $request)
     {
         $request->validate([
             'to' => 'required|string', // recipient number(s)
         ]);
 
-        // ⚠️ Hardcoded Africa's Talking credentials (for testing ONLY)
-        $username = "rdlcallcenter"; 
-        $apiKey   = "atsk_2e98940cc66266269a15a83e568e22c44c014384369f5ebbe8cfd0ec7bb2b67573b777b2"; 
-        $from     = "+254711082385"; // Must be a registered AT voice number
+        $credentials = $this->credentials();
 
-        $AT    = new AfricasTalking($username, $apiKey);
+        $AT = new AfricasTalking($credentials['username'], $credentials['api_key']);
         $voice = $AT->voice();
 
         try {
             $results = $voice->call([
-                'from' => $from,
+                'from' => $credentials['from'],
                 'to'   => $request->input('to')
             ]);
 
@@ -47,15 +53,13 @@ class CallcenterController extends Controller
         try {
             $user = Auth::user();
             $clientName = $user->username ?? $user->email;
-            $phone = $user->phone ?? '+254711082385';
-    
-            $apiKey   = "atsk_2e98940cc66266269a15a83e568e22c44c014384369f5ebbe8cfd0ec7bb2b67573b777b2";
-            $username = "rdlcallcenter";
+            $credentials = $this->credentials();
+            $phone = $user->phone ?? $credentials['from'];
     
             $response = Http::withHeaders([
-                'apiKey' => $apiKey
+                'apiKey' => $credentials['api_key']
             ])->post("https://webrtc.africastalking.com/capability-token/request", [
-                'username'    => $username,
+                'username'    => $credentials['username'],
                 'clientName'  => $clientName,
                 'phoneNumber' => $phone,
                 'incoming'    => 'true',
@@ -102,11 +106,9 @@ class CallcenterController extends Controller
             'sessionId' => 'required|string', // Africa's Talking session ID from makeCall
         ]);
 
-        // ⚠️ Hardcoded credentials (testing only)
-        $username = "rdlcallcenter"; 
-        $apiKey   = "atsk_2e98940cc66266269a15a83e568e22c44c014384369f5ebbe8cfd0ec7bb2b67573b777b2"; 
+        $credentials = $this->credentials();
 
-        $AT    = new AfricasTalking($username, $apiKey);
+        $AT = new AfricasTalking($credentials['username'], $credentials['api_key']);
         $voice = $AT->voice();
 
         try {

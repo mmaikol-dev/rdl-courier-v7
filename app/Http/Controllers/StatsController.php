@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SheetOrder;
 use App\Models\User;
+use App\Support\CountryAccess;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,7 @@ class StatsController extends Controller
 {
     public function index(Request $request)
     {
+        $user = $request->user()->loadMissing('country');
         // Get filter parameters
         $dateRange = $request->get('date_range', 'all_time');
         $dateField = $request->get('date_field', 'order_date');
@@ -22,7 +24,7 @@ class StatsController extends Controller
         $country = $request->get('country');
 
         // Build base query - NO date filter by default
-        $query = SheetOrder::query();
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
 
         // Apply date range filter ONLY if not all_time
         if ($dateRange !== 'all_time') {
@@ -114,7 +116,7 @@ class StatsController extends Controller
         // Overdue Scheduled Orders by Agent
      $now = Carbon::now();
 
-$overdueScheduled = SheetOrder::query()
+$overdueScheduled = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
     ->select(
         'cc_email',
         'merchant',
@@ -146,7 +148,7 @@ $overdueScheduled = SheetOrder::query()
 
 
         // Overdue Scheduled Summary by Agent
-      $overdueScheduledSummary = SheetOrder::query()
+      $overdueScheduledSummary = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
     ->select(
         'cc_email',
         DB::raw('count(*) as overdue_count'),
@@ -173,7 +175,7 @@ $overdueScheduled = SheetOrder::query()
 
 
         // Overdue Pending Orders (2+ days old)
-        $overduePending = SheetOrder::query()
+        $overduePending = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
             ->select(
                 'cc_email',
                 'merchant',
@@ -202,7 +204,7 @@ $overdueScheduled = SheetOrder::query()
             ]);
 
         // Overdue Pending Summary by Agent
-        $overduePendingSummary = SheetOrder::query()
+        $overduePendingSummary = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
             ->select(
                 'cc_email',
                 DB::raw('count(*) as overdue_count'),
@@ -241,7 +243,7 @@ $overdueScheduled = SheetOrder::query()
             ]);
 
         // Daily trend (last 30 days OR filtered date range)
-        $trendQuery = SheetOrder::query();
+        $trendQuery = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
         if ($dateRange !== 'all_time') {
             $dates = $this->getDateRange($dateRange);
             $trendQuery->whereBetween($dateColumn, [$dates['start'], $dates['end']]);
@@ -306,12 +308,14 @@ $overdueScheduled = SheetOrder::query()
         $filterOptions = [
     // Call center agents (role = callcenter1)
     'ccEmails' => User::where('roles', 'callcenter1')
+        ->when(! CountryAccess::hasGlobalAccess($user), fn ($query) => $query->where('country_id', $user->country_id))
         ->whereNotNull('username')   // or email if you use email
         ->orderBy('username')
         ->pluck('username'),
 
     // Merchants (role = merchant)
     'merchants' => User::where('roles', 'merchant')
+        ->when(! CountryAccess::hasGlobalAccess($user), fn ($query) => $query->where('country_id', $user->country_id))
         ->whereNotNull('username')
         ->orderBy('username')
         ->pluck('username'),
@@ -323,12 +327,15 @@ $overdueScheduled = SheetOrder::query()
         ->orderBy('status')
         ->pluck('status'),
 
-    'countries' => SheetOrder::select('country')
-        ->distinct()
-        ->whereNotNull('country')
-        ->where('country', '!=', '')
-        ->orderBy('country')
-        ->pluck('country'),
+    'countries' => collect(CountryAccess::allowedCountries(
+        $user,
+        SheetOrder::select('country')
+            ->distinct()
+            ->whereNotNull('country')
+            ->where('country', '!=', '')
+            ->orderBy('country')
+            ->pluck('country')
+    ))->values(),
 ];
 
 

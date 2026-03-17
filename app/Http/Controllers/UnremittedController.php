@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SheetOrder;
+use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -13,13 +14,15 @@ class UnremittedController extends Controller
      */
     public function index(Request $request)
     {
-        $query = SheetOrder::query()
-    ->whereNotNull('code')
-    ->where('status', 'delivered')
-    ->where(function ($q) {
-        $q->whereNull('agent')
-          ->orWhere('agent', '!=', 'Remitted');
-    });
+        $user = $request->user()?->loadMissing('country');
+
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+            ->whereNotNull('code')
+            ->whereRaw('LOWER(status) = "delivered"')
+            ->where(function ($q) {
+                $q->whereNull('agent')
+                    ->orWhere('agent', '!=', 'Remitted');
+            });
 
         // -------------------------
         // ✅ Merchant Filter
@@ -70,7 +73,8 @@ class UnremittedController extends Controller
         // -------------------------
         //  Merchant List For Filter
         // -------------------------
-        $merchantUsers = SheetOrder::whereNotNull('merchant')
+        $merchantUsers = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+            ->whereNotNull('merchant')
             ->distinct()
             ->pluck('merchant');
 

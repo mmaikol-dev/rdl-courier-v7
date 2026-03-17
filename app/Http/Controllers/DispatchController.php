@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Carbon;
+use App\Support\CountryAccess;
 
 
 
@@ -24,10 +25,10 @@ class DispatchController extends Controller
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
         $agentFilter = $request->input('agent');
-        $user = $request->user();
+        $user = $request->user()->loadMissing('country');
 
         // Build base query
-        $ordersQuery = SheetOrder::select([
+        $ordersQuery = CountryAccess::scopeByCountryName(SheetOrder::select([
                 'id',
                 'order_date',
                 'order_no',
@@ -55,7 +56,7 @@ class DispatchController extends Controller
                 'store_name',
                 'processed',
                 'confirmed',
-            ])
+            ]), $user)
             ->whereIn('status', ['scheduled', 'dispatched','delivered',])
             ->orderByRaw("CASE WHEN delivery_date = ? THEN 0 ELSE 1 END", [$today])
             ->orderBy('delivery_date', 'asc');
@@ -95,7 +96,10 @@ class DispatchController extends Controller
         })->withQueryString();
 
         // Get agents for dropdown
-        $agents = User::where('roles', 'agent')->select('id', 'name')->get();
+        $agents = CountryAccess::scopeUsers(
+            User::query()->where('roles', 'agent')->select('id', 'name'),
+            $user
+        )->get();
 
         // ✅ Safe log (avoid undefined array key)
         if ($orders->count() > 0) {
@@ -119,9 +123,9 @@ class DispatchController extends Controller
 
     public function printAgentOrders(Request $request, $agent)
 {
-    $user = $request->user();
+    $user = $request->user()->loadMissing('country');
 
-    $ordersQuery = SheetOrder::select([
+    $ordersQuery = CountryAccess::scopeByCountryName(SheetOrder::select([
         'id',
         'order_date',
         'order_no',
@@ -142,7 +146,7 @@ class DispatchController extends Controller
         'merchant',
         'created_at',
         'confirmed',
-    ])
+    ]), $user)
         ->where('agent', $agent)
         ->whereIn('status', ['scheduled', 'dispatched'])
         ->orderBy('delivery_date', 'asc');
@@ -216,7 +220,11 @@ class DispatchController extends Controller
     }
     
     // Update orders
-    $updatedCount = SheetOrder::whereIn('order_no', $orderNumbers)
+    $user = $request->user()->loadMissing('country');
+    $updatedCount = CountryAccess::scopeByCountryName(
+        SheetOrder::query()->whereIn('order_no', $orderNumbers),
+        $user
+    )
         ->update(['agent' => $validated['agent_name']]);
     
     if ($updatedCount === 0) {
@@ -224,14 +232,13 @@ class DispatchController extends Controller
     }
     
     // ✅ Fetch the assigned orders to generate PDF
-    $user = $request->user();
-    $ordersQuery = SheetOrder::select([
+    $ordersQuery = CountryAccess::scopeByCountryName(SheetOrder::select([
         'id', 'order_date', 'order_no', 'amount', 'client_name', 
         'address', 'phone', 'alt_no', 'country', 'city', 
         'product_name', 'quantity', 'status', 'agent', 'cc_email',
         'delivery_date', 'instructions', 'merchant', 'created_at',
         'confirmed',
-    ])
+    ]), $user)
     ->whereIn('order_no', $orderNumbers)
     ->where('agent', $validated['agent_name'])
     ->orderBy('delivery_date', 'asc');
@@ -287,6 +294,12 @@ class DispatchController extends Controller
 
     public function generateWaybill(SheetOrder $order)
     {
+        $user = request()->user()?->loadMissing('country');
+        abort_unless(
+            CountryAccess::hasGlobalAccess($user) || $order->country === CountryAccess::userCountryName($user),
+            403
+        );
+
         abort_unless($order, 404, 'Order not found');
 
         $order->update(['status' => 'Dispatched']);
@@ -331,8 +344,12 @@ public function bulkDownloadWaybills(Request $request)
     }
 
     try {
+        $user = $request->user()?->loadMissing('country');
         // Fetch orders
-        $orders = \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)->get();
+        $orders = CountryAccess::scopeByCountryName(
+            \App\Models\SheetOrder::query()->whereIn('order_no', $orderNumbers),
+            $user
+        )->get();
 
         if ($orders->isEmpty()) {
             return back()->withErrors(['order_numbers' => 'No matching orders found.']);
@@ -350,7 +367,10 @@ public function bulkDownloadWaybills(Request $request)
             ]);
 
         // Update all orders to dispatched (more efficient bulk update)
-        \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)
+        CountryAccess::scopeByCountryName(
+            \App\Models\SheetOrder::query()->whereIn('order_no', $orderNumbers),
+            $user
+        )
             ->update(['status' => 'Dispatched']);
 
         $fileName = 'waybills_' . now()->format('Ymd_His') . '.pdf';
@@ -395,6 +415,11 @@ public function bulkDownloadWaybills(Request $request)
     public function update(Request $request, $id)
     {
         $order = SheetOrder::findOrFail($id);
+        $user = $request->user()?->loadMissing('country');
+        abort_unless(
+            CountryAccess::hasGlobalAccess($user) || $order->country === CountryAccess::userCountryName($user),
+            403
+        );
         
         $validated = $request->validate([
             'order_no' => 'sometimes|string',
@@ -420,6 +445,11 @@ public function bulkDownloadWaybills(Request $request)
     public function destroy($id)
     {
         $order = SheetOrder::findOrFail($id);
+        $user = request()->user()?->loadMissing('country');
+        abort_unless(
+            CountryAccess::hasGlobalAccess($user) || $order->country === CountryAccess::userCountryName($user),
+            403
+        );
         $order->delete();
 
         return redirect()->back()->with('success', 'Order deleted successfully');

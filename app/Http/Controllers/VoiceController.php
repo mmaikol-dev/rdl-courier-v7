@@ -10,10 +10,16 @@ use Inertia\Inertia;
 
 class VoiceController extends Controller
 {
-    // SAME API KEY for both WebRTC and Voice - just different header names
-    private $apiKey = 'atsk_ec7c2142c456c3c9dc406eec927f8e4b7732afc428c3829b3b2181bbb76a48b6e723cc3e';
-    private $username = 'rdlcallcenter';
-    private $callFrom = '+254709369980';
+    private string $apiKey;
+    private string $username;
+    private string $callFrom;
+
+    public function __construct()
+    {
+        $this->apiKey = (string) config('services.africastalking.api_key', '');
+        $this->username = (string) config('services.africastalking.username', '');
+        $this->callFrom = (string) config('services.africastalking.call_from', '');
+    }
     
     public function index()
     {

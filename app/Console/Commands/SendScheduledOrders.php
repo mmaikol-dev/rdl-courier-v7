@@ -30,9 +30,10 @@ class SendScheduledOrders extends Command
         // Collect messages for bulk sending
         $smsList = [];
         $client = new Client();
-        $apiUrl = 'https://quicksms.advantasms.com/api/services/sendbulk/';
-        $apiKey = '02a22646523f127b31b5423ae8ab92d0';
-        $partnerID = '10851';
+        $apiUrl = (string) config('services.quicksms.api_url');
+        $apiKey = (string) config('services.quicksms.api_key');
+        $partnerID = (string) config('services.quicksms.partner_id');
+        $shortcode = (string) config('services.quicksms.shortcode', 'Real Deal');
 
         foreach ($orders as $order) {
             $formattedPhone = $this->formatPhoneNumber($order->phone);
@@ -47,7 +48,7 @@ class SendScheduledOrders extends Command
                 "apikey" => $apiKey,
                 "mobile" => $formattedPhone,
                 "message" => $message,
-                "shortcode" => 'Real Deal',
+                "shortcode" => $shortcode,
                 "timeToSend" => $sendTime,
                 "clientsmsid" => $order->id, // Unique ID for tracking
                 "pass_type" => "plain"

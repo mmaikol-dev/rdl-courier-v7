@@ -4,13 +4,18 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\SheetOrder;
+use App\Models\Sheet;
+use App\Support\CountryAccess;
 use Inertia\Inertia;
 
 class ImportController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $sheets = \App\Models\Sheet::select('id', 'sheet_id', 'sheet_name', 'store_name', 'country')->get();
+        $sheets = CountryAccess::scopeByCountryName(
+            Sheet::select('id', 'sheet_id', 'sheet_name', 'store_name', 'country'),
+            $request->user()?->loadMissing('country')
+        )->get();
 
         return Inertia::render('import/index', [
             'sheets' => $sheets,
@@ -19,6 +24,7 @@ class ImportController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user()?->loadMissing('country');
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls',
             'sheet_id' => 'required|string',
@@ -27,6 +33,12 @@ class ImportController extends Controller
             'country' => 'required|string',
             'merchant' => 'required|string',
         ]);
+
+        $countryName = CountryAccess::resolveCountryNameForWrite($user, $request->country);
+
+        if (! $countryName) {
+            return response()->json(['message' => 'No country assigned to the current user.'], 422);
+        }
     
         $file = $request->file('file');
         $path = $file->getRealPath();
@@ -45,6 +57,7 @@ class ImportController extends Controller
                 $existingOrder = SheetOrder::where('order_no', $row[1] ?? null)
                     ->where('merchant', $request->merchant)
                     ->where('sheet_id', $request->sheet_id)
+                    ->where('country', $countryName)
                     ->first();
 
                 $data = [
@@ -55,7 +68,7 @@ class ImportController extends Controller
                     'address'       => $row[4] ?? null,
                     'phone'         => $row[5] ?? null,
                     'alt_no'        => $row[6] ?? null,
-                    'country'       => $request->country, // ✅ always from input
+                    'country'       => $countryName,
                     'city'          => $row[8] ?? null,
                     'product_name'  => $row[9] ?? null,
                     'quantity'      => !empty($row[10]) ? (int)$row[10] : null,

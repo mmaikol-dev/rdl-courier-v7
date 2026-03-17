@@ -16,25 +16,17 @@ class SendOverdueOrdersAlert extends Command
     protected $signature = 'whatsapp:send-overdue-alert';
     protected $description = 'Send WhatsApp alerts to call center agents for overdue scheduled orders via WasenderAPI';
 
-    // 🔧 HARDCODED FOR TESTING - Replace with your WasenderAPI key
-    private $apiKey = 'e62f173befad8c2d65ef74f8d4ea322c5c5cbe22ad27c121b534506aa567c387'; // 👈 Get from https://wasenderapi.com/dashboard
-    
-    // Configure your call center agent phone number(s) here (no + prefix for WasenderAPI)
-    private $callCenterAgents = [
-        '254798010311', // Add your call center agent phone number(s)
-    ];
-
     /**
      * Get WasenderAPI client instance
      */
-    private function getClient()
+    private function getClient(): WasenderClient
     {
-        // For testing: hardcoded API key
-        return new WasenderClient($this->apiKey);
-        
-        // For production: uncomment this and comment out the line above
-        // Then set WASENDERAPI_API_KEY in your .env file
-        // return app(WasenderClient::class);
+        return new WasenderClient((string) config('services.wasender.overdue_alert_api_key', ''));
+    }
+
+    private function callCenterAgents(): array
+    {
+        return config('services.wasender.call_center_agents', []);
     }
 
     public function handle()
@@ -94,7 +86,7 @@ class SendOverdueOrdersAlert extends Command
         $alertMessage .= "Please follow up on these orders urgently.";
 
         // Send to each call center agent via WasenderAPI
-        foreach ($this->callCenterAgents as $agentPhone) {
+        foreach ($this->callCenterAgents() as $agentPhone) {
             try {
                 $client = $this->getClient();
                 $response = $client->sendText($agentPhone, $alertMessage);

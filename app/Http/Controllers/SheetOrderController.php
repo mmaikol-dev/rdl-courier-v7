@@ -7,19 +7,32 @@ use App\Models\OrderHistory;
 use Illuminate\Support\Carbon;
 use App\Models\User;
 use App\Models\Sheet;
+use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class SheetOrderController extends Controller
 {
+    private function ensureCountryAccess(Request $request, SheetOrder $order): void
+    {
+        $user = $request->user()->loadMissing('country');
+
+        if (CountryAccess::hasGlobalAccess($user)) {
+            return;
+        }
+
+        abort_unless($order->country && $order->country === CountryAccess::userCountryName($user), 403);
+    }
+
   public function index(Request $request)
     {
         
         
-        $query = SheetOrder::query();
+        $user = $request->user()->loadMissing('country');
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
     
-        if (auth()->user()->roles === 'merchant') {
-            $query->where('merchant', auth()->user()->name);
+        if ($user->roles === 'merchant') {
+            $query->where('merchant', $user->name);
         }
     
         foreach ($request->all() as $key => $value) {
@@ -54,7 +67,7 @@ class SheetOrderController extends Controller
             });
         }
     
-        if ($request->filled('merchant') && auth()->user()->role !== 'merchant') {
+        if ($request->filled('merchant') && $user->roles !== 'merchant') {
             $merchants = is_array($request->merchant) ? $request->merchant : explode(',', $request->merchant);
             $query->whereIn('merchant', $merchants);
         }
@@ -77,7 +90,10 @@ class SheetOrderController extends Controller
     
         $orders = $query->paginate(50)->appends($request->all());
     
-        $merchantData = SheetOrder::select('merchant', 'sheet_id', 'sheet_name')
+        $merchantData = CountryAccess::scopeByCountryName(
+            SheetOrder::select('merchant', 'sheet_id', 'sheet_name'),
+            $user
+        )
             ->whereNotNull('merchant')
             ->groupBy('merchant', 'sheet_id', 'sheet_name')
             ->get()
@@ -89,8 +105,15 @@ class SheetOrderController extends Controller
                 ];
             });
     
-        $merchantUsers =  Sheet::distinct()->pluck('sheet_name');
-        $ccUsers = User::where('roles', 'callcenter1')->pluck('name');
+        $merchantUsers = CountryAccess::scopeByCountryName(
+            Sheet::query(),
+            $user
+        )->distinct()->pluck('sheet_name');
+
+        $ccUsers = CountryAccess::scopeUsers(
+            User::query()->where('roles', 'callcenter1'),
+            $user
+        )->pluck('name');
     
         return inertia('sheetorders/index', [
             'orders'        => $orders,
@@ -106,6 +129,7 @@ class SheetOrderController extends Controller
 
     public function histories(SheetOrder $order)
     {
+        $this->ensureCountryAccess(request(), $order);
         $histories = $order->histories()->with('user')->latest()->get(); 
         return response()->json(['histories' => $histories]);
     }
@@ -129,6 +153,7 @@ class SheetOrderController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user()->loadMissing('country');
         $validated = $request->validate([
             'order_date'    => 'required|date',
             'amount'        => 'required|numeric',
@@ -156,6 +181,8 @@ class SheetOrderController extends Controller
             'sheet_name'    => 'nullable|string|max:255',
         ]);
 
+        $validated['country'] = CountryAccess::resolveCountryNameForWrite($user, $validated['country'] ?? null);
+
         // Generate order number with both sheet_name and sheet_id
         $validated['order_no'] = $this->getNextOrderNumber(
             $request->sheet_name ?? 'DefaultSheet',
@@ -169,6 +196,7 @@ class SheetOrderController extends Controller
 
     public function show(SheetOrder $sheetOrder)
     {
+        $this->ensureCountryAccess(request(), $sheetOrder);
         return Inertia::render('SheetOrders/Show', [
             'order' => $sheetOrder,
         ]);
@@ -176,6 +204,7 @@ class SheetOrderController extends Controller
 
     public function edit(SheetOrder $sheetOrder)
     {
+        $this->ensureCountryAccess(request(), $sheetOrder);
         return Inertia::render('SheetOrders/Edit', [
             'order' => $sheetOrder,
         ]);
@@ -183,6 +212,7 @@ class SheetOrderController extends Controller
 
     public function update(Request $request, SheetOrder $sheetorder)
     {
+        $this->ensureCountryAccess($request, $sheetorder);
         $field = $request->keys()[0] ?? null;
         $value = $request->input($field);
 
@@ -230,6 +260,7 @@ class SheetOrderController extends Controller
 
     // Proceed to delete only if user is G.O.D
     $order = SheetOrder::findOrFail($id);
+    $this->ensureCountryAccess(request(), $order);
     $order->delete();
 
     return redirect()->route('sheetorders.index')

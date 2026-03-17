@@ -26,6 +26,7 @@ class C2BTransaction extends Model
         'account_number',
         'amount',
         'payer_phone',
+        'business_shortcode',
         'processed',
     ];
 

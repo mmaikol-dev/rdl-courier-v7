@@ -33,19 +33,40 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
 
-        'mpesa' => [
-    'env'             => env('MPESA_ENV', 'sandbox'),
-    'consumer_key'    => env('MPESA_CONSUMER_KEY'),
-    'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
-    'shortcode'       => env('MPESA_SHORTCODE'),
-    'passkey'         => env('MPESA_PASSKEY'),
-    'callback_url'    => env('MPESA_CALLBACK'),
-    'oauth_url'       => env('MPESA_OAUTH_URL'),
-    'stk_url'         => env('MPESA_STK_URL'),
-    'stk_query_url'   => env('MPESA_STK_QUERY_URL'),
-],
+    'mpesa' => [
+        'env' => env('MPESA_ENV', 'sandbox'),
+        'consumer_key' => env('MPESA_CONSUMER_KEY'),
+        'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
+        'shortcode' => env('MPESA_SHORTCODE'),
+        'passkey' => env('MPESA_PASSKEY'),
+        'callback_url' => env('MPESA_CALLBACK_URL'),
+        'oauth_url' => env('MPESA_OAUTH_URL'),
+        'stk_url' => env('MPESA_STK_URL'),
+        'stk_query_url' => env('MPESA_STK_QUERY_URL'),
+    ],
 
+    'wasender' => [
+        'api_key' => env('WASENDER_API_KEY'),
+        'overdue_alert_api_key' => env('WASENDER_OVERDUE_ALERT_API_KEY'),
+        'call_center_agents' => array_values(array_filter(array_map('trim', explode(',', (string) env('WASENDER_CALL_CENTER_AGENTS', ''))))),
+    ],
+    
+    'africastalking' => [
+        'api_key' => env('AFRICASTALKING_API_KEY'),
+        'username' => env('AFRICASTALKING_USERNAME'),
+        'call_from' => env('AFRICASTALKING_CALL_FROM'),
+        'queue_name' => env('AFRICASTALKING_QUEUE_NAME'),
+        'callcenter_api_key' => env('AFRICASTALKING_CALLCENTER_API_KEY', env('AFRICASTALKING_API_KEY')),
+        'callcenter_from' => env('AFRICASTALKING_CALLCENTER_FROM', env('AFRICASTALKING_CALL_FROM')),
+    ],
+
+    'quicksms' => [
+        'api_url' => env('QUICKSMS_API_URL'),
+        'api_key' => env('QUICKSMS_API_KEY'),
+        'partner_id' => env('QUICKSMS_PARTNER_ID'),
+        'shortcode' => env('QUICKSMS_SHORTCODE', 'Real Deal'),
     ],
 
 ];

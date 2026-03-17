@@ -27,6 +27,11 @@ export interface SharedData {
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
+    sidebar: {
+        role?: string;
+        visibleItems: string[];
+        canManage: boolean;
+    };
     ziggy: Config & { location: string };
     sidebarOpen: boolean;
     [key: string]: unknown;
@@ -37,6 +42,12 @@ export interface User {
     name: string;
     email: string;
     roles?: string;
+    country_id?: number | null;
+    country?: {
+        id: number;
+        name: string;
+        code?: string | null;
+    } | null;
     avatar?: string;
     email_verified_at: string | null;
     created_at: string;

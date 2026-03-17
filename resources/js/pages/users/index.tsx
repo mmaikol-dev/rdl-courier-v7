@@ -2,18 +2,29 @@
 
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, usePage, router } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Edit, Trash2, Plus } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { Edit, Eye, EyeOff, Globe2, Loader2, Plus, Shield, Trash2, UserRound } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -21,268 +32,499 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Users', href: '/users' },
 ];
 
-interface User {
+const roleOptions = [
+  'G.O.D',
+  'merchant',
+  'agent',
+  'operations',
+  'finance',
+  'callcenter1',
+  'user',
+];
+
+interface CountryOption {
   id: number;
-  username: string;
+  name: string;
+}
+
+interface UserRecord {
+  id: number;
+  username?: string | null;
   name: string;
   email: string;
   email_verified_at?: string | null;
-  store_name?: string;
-  store_address?: string;
-  store_phone?: string;
-  store_email?: string;
-  roles?: string;
-  photo?: string;
+  store_name?: string | null;
+  store_address?: string | null;
+  store_phone?: string | null;
+  store_email?: string | null;
+  roles?: string | null;
+  country_id?: number | null;
+  country?: { id: number; name: string } | null;
+  photo?: string | null;
   created_at: string;
   updated_at: string;
 }
 
+interface UsersPageProps {
+  users: UserRecord[];
+  countries: CountryOption[];
+  auth: {
+    user: {
+      roles?: string;
+      country?: { id: number; name: string } | null;
+    };
+  };
+}
+
+type UserFormData = {
+  username: string;
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+  store_name: string;
+  store_address: string;
+  store_phone: string;
+  store_email: string;
+  roles: string;
+  country_id: string;
+  photo: string;
+};
+
+const emptyForm: UserFormData = {
+  username: '',
+  name: '',
+  email: '',
+  password: '',
+  password_confirmation: '',
+  store_name: '',
+  store_address: '',
+  store_phone: '',
+  store_email: '',
+  roles: 'user',
+  country_id: '',
+  photo: '',
+};
+
+function normalizeUserToForm(user: UserRecord): UserFormData {
+  return {
+    username: user.username ?? '',
+    name: user.name ?? '',
+    email: user.email ?? '',
+    password: '',
+    password_confirmation: '',
+    store_name: user.store_name ?? '',
+    store_address: user.store_address ?? '',
+    store_phone: user.store_phone ?? '',
+    store_email: user.store_email ?? '',
+    roles: user.roles ?? 'user',
+    country_id: user.country_id ? String(user.country_id) : '',
+    photo: user.photo ?? '',
+  };
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+
+  return <p className="text-xs text-destructive">{message}</p>;
+}
+
 export default function UsersPage() {
-  const { users } = usePage<{ users: User[] }>().props;
+  const { users, countries, auth } = usePage<UsersPageProps>().props;
+  const currentUserRole = auth?.user?.roles ?? '';
+  const currentCountryName = auth?.user?.country?.name ?? 'No country assigned';
+  const canManageUsers = !['operations', 'finance', 'callcenter1', ''].includes(currentUserRole);
+  const canChooseCountry = currentUserRole === 'G.O.D';
 
   const [filter, setFilter] = React.useState('');
-  const [editingUser, setEditingUser] = React.useState<User | null>(null);
+  const [editingUser, setEditingUser] = React.useState<UserRecord | null>(null);
   const [creatingUser, setCreatingUser] = React.useState(false);
-  const [deletingUser, setDeletingUser] = React.useState<User | null>(null);
-  const [formValues, setFormValues] = React.useState<Partial<User> & { password?: string; password_confirmation?: string }>({});
+  const [deletingUser, setDeletingUser] = React.useState<UserRecord | null>(null);
+  const [deleteProcessing, setDeleteProcessing] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = React.useState(false);
 
-  // Filter users
+  const form = useForm<UserFormData>(emptyForm);
+
   const filteredUsers = React.useMemo(() => {
-    if (!users) return [];
-    return users.filter((u) =>
-      (u.name?.toLowerCase() || '').includes(filter.toLowerCase()) ||
-      (u.username?.toLowerCase() || '').includes(filter.toLowerCase()) ||
-      (u.email?.toLowerCase() || '').includes(filter.toLowerCase())
+    return users.filter((user) =>
+      [user.name, user.username ?? '', user.email, user.roles ?? '', user.country?.name ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(filter.toLowerCase()),
     );
-  }, [users, filter]);
+  }, [filter, users]);
 
-  // Create user
-  const handleCreate = () => {
-    const payload: any = { ...formValues };
-
-    // convert email_verified_at format
-    if (payload.email_verified_at) {
-      payload.email_verified_at = payload.email_verified_at.replace('T', ' ') + ':00';
-    }
-
-    // Default password if empty
-    if (!payload.password) {
-      payload.password = 'password123';
-      payload.password_confirmation = 'password123';
-    }
-
-    router.post('/users', payload, {
-      preserveState: true,
-      onSuccess: () => {
-        setCreatingUser(false);
-        setFormValues({});
-        router.reload({ only: ['users'] });
-      },
-      onError: (errors) => console.log(errors),
+  const openCreate = () => {
+    setEditingUser(null);
+    setCreatingUser(true);
+    setShowPassword(false);
+    setShowPasswordConfirmation(false);
+    form.clearErrors();
+    form.setData({
+      ...emptyForm,
+      country_id: canChooseCountry ? '' : (countries[0] ? String(countries[0].id) : ''),
     });
   };
 
-  // Edit user
-  const handleEditSave = () => {
-    if (!editingUser) return;
+  const openEdit = (user: UserRecord) => {
+    setCreatingUser(false);
+    setEditingUser(user);
+    setShowPassword(false);
+    setShowPasswordConfirmation(false);
+    form.clearErrors();
+    form.setData(normalizeUserToForm(user));
+  };
 
-    const payload: any = { ...formValues };
+  const closeFormDialog = () => {
+    setCreatingUser(false);
+    setEditingUser(null);
+    setShowPassword(false);
+    setShowPasswordConfirmation(false);
+    form.reset();
+    form.clearErrors();
+  };
 
-    if (payload.email_verified_at) {
-      payload.email_verified_at = payload.email_verified_at.replace('T', ' ') + ':00';
+  const submit = () => {
+    if (editingUser) {
+      form.transform((data) => ({
+        ...data,
+        country_id: data.country_id || null,
+        password: data.password.trim() === '' ? null : data.password,
+        password_confirmation: data.password.trim() === '' ? null : data.password_confirmation,
+      }));
+
+      form.put(`/users/${editingUser.id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+          toast.success('User updated successfully');
+          closeFormDialog();
+          router.reload({ only: ['users', 'countries'] });
+        },
+        onError: (errors) => {
+          const firstError = Object.values(errors)[0];
+          toast.error(typeof firstError === 'string' ? firstError : 'Failed to update user');
+        },
+        onFinish: () => form.transform((data) => data),
+      });
+
+      return;
     }
 
-    // Only send password if filled
-    if (!payload.password) {
-      delete payload.password;
-      delete payload.password_confirmation;
-    }
+    form.transform((data) => ({
+      ...data,
+      country_id: data.country_id || null,
+      password: data.password || 'password123',
+      password_confirmation: data.password_confirmation || data.password || 'password123',
+    }));
 
-    router.put(`/users/${editingUser.id}`, payload, {
-      preserveState: true,
+    form.post('/users', {
+      preserveScroll: true,
       onSuccess: () => {
-        setEditingUser(null);
-        setFormValues({});
-        router.reload({ only: ['users'] });
+        toast.success('User created successfully');
+        closeFormDialog();
+        router.reload({ only: ['users', 'countries'] });
       },
-      onError: (errors) => console.log(errors),
+      onError: (errors) => {
+        const firstError = Object.values(errors)[0];
+        toast.error(typeof firstError === 'string' ? firstError : 'Failed to create user');
+      },
+      onFinish: () => form.transform((data) => data),
     });
   };
 
-  // Delete user
   const handleDelete = () => {
     if (!deletingUser) return;
-  
-    router.post(`/users/${deletingUser.id}`, { _method: 'DELETE' }, {
-      preserveState: true,
+
+    setDeleteProcessing(true);
+    router.delete(`/users/${deletingUser.id}`, {
+      preserveScroll: true,
       onSuccess: () => {
+        toast.success('User deleted successfully');
         setDeletingUser(null);
-        router.reload({ only: ['users'] });
+        router.reload({ only: ['users', 'countries'] });
       },
-      onError: (errors) => console.log(errors),
+      onError: (errors) => {
+        const firstError = Object.values(errors)[0];
+        toast.error(typeof firstError === 'string' ? firstError : 'Failed to delete user');
+      },
+      onFinish: () => setDeleteProcessing(false),
     });
   };
-
-  
-  
-
-  const fields: { name: string; label: string; type?: string }[] = [
-    { name: 'username', label: 'Username' },
-    { name: 'name', label: 'Name' },
-    { name: 'email', label: 'Email', type: 'email' },
-    { name: 'email_verified_at', label: 'Email Verified At', type: 'datetime-local' },
-    { name: 'password', label: 'Password', type: 'password' },
-    { name: 'password_confirmation', label: 'Confirm Password', type: 'password' },
-    { name: 'store_name', label: 'Store Name' },
-    { name: 'store_address', label: 'Store Address' },
-    { name: 'store_phone', label: 'Store Phone' },
-    { name: 'store_email', label: 'Store Email', type: 'email' },
-    { name: 'roles', label: 'Roles' },
-    { name: 'photo', label: 'Photo URL' },
-  ];
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Users" />
 
-      <div className="flex flex-col gap-4 p-4">
-        {/* Filter & Create */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
-          <Input
-            placeholder="Filter users..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="flex-1"
-          />
-                        {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
-    <>
-          <Button
-            variant="default"
-            className="flex items-center gap-2"
-            onClick={() => {
-              setCreatingUser(true);
-              setFormValues({});
-            }}
-          >
-            <Plus size={16} /> Create User
-          </Button>
-          </>)}
-        </div>
+      <div className="space-y-5 p-4">
+        <Card className="border-border/60 bg-gradient-to-br from-background via-background to-muted/25">
+          <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="secondary" className="gap-1">
+                  <Shield className="size-3.5" />
+                  {currentUserRole || 'unknown role'}
+                </Badge>
+                <Badge variant="outline" className="gap-1">
+                  <Globe2 className="size-3.5" />
+                  {currentCountryName}
+                </Badge>
+              </div>
+              <CardTitle className="text-2xl">User Management</CardTitle>
+              <CardDescription>
+                Create and update staff accounts with the right role and country access.
+              </CardDescription>
+            </div>
 
-        {/* User Cards */}
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+              <Input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder="Search by name, email, role, or country"
+                className="sm:w-80"
+              />
+              {canManageUsers ? (
+                <Button onClick={openCreate} className="gap-2">
+                  <Plus className="size-4" />
+                  Create User
+                </Button>
+              ) : null}
+            </div>
+          </CardHeader>
+        </Card>
+
         {filteredUsers.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            No users found.
-          </div>
+          <Card className="border-dashed">
+            <CardContent className="flex min-h-48 items-center justify-center text-muted-foreground">
+              No users found for the current search.
+            </CardContent>
+          </Card>
         ) : (
-          <div className="grid gap-4 auto-rows-min grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          <div className="grid gap-4 auto-rows-min grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
             {filteredUsers.map((user) => (
-              <Card key={user.id} className="flex flex-col justify-between border rounded-lg shadow hover:shadow-md transition-all duration-150 p-2">
-                <CardHeader>
-                  <CardTitle className="truncate text-sm">{user.name} ({user.username})</CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground truncate">{user.email}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-1 text-xs overflow-hidden">
-                  {[
-                    { label: 'Email Verified At', value: user.email_verified_at },
-                    { label: 'Store Name', value: user.store_name },
-                    { label: 'Store Address', value: user.store_address },
-                    { label: 'Store Phone', value: user.store_phone },
-                    { label: 'Store Email', value: user.store_email },
-                    { label: 'Roles', value: user.roles },
-                    { label: 'Photo', value: user.photo },
-                    { label: 'Created At', value: user.created_at },
-                  ].map((item, index) => (
-                    <div key={`${user.id}-info-${index}`} className="truncate">
-                      <strong>{item.label}:</strong> {item.value || '-'}
+              <Card
+                key={user.id}
+                className="flex flex-col justify-between border-border/60 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md"
+              >
+                <CardHeader className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 overflow-hidden">
+                      <CardTitle className="truncate text-base">{user.name}</CardTitle>
+                      <CardDescription className="truncate">{user.email}</CardDescription>
                     </div>
-                  ))}
+                    <div className="rounded-xl bg-muted p-2 text-muted-foreground">
+                      <UserRound className="size-4" />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary">{user.roles || 'user'}</Badge>
+                    <Badge variant="outline">{user.country?.name || 'No country'}</Badge>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-2 text-sm text-muted-foreground">
+                  <div><span className="font-medium text-foreground">Username:</span> {user.username || '-'}</div>
+                  <div><span className="font-medium text-foreground">Store:</span> {user.store_name || '-'}</div>
+                  <div><span className="font-medium text-foreground">Phone:</span> {user.store_phone || '-'}</div>
+                  <div><span className="font-medium text-foreground">Created:</span> {new Date(user.created_at).toLocaleDateString()}</div>
                 </CardContent>
-                <div className="flex gap-2 justify-end p-2 flex-wrap">
-  {!["operations","finance", "callcenter1"].includes(usePage().props.auth.user.roles) && (
-    <>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => { setEditingUser(user); setFormValues(user); }}
-      >
-        <Edit size={16} />
-      </Button>
-      <Button
-        size="sm"
-        variant="destructive"
-        onClick={() => setDeletingUser(user)}
-      >
-        <Trash2 size={16} />
-      </Button>
-    </>
-  )}
-</div>
 
-
+                {canManageUsers ? (
+                  <div className="flex gap-2 p-4 pt-0">
+                    <Button className="flex-1 gap-2" variant="outline" onClick={() => openEdit(user)}>
+                      <Edit className="size-4" />
+                      Edit
+                    </Button>
+                    <Button variant="destructive" size="icon" onClick={() => setDeletingUser(user)}>
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ) : null}
               </Card>
             ))}
           </div>
         )}
       </div>
 
-      {/* Create/Edit Dialog */}
-      <Dialog
-        open={creatingUser || !!editingUser}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreatingUser(false);
-            setEditingUser(null);
-            setFormValues({});
-          }
-        }}
-      >
-        <DialogContent className="max-w-md">
+      <Dialog open={creatingUser || !!editingUser} onOpenChange={(open) => (!open ? closeFormDialog() : undefined)}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{creatingUser ? 'Create User' : 'Edit User'}</DialogTitle>
+            <DialogTitle>{editingUser ? 'Edit User' : 'Create User'}</DialogTitle>
             <DialogDescription>
-              {creatingUser ? 'Enter new user details.' : 'Update user details.'}
+              Set the login details, role, and country access for this user.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 mt-2">
-            {fields.map((field) => {
-              if (!creatingUser && (field.name === 'password' || field.name === 'password_confirmation')) return null;
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input id="name" value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} />
+              <FieldError message={form.errors.name} />
+            </div>
 
-              return (
-                <Input
-                  key={field.name}
-                  type={field.type || 'text'}
-                  value={(formValues as any)[field.name] || ''}
-                  onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
-                  placeholder={field.label}
-                />
-              );
-            })}
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input id="username" value={form.data.username} onChange={(e) => form.setData('username', e.target.value)} />
+              <FieldError message={form.errors.username} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} />
+              <FieldError message={form.errors.email} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={form.data.roles} onValueChange={(value) => form.setData('roles', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roleOptions.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError message={form.errors.roles} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Country</Label>
+              <Select
+                value={form.data.country_id}
+                onValueChange={(value) => form.setData('country_id', value)}
+                disabled={!canChooseCountry && countries.length <= 1}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {countries.map((country) => (
+                    <SelectItem key={country.id} value={String(country.id)}>
+                      {country.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError message={form.errors.country_id} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="store_name">Store Name</Label>
+              <Input id="store_name" value={form.data.store_name} onChange={(e) => form.setData('store_name', e.target.value)} />
+              <FieldError message={form.errors.store_name} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="store_address">Store Address</Label>
+              <Input id="store_address" value={form.data.store_address} onChange={(e) => form.setData('store_address', e.target.value)} />
+              <FieldError message={form.errors.store_address} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="store_phone">Store Phone</Label>
+              <Input id="store_phone" value={form.data.store_phone} onChange={(e) => form.setData('store_phone', e.target.value)} />
+              <FieldError message={form.errors.store_phone} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="store_email">Store Email</Label>
+              <Input id="store_email" type="email" value={form.data.store_email} onChange={(e) => form.setData('store_email', e.target.value)} />
+              <FieldError message={form.errors.store_email} />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="photo">Photo URL</Label>
+              <Input id="photo" value={form.data.photo} onChange={(e) => form.setData('photo', e.target.value)} />
+              <FieldError message={form.errors.photo} />
+            </div>
+
+            <>
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id={editingUser ? `edit-password-${editingUser.id}` : 'create-password'}
+                      name={editingUser ? `edit_password_${editingUser.id}` : 'new_password'}
+                      type={showPassword ? 'text' : 'password'}
+                      value={form.data.password}
+                      onChange={(e) => form.setData('password', e.target.value)}
+                      placeholder={editingUser ? 'Leave blank to keep current password' : 'Defaults to password123 if left empty'}
+                      autoComplete="new-password"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                  <FieldError message={form.errors.password} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password_confirmation">Confirm Password</Label>
+                  <div className="relative">
+                    <Input
+                      id={editingUser ? `edit-password-confirmation-${editingUser.id}` : 'create-password-confirmation'}
+                      name={editingUser ? `edit_password_confirmation_${editingUser.id}` : 'new_password_confirmation'}
+                      type={showPasswordConfirmation ? 'text' : 'password'}
+                      value={form.data.password_confirmation}
+                      onChange={(e) => form.setData('password_confirmation', e.target.value)}
+                      placeholder="Repeat password"
+                      autoComplete="new-password"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordConfirmation((value) => !value)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showPasswordConfirmation ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                  <FieldError message={form.errors.password_confirmation} />
+                </div>
+              </>
+            </>
           </div>
 
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => { setCreatingUser(false); setEditingUser(null); }}>Cancel</Button>
-            <Button onClick={creatingUser ? handleCreate : handleEditSave}>
-              {creatingUser ? 'Create' : 'Save'}
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="outline" onClick={closeFormDialog}>
+              Cancel
             </Button>
-          </div>
+            <Button onClick={submit} disabled={form.processing}>
+              {form.processing ? <Loader2 className="size-4 animate-spin" /> : null}
+              {form.processing ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Modal */}
-      <Dialog open={!!deletingUser} onOpenChange={() => setDeletingUser(null)}>
+      <Dialog open={!!deletingUser} onOpenChange={(open) => (!open ? setDeletingUser(null) : undefined)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogTitle>Delete User</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <strong>{deletingUser?.name}</strong>?
+              This will permanently remove <strong>{deletingUser?.name}</strong>.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setDeletingUser(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
-          </div>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="outline" onClick={() => setDeletingUser(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteProcessing}>
+              {deleteProcessing ? <Loader2 className="size-4 animate-spin" /> : null}
+              Delete User
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppLayout>

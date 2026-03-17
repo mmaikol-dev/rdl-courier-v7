@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Sheet;
+use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Google\Service\Sheets\Sheet as SheetsSheet;
@@ -24,7 +25,8 @@ class SheetController extends Controller
      */
 public function index()
 {
-    $query = Sheet::select(
+    $user = auth()->user()?->loadMissing('country');
+    $query = CountryAccess::scopeByCountryName(Sheet::select(
         'id',
         'sheet_id',
         'sheet_name',
@@ -33,11 +35,11 @@ public function index()
         'country',
         'cc_agents',
         'sku'
-    );
+    ), $user);
 
     // If logged-in user is a merchant, filter sheets by matching user name with sheet_name
-    if (auth()->user()->roles === 'merchant') {
-        $query->where('sheet_name', auth()->user()->name);
+    if ($user?->roles === 'merchant') {
+        $query->where('sheet_name', $user->name);
     }
 
     $sheets = $query->orderBy('created_at', 'desc')->get();
@@ -51,19 +53,24 @@ public function index()
    public function viewSheetData($sheetId, Request $request)
 {
     try {
+        $sheetRecord = CountryAccess::scopeByCountryName(
+            Sheet::query()->where('sheet_id', $sheetId),
+            $request->user()?->loadMissing('country')
+        )->firstOrFail();
+
         $client = new \Google_Client();
         $client->setAuthConfig(storage_path('rdl-478707-2c066429878f.json'));
         $client->addScope(\Google_Service_Sheets::SPREADSHEETS);
         $service = new \Google_Service_Sheets($client);
 
-        $spreadsheet = $service->spreadsheets->get($sheetId);
+        $spreadsheet = $service->spreadsheets->get($sheetRecord->sheet_id);
         $availableSheets = array_map(fn($sheet) => $sheet->properties->title, $spreadsheet->sheets);
 
         // Use requested sheet name or default to first
         $sheetName = $request->get('sheetName', $availableSheets[0]);
 
         $range = $sheetName . '!A1:R1000';
-        $sheetData = $service->spreadsheets_values->get($sheetId, $range)->getValues();
+        $sheetData = $service->spreadsheets_values->get($sheetRecord->sheet_id, $range)->getValues();
 
         return response()->json([
             'availableSheets' => $availableSheets,
@@ -103,7 +110,13 @@ public function index()
             'sku'           => 'nullable|string',
         ]);
 
-        Sheet::create($request->all());
+        $validated = $request->all();
+        $validated['country'] = CountryAccess::resolveCountryNameForWrite(
+            $request->user()?->loadMissing('country'),
+            $request->country
+        );
+
+        Sheet::create($validated);
 
         return redirect()->back()->with('success', 'Sheet created successfully.');
     }
@@ -129,6 +142,12 @@ public function index()
      */
     public function update(Request $request, Sheet $sheet)
     {
+        abort_unless(
+            CountryAccess::hasGlobalAccess($request->user()?->loadMissing('country')) ||
+            $sheet->country === CountryAccess::userCountryName($request->user()?->loadMissing('country')),
+            403
+        );
+
         $validated = $request->validate([
             'sheet_name' => 'required|string|max:255',
             'sheet_id' => 'required|string|max:255',
@@ -138,6 +157,11 @@ public function index()
             'cc_agents' => 'nullable|string|max:255',
             'sku' => 'nullable|string|max:255',
         ]);
+
+        $validated['country'] = CountryAccess::resolveCountryNameForWrite(
+            $request->user()?->loadMissing('country'),
+            $validated['country'] ?? null
+        );
 
         $sheet->update($validated);
 
@@ -149,6 +173,12 @@ public function index()
      */
     public function destroy(Sheet $sheet)
     {
+        abort_unless(
+            CountryAccess::hasGlobalAccess(request()->user()?->loadMissing('country')) ||
+            $sheet->country === CountryAccess::userCountryName(request()->user()?->loadMissing('country')),
+            403
+        );
+
         $sheet->delete();
 
         return redirect()->back()->with('success', 'Sheet deleted successfully.');

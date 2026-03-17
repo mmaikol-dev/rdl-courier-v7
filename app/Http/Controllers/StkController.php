@@ -177,11 +177,12 @@ class StkController extends Controller
             }
             Log::info('Cleaned phone number: ' . $phone);
 
-            // Credentials
-            $BusinessShortCode = '4136031';
-            $LipaNaMpesaPasskey = 'd147a3cce07da3f5d8f837816f5503b5129cbf7b6f7eeda3792cb91b42b52dcd';
-            $consumerKey = 'OhZXxLngscvEPmeiy3IZqzXepQwAs5HOmuQOOLDRGwDbE8Dw';
-            $consumerSecret = 'msYICfGIrlB75Gieeio2nAzh5egtQfNiKSb5CLWPEaEtENNwcObyEyAULW5QTUAd';
+            $BusinessShortCode = (string) config('services.mpesa.shortcode');
+            $LipaNaMpesaPasskey = (string) config('services.mpesa.passkey');
+            $consumerKey = (string) config('services.mpesa.consumer_key');
+            $consumerSecret = (string) config('services.mpesa.consumer_secret');
+            $callbackUrl = (string) config('services.mpesa.callback_url');
+            $stkUrl = (string) config('services.mpesa.stk_url');
 
             $Timestamp = date('YmdHis');
             $Password = base64_encode($BusinessShortCode . $LipaNaMpesaPasskey . $Timestamp);
@@ -194,7 +195,7 @@ class StkController extends Controller
 
             // Send STK Push
             $client = new Client();
-            $response = $client->post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', [
+            $response = $client->post($stkUrl, [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
@@ -208,7 +209,7 @@ class StkController extends Controller
                     'PartyA' => $phone,
                     'PartyB' => $BusinessShortCode,
                     'PhoneNumber' => $phone,
-                    'CallBackURL' => 'https://realdealsystem.com/api/mpesa/callback',
+                    'CallBackURL' => $callbackUrl,
                     'AccountReference' => $request->order_no,
                     'TransactionDesc' => 'Payment for Order ' . $request->order_no,
                 ],
@@ -258,17 +259,15 @@ class StkController extends Controller
     {
         Log::info('Generating M-Pesa access token');
         $credentials = base64_encode($consumerKey . ':' . $consumerSecret);
+        $oauthUrl = (string) config('services.mpesa.oauth_url');
 
         $client = new Client();
-        $response = $client->request('GET',
-            'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
-            [
-                'headers' => [
-                    'Authorization' => 'Basic ' . $credentials,
-                    'Content-Type' => 'application/json',
-                ],
-            ]
-        );
+        $response = $client->request('GET', $oauthUrl, [
+            'headers' => [
+                'Authorization' => 'Basic ' . $credentials,
+                'Content-Type' => 'application/json',
+            ],
+        ]);
 
         $responseBody = json_decode($response->getBody(), true);
         Log::info('Access token response', $responseBody);

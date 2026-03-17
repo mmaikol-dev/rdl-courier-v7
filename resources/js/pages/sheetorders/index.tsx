@@ -117,7 +117,7 @@ interface OrderHistory {
   old_value: string;
   new_value: string;
   created_at: string;
-  user: { name: string };
+  user: { name: string } | null;
 }
 
 interface PaginationLinkData {
@@ -1139,7 +1139,7 @@ export default function Index() {
                     <div className="text-xs text-muted-foreground">
                       <span className="font-semibold">Old:</span> {history.old_value} <br />
                       <span className="font-semibold">New:</span> {history.new_value} <br />
-                      <span className="text-[10px]">By {history.user.name} on {new Date(history.created_at).toLocaleString()}</span>
+                      <span className="text-[10px]">By {history.user?.name ?? "System (C2B Callback)"} on {new Date(history.created_at).toLocaleString()}</span>
                     </div>
                   </div>
                 ))

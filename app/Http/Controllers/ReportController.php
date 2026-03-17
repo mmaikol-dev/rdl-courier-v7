@@ -7,14 +7,16 @@ use Inertia\Inertia;
 use App\Models\User;
 use App\Exports\OrdersExport;
 use App\Models\Sheet;
+use App\Support\CountryAccess;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Carbon;
 
 class ReportController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $merchants = Sheet::pluck('sheet_name');
+        $user = $request->user()?->loadMissing('country');
+        $merchants = CountryAccess::scopeByCountryName(Sheet::query(), $user)->pluck('sheet_name');
         return Inertia::render('report/index', [
             'merchants' => $merchants,
         ]);
@@ -23,9 +25,11 @@ class ReportController extends Controller
     public function download(Request $request)
     {
         try {
+            $user = $request->user()?->loadMissing('country');
             $filters = [
                 'merchant' => $request->merchant,
                 'statuses' => $request->statuses ?? [],
+                'country' => CountryAccess::userCountryName($user),
                 'from' => $request->from 
         ? Carbon::parse($request->from)->timezone('Africa/Nairobi')->startOfDay()
         : null,

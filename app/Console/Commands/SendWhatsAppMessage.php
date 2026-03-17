@@ -32,9 +32,7 @@ class SendWhatsAppMessage extends Command
 
         $this->info("📦 Found {$orders->count()} orders to process.");
 
-        // Initialize WasenderAPI client once (reuse across all orders)
-        $apiKey = 'e7f29a701c81288d561f882c1bdb3720bd1cd39e33751c68d88b9eeaeb139e76';
-        $client = new \WasenderApi\WasenderClient($apiKey);
+        $client = new \WasenderApi\WasenderClient((string) config('services.wasender.api_key', ''));
 
         foreach ($orders as $order) {
             try {

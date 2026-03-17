@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Notifications\Notifiable;
@@ -26,6 +27,7 @@ class User extends Authenticatable implements MustVerifyEmail
         "store_address",
         "store_phone",
         'roles', 
+        'country_id',
         "store_email",
         "email_verified_at",
     ];
@@ -36,7 +38,7 @@ class User extends Authenticatable implements MustVerifyEmail
     ];
 
     protected $casts = [
-        
+        'country_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
@@ -66,6 +68,16 @@ protected static function boot()
     public function locations(): HasMany
     {
         return $this->hasMany(UserLocation::class);
+    }
+
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    public function hasGlobalCountryAccess(): bool
+    {
+        return strtolower(trim((string) $this->roles)) === 'g.o.d';
     }
 
     public function latestLocation(): HasOne

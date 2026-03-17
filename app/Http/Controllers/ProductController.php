@@ -8,6 +8,7 @@ use App\Models\InventoryLog;
 use App\Models\Barcode;
 use App\Models\Category;
 use App\Models\Unit;
+use App\Support\CountryAccess;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
@@ -17,11 +18,11 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        $user = $request->user();
+        $user = $request->user()->loadMissing('country');
         $isMerchant = $user->roles === 'merchant';
         $categories = Category::select('id', 'name')->get();
         $units = Unit::select('id', 'name', 'short_code')->get();
-        $productsQuery = Product::query();
+        $productsQuery = CountryAccess::scopeProducts(Product::query(), $user);
     
         // Apply merchant filter using UUIDs
         if ($isMerchant) {
@@ -54,6 +55,12 @@ class ProductController extends Controller
 
         $user = $request->user();
         $change = (int) $request->quantity_change;
+
+        abort_unless(
+            CountryAccess::hasGlobalAccess($user->loadMissing('country')) ||
+            optional($product->user)->country_id === $user->country_id,
+            403
+        );
 
         $newQuantity = $product->quantity + $change;
 
@@ -123,7 +130,7 @@ class ProductController extends Controller
             'unit_id' => 'nullable|integer|exists:units,id',
         ]);
 
-        $user = $request->user();
+        $user = $request->user()->loadMissing('country');
 
         // Auto-generate fields
         $slug = $this->generateSlug($request->name);
@@ -157,6 +164,12 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product)
     {
+        $user = $request->user()->loadMissing('country');
+        abort_unless(
+            CountryAccess::hasGlobalAccess($user) || optional($product->user)->country_id === $user->country_id,
+            403
+        );
+
         $request->validate([
             'name' => 'required|string|max:255',
             'quantity' => 'required|numeric',
@@ -200,6 +213,12 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
+        $user = request()->user()?->loadMissing('country');
+        abort_unless(
+            CountryAccess::hasGlobalAccess($user) || optional($product->user)->country_id === $user?->country_id,
+            403
+        );
+
         $product->delete();
 
         return redirect()->route('products.index')

@@ -4,6 +4,7 @@ use App\Http\Controllers\AppScriptController;
 use App\Http\Controllers\C2BTransactionController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DispatchController;
+use App\Http\Controllers\FinanceWorkflowController;
 use App\Http\Controllers\WaybillController;
 use App\Http\Controllers\SheetOrderController;
 use App\Http\Controllers\ProductController;
@@ -30,7 +31,9 @@ use App\Http\Controllers\UnremittedController;
 use App\Models\User;
 use Carbon\Carbon;
 use App\Http\Controllers\SheetController;
+use App\Http\Controllers\SidebarRolePermissionController;
 use App\Http\Controllers\UserController;
+use App\Support\CountryAccess;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Middleware\VerifyCsrfToken;
@@ -64,13 +67,13 @@ Route::post('locations/login', [UserLocationController::class, 'login'])->name('
 
 // Updated Dashboard Route - Matching Actual Database Schema
 Route::get('dashboard', function () {
-    $user = auth()->user();
+    $user = auth()->user()->loadMissing('country');
     $userName = $user->name;
     $userRole = $user->roles;
 
     // Base query builder
     $baseQuery = function() use ($userName, $userRole) {
-        $query = DB::table('sheet_orders');
+        $query = CountryAccess::scopeByCountryName(\App\Models\SheetOrder::query(), auth()->user()->loadMissing('country'))->getQuery();
         if ($userRole === 'merchant') {
             $query->where('merchant', $userName);
         }
@@ -484,6 +487,8 @@ Route::delete('/deductions/{id}', [TransferController::class, 'destroyDeduction'
 
     //users
     Route::resource('users',UserController::class);
+    Route::get('sidebar-permissions', [SidebarRolePermissionController::class, 'index'])->name('sidebar-permissions.index');
+    Route::put('sidebar-permissions', [SidebarRolePermissionController::class, 'update'])->name('sidebar-permissions.update');
 
     //c2btrans.
     Route::resource('transactions',C2BTransactionController::class);
@@ -534,6 +539,12 @@ Route::delete('/stk/{id}', [StkController::class, 'destroy'])->name('stk.destroy
 // Only the ones you actually use
 Route::get('/report', [ReportController::class, 'index'])->name('report.index');
 Route::get('/report/download', [ReportController::class, 'download'])->name('report.download');
+Route::get('/finance-workflow', [FinanceWorkflowController::class, 'index'])->name('finance-workflow.index');
+Route::get('/finance-workflow/orders', [FinanceWorkflowController::class, 'merchantOrders'])->name('finance-workflow.orders');
+Route::post('/finance-workflow/mark-delivered', [FinanceWorkflowController::class, 'markDelivered'])->name('finance-workflow.mark-delivered');
+Route::get('/finance-workflow/download-report', [FinanceWorkflowController::class, 'downloadMerchantReport'])->name('finance-workflow.download-report');
+Route::post('/finance-workflow/mark-confirmed', [FinanceWorkflowController::class, 'markConfirmed'])->name('finance-workflow.mark-confirmed');
+Route::post('/finance-workflow/mark-remitted', [FinanceWorkflowController::class, 'markRemitted'])->name('finance-workflow.mark-remitted');
 
 
 //undelivered

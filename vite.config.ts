@@ -47,6 +47,20 @@ export default defineConfig({
     esbuild: {
         jsx: 'automatic',
     },
+    server: {
+        watch: {
+            ignored: [
+                '**/.git/**',
+                '**/node_modules/**',
+                '**/vendor/**',
+                '**/storage/**',
+                '**/bootstrap/cache/**',
+                '**/build/**',
+                '**/public/build/**',
+                '**/realdealsystem/**',
+            ],
+        },
+    },
     resolve: {
         alias: {
             'ziggy-js': resolve(__dirname, 'vendor/tightenco/ziggy'),

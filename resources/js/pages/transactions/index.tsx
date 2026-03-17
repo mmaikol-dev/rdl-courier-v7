@@ -40,6 +40,7 @@ interface Transaction {
   account_number: string;
   amount: string;
   payer_phone: string;
+  business_shortcode?: string;
   processed: boolean;
   created_at?: string;
 }
@@ -131,7 +132,7 @@ export default function TransactionsView() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
             <div className="flex gap-2 w-full sm:w-auto sm:flex-1">
               <Input
-                placeholder="Search by transaction ID, account, or phone"
+                placeholder="Search by transaction ID, account, phone, or shortcode"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -156,19 +157,20 @@ export default function TransactionsView() {
               <Table className="table-fixed">
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <TableHead className="w-[18%]">Txn ID</TableHead>
-                    <TableHead className="w-[16%]">Account</TableHead>
+                    <TableHead className="w-[16%]">Txn ID</TableHead>
+                    <TableHead className="w-[14%]">Account</TableHead>
                     <TableHead className="w-[10%]">Amount</TableHead>
-                    <TableHead className="w-[16%]">Payer Phone</TableHead>
-                    <TableHead className="w-[12%]">Status</TableHead>
-                    <TableHead className="w-[18%]">Created</TableHead>
-                    <TableHead className="w-[10%] text-right">Actions</TableHead>
+                    <TableHead className="w-[14%]">Payer Phone</TableHead>
+                    <TableHead className="w-[14%]">Shortcode</TableHead>
+                    <TableHead className="w-[10%]">Status</TableHead>
+                    <TableHead className="w-[14%]">Created</TableHead>
+                    <TableHead className="w-[8%] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {list.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-10">
+                      <TableCell colSpan={8} className="text-center py-10">
                         No transactions found.
                       </TableCell>
                     </TableRow>
@@ -190,7 +192,12 @@ export default function TransactionsView() {
                         </TableCell>
                         <TableCell className="whitespace-nowrap align-middle">
                           <span className="block truncate max-w-[180px]" title={txn.payer_phone}>
-                            {txn.payer_phone}
+                            {txn.payer_phone || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap align-middle">
+                          <span className="block truncate max-w-[180px]" title={txn.business_shortcode}>
+                            {txn.business_shortcode || "—"}
                           </span>
                         </TableCell>
                         <TableCell className="whitespace-nowrap align-middle">
@@ -273,7 +280,7 @@ export default function TransactionsView() {
             <DialogDescription>Update the transaction information below.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
-            {["transaction_id", "account_number", "amount", "payer_phone"].map((field) => (
+            {["transaction_id", "account_number", "amount", "payer_phone", "business_shortcode"].map((field) => (
               <Input
                 key={field}
                 value={(editValues as any)[field] || ""}

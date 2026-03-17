@@ -2,6 +2,11 @@
     "version": "1.0.0",
     "private": true,
     "type": "module",
+    "packageManager": "npm@11.11.0",
+    "engines": {
+        "node": ">=20 <26",
+        "npm": ">=10"
+    },
     "scripts": {
         "build": "node node_modules/vite/bin/vite.js build",
         "build:ssr": "node node_modules/vite/bin/vite.js build && node node_modules/vite/bin/vite.js build --ssr",

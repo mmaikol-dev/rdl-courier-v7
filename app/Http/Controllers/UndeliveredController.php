@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SheetOrder;
+use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,10 +15,15 @@ class UndeliveredController extends Controller
      */
 public function index(Request $request)
     {
-        $query = SheetOrder::query()
+        $user = $request->user()?->loadMissing('country');
+
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
             ->whereNotNull('code')
             ->where('code', '!=', '')
-            ->where('status', '!=', 'delivered');
+            ->where(function ($query): void {
+                $query->whereNull('status')
+                    ->orWhereRaw('LOWER(status) != "delivered"');
+            });
 
         // -------------------------
         // ✅ Merchant Filter
@@ -76,7 +82,8 @@ public function index(Request $request)
         // -------------------------
         //  Merchant List
         // -------------------------
-        $merchantUsers = SheetOrder::whereNotNull('merchant')
+        $merchantUsers = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+            ->whereNotNull('merchant')
             ->distinct()
             ->pluck('merchant');
 

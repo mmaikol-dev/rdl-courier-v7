@@ -20,6 +20,9 @@ class OrdersExport implements FromQuery, WithHeadings, WithMapping
    public function query()
 {
     $query = SheetOrder::query()
+        ->when(!empty($this->filters['country']), function ($q) {
+            $q->where('country', $this->filters['country']);
+        })
         ->when(!empty($this->filters['merchant']), function ($q) {
             $q->where('merchant', $this->filters['merchant']);
         })
@@ -79,7 +82,7 @@ class OrdersExport implements FromQuery, WithHeadings, WithMapping
             $order->product_name,
             $order->quantity,
             $order->status,
-            $order->cc_email,
+            $order->agent,
             $order->delivery_date,
             $order->instructions,
             $order->merchant,
