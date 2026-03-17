@@ -11,6 +11,7 @@
     "require": {
         "php": "^8.2",
         "ext-gd": "*",
+        "ext-zip": "*",
         "africastalking/africastalking": "^3.0",
         "barryvdh/laravel-dompdf": "^3.1",
         "google/apiclient": "^2.0",
