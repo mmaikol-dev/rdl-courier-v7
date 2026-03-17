@@ -5,6 +5,8 @@
 /public/hot
 /public/storage
 /storage/*.key
+/storage/project-423911-84ac0fbdde59.json
+/storage/rdl-478707-2c066429878f.json
 /storage/pail
 /vendor
 .env
