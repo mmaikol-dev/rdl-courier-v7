@@ -10,11 +10,11 @@ class DailyBudget extends Model
 {
     use HasFactory;
 
-
-protected $guarded = []; // Allow everything temporarily
+    protected $guarded = []; // Allow everything temporarily
 
     protected $casts = [
         'budget_date' => 'date',
+        'country' => 'string',
         'initial_amount' => 'decimal:2',
         'current_amount' => 'decimal:2',
         'spent_amount' => 'decimal:2',

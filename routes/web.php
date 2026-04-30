@@ -3,6 +3,7 @@
 use App\Http\Controllers\AppScriptController;
 use App\Http\Controllers\C2BTransactionController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DispatchController;
 use App\Http\Controllers\FinanceWorkflowController;
 use App\Http\Controllers\WaybillController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\AssignController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\InventoryDeductionController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DailyBudgetController;
@@ -25,18 +27,13 @@ use App\Http\Controllers\StkController;
 use App\Http\Controllers\UpdateController;
 use App\Http\Controllers\UndeliveredController;
 use App\Http\Controllers\WhatsappController;
-use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\UnremittedController;
-use App\Models\User;
-use Carbon\Carbon;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\SidebarRolePermissionController;
 use App\Http\Controllers\UserController;
-use App\Support\CountryAccess;
 use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Middleware\VerifyCsrfToken;
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -65,383 +62,7 @@ Route::post('locations/login', [UserLocationController::class, 'login'])->name('
     //dashboard
   
 
-// Updated Dashboard Route - Matching Actual Database Schema
-Route::get('dashboard', function () {
-    $user = auth()->user()->loadMissing('country');
-    $userName = $user->name;
-    $userRole = $user->roles;
-
-    // Base query builder
-    $baseQuery = function() use ($userName, $userRole) {
-        $query = CountryAccess::scopeByCountryName(\App\Models\SheetOrder::query(), auth()->user()->loadMissing('country'))->getQuery();
-        if ($userRole === 'merchant') {
-            $query->where('merchant', $userName);
-        }
-        return $query;
-    };
-
-    // =================================================================
-    // 1. MONTHLY CHART DATA (Orders & Revenue)
-    // =================================================================
-    $monthlyData = $baseQuery()
-        ->selectRaw("
-            DATE_FORMAT(order_date, '%Y-%m') as month,
-            COUNT(*) as total,
-            SUM(COALESCE(amount, 0)) as revenue
-        ")
-        ->whereNotNull('order_date')
-        ->groupBy('month')
-        ->orderBy('month', 'DESC')
-        ->limit(12) // Last 12 months
-        ->get()
-        ->reverse() // Show oldest to newest
-        ->values();
-
-    $chartData = $monthlyData->map(function ($item) {
-        $dateObj = Carbon::parse($item->month . '-01');
-        return [
-            'month' => $dateObj->format('F Y'),
-            'total' => (int) $item->total,
-            'revenue' => (float) $item->revenue,
-        ];
-    });
-
-    // =================================================================
-    // 2. STATUS SUMMARY (With Better Aggregations)
-    // =================================================================
-    $statusSummary = $baseQuery()
-        ->select(
-            'status',
-            DB::raw('COUNT(*) as totalOrders'),
-            DB::raw('SUM(COALESCE(amount, 0)) as totalAmount')
-        )
-        ->whereNotNull('status')
-        ->groupBy('status')
-        ->orderByDesc('totalOrders')
-        ->get()
-        ->map(function($item) {
-            return [
-                'status' => $item->status ?: 'Unknown',
-                'totalOrders' => (int) $item->totalOrders,
-                'totalAmount' => (float) $item->totalAmount,
-            ];
-        });
-
-    // =================================================================
-    // 3. OVERALL METRICS
-    // =================================================================
-    $overallMetrics = $baseQuery()
-        ->selectRaw("
-            COUNT(*) as total_orders,
-            SUM(COALESCE(amount, 0)) as total_revenue,
-            AVG(COALESCE(amount, 0)) as avg_order_value,
-            COUNT(DISTINCT client_name) as total_customers
-        ")
-        ->first();
-
-    // =================================================================
-    // 4. PERIOD COMPARISONS (Current vs Previous Month)
-    // =================================================================
-    $currentMonthStart = Carbon::now()->startOfMonth();
-    $lastMonthStart = Carbon::now()->subMonth()->startOfMonth();
-    $lastMonthEnd = Carbon::now()->subMonth()->endOfMonth();
-
-    // Current month stats
-    $currentMonth = $baseQuery()
-        ->where('order_date', '>=', $currentMonthStart)
-        ->selectRaw("
-            COUNT(*) as orders,
-            SUM(COALESCE(amount, 0)) as revenue
-        ")
-        ->first();
-
-    // Previous month stats
-    $previousMonth = $baseQuery()
-        ->whereBetween('order_date', [$lastMonthStart, $lastMonthEnd])
-        ->selectRaw("
-            COUNT(*) as orders,
-            SUM(COALESCE(amount, 0)) as revenue
-        ")
-        ->first();
-
-    // Calculate growth percentages
-    $orderGrowth = $previousMonth->orders > 0
-        ? (($currentMonth->orders - $previousMonth->orders) / $previousMonth->orders) * 100
-        : 0;
-
-    $revenueGrowth = $previousMonth->revenue > 0
-        ? (($currentMonth->revenue - $previousMonth->revenue) / $previousMonth->revenue) * 100
-        : 0;
-
-    // =================================================================
-    // 5. STATUS-SPECIFIC METRICS
-    // =================================================================
-    $pendingOrders = $baseQuery()->where('status', 'Pending')->count();
-    $completedOrders = $baseQuery()->where('status', 'Completed')->count();
-    $cancelledOrders = $baseQuery()->where('status', 'Cancelled')->count();
-
-    $completionRate = $overallMetrics->total_orders > 0
-        ? ($completedOrders / $overallMetrics->total_orders) * 100
-        : 0;
-
-    $cancellationRate = $overallMetrics->total_orders > 0
-        ? ($cancelledOrders / $overallMetrics->total_orders) * 100
-        : 0;
-
-    // =================================================================
-    // 6. TIME-BASED METRICS
-    // =================================================================
-    $today = Carbon::today();
-    $last7Days = Carbon::now()->subDays(7);
-    $last30Days = Carbon::now()->subDays(30);
-
-    $todayStats = $baseQuery()
-        ->whereDate('order_date', $today)
-        ->selectRaw("COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue")
-        ->first();
-
-    $last7DaysStats = $baseQuery()
-        ->where('order_date', '>=', $last7Days)
-        ->selectRaw("COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue")
-        ->first();
-
-    $last30DaysStats = $baseQuery()
-        ->where('order_date', '>=', $last30Days)
-        ->selectRaw("COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue")
-        ->first();
-
-    // =================================================================
-    // 7. TOP PRODUCTS (Based on quantity sold)
-    // =================================================================
-    $topProducts = $baseQuery()
-        ->select(
-            'product_name',
-            DB::raw('COUNT(*) as order_count'),
-            DB::raw('SUM(COALESCE(quantity, 0)) as total_quantity'),
-            DB::raw('SUM(COALESCE(amount, 0)) as total_revenue')
-        )
-        ->whereNotNull('product_name')
-        ->where('product_name', '!=', '')
-        ->groupBy('product_name')
-        ->orderByDesc('total_quantity')
-        ->limit(5)
-        ->get()
-        ->map(function($item) {
-            return [
-                'product_name' => $item->product_name,
-                'order_count' => (int) $item->order_count,
-                'total_quantity' => (int) $item->total_quantity,
-                'total_revenue' => (float) $item->total_revenue,
-            ];
-        });
-
-    // =================================================================
-    // 8. TOP AGENTS (if applicable)
-    // =================================================================
-    $topAgents = $baseQuery()
-        ->select(
-            'agent',
-            DB::raw('COUNT(*) as order_count'),
-            DB::raw('SUM(COALESCE(amount, 0)) as total_revenue')
-        )
-        ->whereNotNull('agent')
-        ->where('agent', '!=', '')
-        ->groupBy('agent')
-        ->orderByDesc('total_revenue')
-        ->limit(5)
-        ->get()
-        ->map(function($item) {
-            return [
-                'agent' => $item->agent,
-                'order_count' => (int) $item->order_count,
-                'total_revenue' => (float) $item->total_revenue,
-            ];
-        });
-
-    // =================================================================
-    // 9. RECENT ORDERS
-    // =================================================================
-    $recentOrders = $baseQuery()
-        ->select(
-            'id',
-            'order_date',
-            'order_no',
-            'client_name',
-            'product_name',
-            'quantity',
-            'status',
-            'amount',
-            'agent'
-        )
-        ->orderBy('order_date', 'DESC')
-        ->limit(10)
-        ->get()
-        ->map(function($item) {
-            return [
-                'id' => $item->id,
-                'order_date' => $item->order_date,
-                'order_no' => $item->order_no,
-                'client_name' => $item->client_name,
-                'product_name' => $item->product_name,
-                'quantity' => (int) $item->quantity,
-                'status' => $item->status,
-                'amount' => (float) $item->amount,
-                'agent' => $item->agent,
-            ];
-        });
-
-    // =================================================================
-    // 10. GEOGRAPHICAL DISTRIBUTION (By Country and City)
-    // =================================================================
-    $countryDistribution = $baseQuery()
-        ->select(
-            'country',
-            DB::raw('COUNT(*) as order_count'),
-            DB::raw('SUM(COALESCE(amount, 0)) as total_revenue')
-        )
-        ->whereNotNull('country')
-        ->where('country', '!=', '')
-        ->groupBy('country')
-        ->orderByDesc('order_count')
-        ->limit(10)
-        ->get()
-        ->map(function($item) {
-            return [
-                'country' => $item->country,
-                'order_count' => (int) $item->order_count,
-                'total_revenue' => (float) $item->total_revenue,
-            ];
-        });
-
-    $cityDistribution = $baseQuery()
-        ->select(
-            'city',
-            DB::raw('COUNT(*) as order_count'),
-            DB::raw('SUM(COALESCE(amount, 0)) as total_revenue')
-        )
-        ->whereNotNull('city')
-        ->where('city', '!=', '')
-        ->groupBy('city')
-        ->orderByDesc('order_count')
-        ->limit(10)
-        ->get()
-        ->map(function($item) {
-            return [
-                'city' => $item->city,
-                'order_count' => (int) $item->order_count,
-                'total_revenue' => (float) $item->total_revenue,
-            ];
-        });
-
-    // =================================================================
-    // 11. ORDER TYPE DISTRIBUTION (if applicable)
-    // =================================================================
-    $orderTypeDistribution = $baseQuery()
-        ->select(
-            'order_type',
-            DB::raw('COUNT(*) as order_count'),
-            DB::raw('SUM(COALESCE(amount, 0)) as total_revenue')
-        )
-        ->whereNotNull('order_type')
-        ->where('order_type', '!=', '')
-        ->groupBy('order_type')
-        ->orderByDesc('order_count')
-        ->get()
-        ->map(function($item) {
-            return [
-                'order_type' => $item->order_type,
-                'order_count' => (int) $item->order_count,
-                'total_revenue' => (float) $item->total_revenue,
-            ];
-        });
-
-    // =================================================================
-    // 12. DELIVERY PERFORMANCE (Orders with delivery dates)
-    // =================================================================
-    $deliveryStats = $baseQuery()
-        ->selectRaw("
-            COUNT(*) as total_orders_with_delivery,
-            COUNT(CASE WHEN delivery_date IS NOT NULL AND delivery_date <= NOW() THEN 1 END) as delivered_orders,
-            COUNT(CASE WHEN delivery_date IS NOT NULL AND delivery_date > NOW() THEN 1 END) as pending_delivery
-        ")
-        ->first();
-
-    $deliveryRate = $deliveryStats->total_orders_with_delivery > 0
-        ? ($deliveryStats->delivered_orders / $deliveryStats->total_orders_with_delivery) * 100
-        : 0;
-
-    // =================================================================
-    // RETURN ALL DATA TO FRONTEND
-    // =================================================================
-    return Inertia::render('dashboard', [
-        'userName' => $userName,
-        'userRole' => $userRole,
-
-        // Chart data
-        'chartData' => $chartData,
-
-        // Status breakdown
-        'statusSummary' => $statusSummary,
-
-        // Overall metrics
-        'metrics' => [
-            'totalOrders' => (int) $overallMetrics->total_orders,
-            'totalRevenue' => (float) $overallMetrics->total_revenue,
-            'avgOrderValue' => (float) $overallMetrics->avg_order_value,
-            'totalCustomers' => (int) $overallMetrics->total_customers,
-            'pendingOrders' => $pendingOrders,
-            'completionRate' => round($completionRate, 1),
-            'cancellationRate' => round($cancellationRate, 1),
-            'deliveryRate' => round($deliveryRate, 1),
-        ],
-
-        // Growth metrics
-        'growth' => [
-            'orders' => round($orderGrowth, 1),
-            'revenue' => round($revenueGrowth, 1),
-            'currentMonth' => [
-                'orders' => (int) $currentMonth->orders,
-                'revenue' => (float) $currentMonth->revenue,
-            ],
-            'previousMonth' => [
-                'orders' => (int) $previousMonth->orders,
-                'revenue' => (float) $previousMonth->revenue,
-            ],
-        ],
-
-        // Time-based stats
-        'timeStats' => [
-            'today' => [
-                'orders' => (int) $todayStats->orders,
-                'revenue' => (float) $todayStats->revenue,
-            ],
-            'last7Days' => [
-                'orders' => (int) $last7DaysStats->orders,
-                'revenue' => (float) $last7DaysStats->revenue,
-            ],
-            'last30Days' => [
-                'orders' => (int) $last30DaysStats->orders,
-                'revenue' => (float) $last30DaysStats->revenue,
-            ],
-        ],
-
-        // Additional insights
-        'topProducts' => $topProducts,
-        'topAgents' => $topAgents,
-        'recentOrders' => $recentOrders,
-        'countryDistribution' => $countryDistribution,
-        'cityDistribution' => $cityDistribution,
-        'orderTypeDistribution' => $orderTypeDistribution,
-
-        // Delivery stats
-        'deliveryStats' => [
-            'totalWithDelivery' => (int) $deliveryStats->total_orders_with_delivery,
-            'delivered' => (int) $deliveryStats->delivered_orders,
-            'pendingDelivery' => (int) $deliveryStats->pending_delivery,
-            'deliveryRate' => round($deliveryRate, 1),
-        ],
-    ]);
-})->name('dashboard');
+Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 //sheetorderspage- route
     Route::resource('sheetorders', SheetOrderController::class);
     Route::get('sheetorders/{order}/histories', [SheetOrderController::class, 'histories'])
@@ -463,6 +84,8 @@ Route::get('/products/{product}/barcode-history', [ProductController::class, 'ge
     ->name('products.updateQuantity');
 
 Route::resource('products', ProductController::class);
+Route::get('/inventory-deductions', [InventoryDeductionController::class, 'index'])->name('inventory-deductions.index');
+Route::post('/inventory-deductions', [InventoryDeductionController::class, 'store'])->name('inventory-deductions.store');
 
 Route::get('/transfer', [TransferController::class, 'index'])->name('transfers.index');
 

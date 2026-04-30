@@ -61,6 +61,8 @@ class C2BTransactionController extends Controller
         $query->whereDate('created_at', '<=', $request->end_date);
     }
 
+    $summaryQuery = clone $query;
+
     // ✅ Pagination + keep filters across pages
     $transactions = $query->orderBy('created_at', 'desc')
         ->paginate(100)
@@ -68,6 +70,10 @@ class C2BTransactionController extends Controller
 
     return Inertia::render('transactions/index', [
         'transactions' => $transactions,
+        'summary' => [
+            'totalAmount' => (float) $summaryQuery->sum('amount'),
+            'totalRecords' => $summaryQuery->count(),
+        ],
         'filters' => $request->only(['search', 'status', 'start_date', 'end_date']),
     ]);
 }
@@ -227,7 +233,7 @@ public function validateTransaction(Request $request)
             'account_number' => 'required|string',
             'amount'         => 'required|numeric|min:0',
             'payer_phone'    => 'nullable|string',
-            'business_shortcode' => 'required|string',
+            'business_shortcode' => 'nullable|string',
             'processed'      => 'boolean',
         ]);
 

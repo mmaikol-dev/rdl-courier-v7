@@ -16,6 +16,7 @@ class Deduction extends Model
         'quantity',
         'reason',
         'deducted_by',
+        'country',
     ];
 
     public function product()

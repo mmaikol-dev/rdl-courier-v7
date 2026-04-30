@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/map";
 import { formatDistanceToNow } from "date-fns";
 import { Clock3, Flag, MapPinned, Navigation, PauseCircle, RefreshCcw, Route, Settings2, ShieldCheck, Users2, Waves } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMap } from "react-leaflet";
 import type { FeatureGroup, LatLngTuple } from "leaflet";
 
@@ -444,6 +444,7 @@ export default function MapsIndex() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(() => new Date());
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const prevIsAllUsersView = useRef(isAllUsersView);
 
   const trailDistanceMeters = useMemo(() => {
     if (selectedUserTrail.length < 2) return 0;
@@ -477,8 +478,16 @@ export default function MapsIndex() {
     setLastUpdatedAt(new Date());
   }, [activeLocations, loginLocations, selectedUserTrail, trackingSummary]);
 
+  // Pause live mode when entering user-specific investigation view.
+  // Do NOT force-resume when returning to all-users view — respect the user's manual preference.
   useEffect(() => {
-    setIsLive(isAllUsersView);
+    const wasAllUsers = prevIsAllUsersView.current;
+    prevIsAllUsersView.current = isAllUsersView;
+
+    if (!isAllUsersView && wasAllUsers) {
+      // Entering investigation mode — pause live refresh.
+      setIsLive(false);
+    }
   }, [isAllUsersView]);
 
   useEffect(() => {
@@ -491,6 +500,7 @@ export default function MapsIndex() {
         only: ["activeLocations", "loginLocations", "selectedUserTrail", "trackingSummary", "selectedUserId"],
         preserveScroll: true,
         preserveState: true,
+        onFinish: () => setLastUpdatedAt(new Date()),
       });
     }, 20000);
 

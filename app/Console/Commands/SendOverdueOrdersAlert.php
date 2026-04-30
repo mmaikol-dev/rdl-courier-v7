@@ -6,23 +6,14 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use App\Models\Whatsapp;
 use App\Models\SheetOrder;
+use App\Services\WhatsAppFallbackService;
 use Carbon\Carbon;
-use WasenderApi\WasenderClient;
-use WasenderApi\Exceptions\WasenderApiException;
 use Exception;
 
 class SendOverdueOrdersAlert extends Command
 {
     protected $signature = 'whatsapp:send-overdue-alert';
     protected $description = 'Send WhatsApp alerts to call center agents for overdue scheduled orders via WasenderAPI';
-
-    /**
-     * Get WasenderAPI client instance
-     */
-    private function getClient(): WasenderClient
-    {
-        return new WasenderClient((string) config('services.wasender.overdue_alert_api_key', ''));
-    }
 
     private function callCenterAgents(): array
     {
@@ -85,45 +76,29 @@ class SendOverdueOrdersAlert extends Command
 
         $alertMessage .= "Please follow up on these orders urgently.";
 
-        // Send to each call center agent via WasenderAPI
+        $sender = app(WhatsAppFallbackService::class);
+
         foreach ($this->callCenterAgents() as $agentPhone) {
             try {
-                $client = $this->getClient();
-                $response = $client->sendText($agentPhone, $alertMessage);
-
-                // Extract message ID from response
-                $messageId = $response['data']['key']['id'] ?? null;
+                $result = $sender->sendText($agentPhone, $alertMessage, [
+                    'country_code' => str_starts_with((string) $agentPhone, '255') ? '255' : '254',
+                ]);
 
                 Whatsapp::create([
-                    'to' => $agentPhone,
+                    'to' => $result['to'],
                     'client_name' => 'Call Center Agent',
                     'store_name' => 'ADMIN',
                     'cc_agents' => null,
                     'message' => $alertMessage,
                     'status' => 'sent',
-                    'sid' => $messageId,
+                    'sid' => $result['message_id'],
                 ]);
 
-                $this->info("✅ Alert sent to {$agentPhone}");
-                Log::info("Overdue orders alert sent to {$agentPhone}");
-
-            } catch (WasenderApiException $e) {
-                Log::error('❌ Failed to send overdue orders alert via WasenderAPI', [
-                    'error' => $e->getMessage(),
-                    'phone' => $agentPhone,
+                $this->info("✅ Alert sent to {$result['to']}");
+                Log::info("Overdue orders alert sent", [
+                    'to' => $result['to'],
+                    'provider' => $result['provider'],
                 ]);
-
-                Whatsapp::create([
-                    'to' => $agentPhone,
-                    'client_name' => 'Call Center Agent',
-                    'store_name' => 'ADMIN',
-                    'cc_agents' => null,
-                    'message' => $alertMessage,
-                    'status' => 'failed',
-                    'sid' => null,
-                ]);
-
-                $this->error("❌ Failed to send to {$agentPhone}: " . $e->getMessage());
 
             } catch (Exception $e) {
                 Log::error('❌ Failed to send overdue orders alert', [
@@ -140,8 +115,7 @@ class SendOverdueOrdersAlert extends Command
                     'status' => 'failed',
                     'sid' => null,
                 ]);
-
-                $this->error("❌ Error: " . $e->getMessage());
+                $this->error("❌ Failed to send to {$agentPhone}: " . $e->getMessage());
             }
         }
 

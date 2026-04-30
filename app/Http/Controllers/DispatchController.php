@@ -25,6 +25,7 @@ class DispatchController extends Controller
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
         $agentFilter = $request->input('agent');
+        $countryFilter = $request->input('country');
         $user = $request->user()->loadMissing('country');
 
         // Build base query
@@ -87,6 +88,10 @@ class DispatchController extends Controller
             $ordersQuery->where('agent', $agentFilter);
         }
 
+        if ($countryFilter) {
+            $ordersQuery->whereRaw('LOWER(country) = ?', [mb_strtolower(trim($countryFilter))]);
+        }
+
         // Paginate and format date
         $orders = $ordersQuery->paginate(50)->through(function ($order) {
             $order->delivery_date = $order->delivery_date
@@ -116,6 +121,7 @@ class DispatchController extends Controller
                 'start_date' => $startDate,
                 'end_date' => $endDate,
                 'agent' => $agentFilter,
+                'country' => $countryFilter,
             ],
         ]);
     }
@@ -296,7 +302,7 @@ class DispatchController extends Controller
     {
         $user = request()->user()?->loadMissing('country');
         abort_unless(
-            CountryAccess::hasGlobalAccess($user) || $order->country === CountryAccess::userCountryName($user),
+            CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($order->country, $user),
             403
         );
 
@@ -417,7 +423,7 @@ public function bulkDownloadWaybills(Request $request)
         $order = SheetOrder::findOrFail($id);
         $user = $request->user()?->loadMissing('country');
         abort_unless(
-            CountryAccess::hasGlobalAccess($user) || $order->country === CountryAccess::userCountryName($user),
+            CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($order->country, $user),
             403
         );
         
@@ -447,7 +453,7 @@ public function bulkDownloadWaybills(Request $request)
         $order = SheetOrder::findOrFail($id);
         $user = request()->user()?->loadMissing('country');
         abort_unless(
-            CountryAccess::hasGlobalAccess($user) || $order->country === CountryAccess::userCountryName($user),
+            CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($order->country, $user),
             403
         );
         $order->delete();

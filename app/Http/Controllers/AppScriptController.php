@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AppScript;
 use App\Models\Sheet;
 use App\Models\SheetOrder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 
@@ -25,6 +26,8 @@ class AppScriptController extends Controller
     public function storeOrder(Request $request)
     {
         try {
+            $sheet = null;
+
             // Clean amount: remove non-digit characters (e.g., KSH)
             $cleanAmount = preg_replace('/[^\d.]/', '', $request->input('amount'));
     
@@ -34,16 +37,31 @@ class AppScriptController extends Controller
     
             // Merge cleaned data
             $request->merge([
-                'order_no' => (string) $request->input('order_no'),
+                'order_no' => trim((string) $request->input('order_no')),
                 'delivery_date' => $request->input('delivery_date'),
                 'amount' => $cleanAmount,
-                'client_name' => $request->input('client_name'),
+                'client_name' => $this->nullIfBlank($request->input('client_name')),
                 'quantity' => $cleanQuantity,
-                'phone' => $request->input('phone'),
-                'alt_no' => $request->input('alt_no'),
-                'address' => $request->input('address'),
-                'product_name' => $request->input('product_name'),
+                'phone' => $this->normalizePhone($request->input('phone')),
+                'alt_no' => $this->normalizePhone($request->input('alt_no')),
+                'address' => $this->nullIfBlank($request->input('address')),
+                'product_name' => $this->nullIfBlank($request->input('product_name')),
+                'sheet_id' => $this->nullIfBlank($request->input('sheet_id')),
+                'sheet_name' => $this->nullIfBlank($request->input('sheet_name')),
+                'merchant' => $this->nullIfBlank($request->input('merchant')),
+                'city' => $this->nullIfBlank($request->input('city')),
+                'country' => $this->nullIfBlank($request->input('country')),
+                'status' => $this->nullIfBlank($request->input('status')),
+                'agent' => $this->nullIfBlank($request->input('agent')),
             ]);
+
+            if ($request->filled('sheet_id')) {
+                $sheet = Sheet::where('sheet_id', $request->input('sheet_id'))->first();
+
+                $request->merge([
+                    'store_name' => !empty($sheet?->store_name) ? $sheet->store_name : 'RDL1',
+                ]);
+            }
     
             // Validate
             $validatedData = $request->validate([
@@ -53,7 +71,7 @@ class AppScriptController extends Controller
                 'client_name' => 'nullable|string|max:255',
                 'address' => 'nullable|string',
                 'city' => 'nullable|string',
-                'store_name' => 'required|string',
+                'store_name' => 'nullable|string',
                 'alt_no' => 'nullable|string',
                 'country' => 'nullable|string',
                 'phone' => 'nullable|string|max:30',
@@ -65,6 +83,8 @@ class AppScriptController extends Controller
                 'sheet_name' => 'nullable|string',
                 'merchant' => 'nullable|string',
             ]);
+
+            $validatedData['store_name'] = $validatedData['store_name'] ?: 'RDL1';
     
             // Default cc_email
             $validatedData['cc_email'] = null;
@@ -78,8 +98,6 @@ class AppScriptController extends Controller
                     'sheet_id' => $validatedData['sheet_id'],
                     'sheet_name' => $validatedData['sheet_name']
                 ]);
-    
-                $sheet = Sheet::where('sheet_id', $validatedData['sheet_id'])->first();
     
                 if ($sheet && !empty($sheet->cc_agents)) {
                     $agentsConfig = json_decode($sheet->cc_agents, true);
@@ -113,35 +131,57 @@ class AppScriptController extends Controller
                 }
             }
     
-            // Check for existing order
-            $existingOrder = SheetOrder::where('order_no', $validatedData['order_no'])->first();
-            if ($existingOrder) {
-                foreach ($validatedData as $key => $value) {
-                    if (empty($existingOrder->$key) && $value !== null) {
-                        $existingOrder->$key = $value;
+            $result = DB::transaction(function () use ($validatedData) {
+                $existingOrder = $this->findExistingOrderForAppScript($validatedData);
+
+                if ($existingOrder) {
+                    foreach ($validatedData as $key => $value) {
+                        if ($this->shouldBackfillValue($existingOrder->$key ?? null, $value)) {
+                            $existingOrder->$key = $value;
+                        }
                     }
+
+                    $existingOrder->updated_at = null;
+
+                    SheetOrder::withoutTimestamps(function () use ($existingOrder): void {
+                        $existingOrder->save();
+                    });
+
+                    return [
+                        'created' => false,
+                        'order' => $existingOrder,
+                    ];
                 }
-    
-                $existingOrder->updated_at = null;
-                $existingOrder->save();
-    
+
+                $sheetOrder = SheetOrder::withoutTimestamps(function () use ($validatedData) {
+                    return SheetOrder::create([
+                        ...$validatedData,
+                        'created_at' => now(),
+                        'updated_at' => null,
+                    ]);
+                });
+
+                return [
+                    'created' => true,
+                    'order' => $sheetOrder,
+                ];
+            });
+
+            if (! $result['created']) {
                 Log::info("Existing order updated", ['order_no' => $validatedData['order_no']]);
-    
+
                 return response()->json([
                     'message' => 'Order already exists and was updated',
-                    'order_no' => $validatedData['order_no']
+                    'order_no' => $validatedData['order_no'],
+                    'data' => $result['order'],
                 ], 200);
             }
-    
-            // Save new order
-            $validatedData['updated_at'] = null;
-            $sheetOrder = SheetOrder::create($validatedData);
-    
+
             Log::info("New order created", ['order_no' => $validatedData['order_no'], 'cc_email' => $validatedData['cc_email']]);
-    
+
             return response()->json([
                 'message' => 'Order successfully created',
-                'data' => $sheetOrder
+                'data' => $result['order']
             ], 201);
     
         } catch (\Exception $e) {
@@ -223,5 +263,98 @@ public function updateTimestamp(Request $request)
     public function destroy(AppScript $appScript)
     {
         //
+    }
+
+    private function findExistingOrderForAppScript(array $validatedData): ?SheetOrder
+    {
+        $orderNo = $this->normalizeIdentityValue($validatedData['order_no'] ?? null);
+        $sheetId = $this->normalizeIdentityValue($validatedData['sheet_id'] ?? null);
+        $sheetName = $this->normalizeIdentityValue($validatedData['sheet_name'] ?? null);
+        $clientName = $this->normalizeIdentityValue($validatedData['client_name'] ?? null);
+        $phone = $this->normalizeIdentityValue($validatedData['phone'] ?? null);
+        $productName = $this->normalizeIdentityValue($validatedData['product_name'] ?? null);
+
+        $orderNoMatches = SheetOrder::query()
+            ->lockForUpdate()
+            ->whereRaw('LOWER(TRIM(order_no)) = ?', [$orderNo])
+            ->orderBy('id')
+            ->get();
+
+        if ($orderNoMatches->count() > 1) {
+            Log::warning('Multiple existing rows found for AppScript order number.', [
+                'order_no' => $validatedData['order_no'],
+                'matched_ids' => $orderNoMatches->pluck('id')->all(),
+            ]);
+        }
+
+        $scopedOrderNoMatch = $orderNoMatches->first(function (SheetOrder $order) use ($sheetId, $sheetName) {
+            $existingSheetId = $this->normalizeIdentityValue($order->sheet_id);
+            $existingSheetName = $this->normalizeIdentityValue($order->sheet_name);
+
+            if ($sheetId !== null && $existingSheetId !== null && $sheetId !== $existingSheetId) {
+                return false;
+            }
+
+            if ($sheetName !== null && $existingSheetName !== null && $sheetName !== $existingSheetName) {
+                return false;
+            }
+
+            return true;
+        });
+
+        if ($scopedOrderNoMatch) {
+            return $scopedOrderNoMatch;
+        }
+
+        return SheetOrder::query()
+            ->lockForUpdate()
+            ->when($sheetId !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(sheet_id)) = ?', [$sheetId]))
+            ->when($sheetName !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(sheet_name)) = ?', [$sheetName]))
+            ->when($clientName !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(client_name)) = ?', [$clientName]))
+            ->when($phone !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(phone)) = ?', [$phone]))
+            ->when($productName !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(product_name)) = ?', [$productName]))
+            ->where('quantity', $validatedData['quantity'])
+            ->where('amount', $validatedData['amount'])
+            ->when(
+                ! empty($validatedData['delivery_date']),
+                fn ($query) => $query->whereDate('delivery_date', $validatedData['delivery_date'])
+            )
+            ->orderBy('id')
+            ->first();
+    }
+
+    private function shouldBackfillValue(mixed $existingValue, mixed $incomingValue): bool
+    {
+        return $incomingValue !== null
+            && (is_string($existingValue) ? trim($existingValue) === '' : empty($existingValue));
+    }
+
+    private function nullIfBlank(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function normalizePhone(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', (string) $value);
+
+        return $digits !== '' ? $digits : null;
+    }
+
+    private function normalizeIdentityValue(mixed $value): ?string
+    {
+        $normalized = $this->nullIfBlank($value);
+
+        return $normalized !== null ? strtolower($normalized) : null;
     }
 }

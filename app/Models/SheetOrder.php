@@ -34,13 +34,15 @@ class SheetOrder extends Model
         'order_type',
         'alt_no',
         'merchant',
-        'delivery_date',
         'cc_email',
         'instructions',
         'invoice_code',
+        'inventory_deducted_at',
+        'inventory_deducted_by',
+        'inventory_product_id',
         'sheet_id',
         'sheet_name',
-        'sheet_id',
+        'created_at',
         'updated_at',
             
 
@@ -54,6 +56,7 @@ class SheetOrder extends Model
    protected $casts = [
         'order_date' => 'datetime', // Cast to datetime to preserve time
         'delivery_date' => 'datetime', // Cast to datetime to preserve time
+        'inventory_deducted_at' => 'datetime',
     ];
 
     // In SheetOrder.php

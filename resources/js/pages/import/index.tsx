@@ -6,6 +6,7 @@ import { type BreadcrumbItem } from "@/types";
 import { Head, usePage } from "@inertiajs/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,31 +33,7 @@ interface Sheet {
   country: string;
 }
 
-async function parseJsonResponse(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-  const body = await response.text();
-
-  if (!contentType.includes("application/json")) {
-    throw new Error(
-      body.startsWith("<!DOCTYPE") || body.startsWith("<html")
-        ? "The server returned HTML instead of JSON."
-        : body || "Unexpected server response.",
-    );
-  }
-
-  return body ? JSON.parse(body) : {};
-}
-
 function getCsrfToken() {
-  const xsrfCookie = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith("XSRF-TOKEN="))
-    ?.split("=")[1];
-
-  if (xsrfCookie) {
-    return decodeURIComponent(xsrfCookie);
-  }
-
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
 }
 
@@ -70,6 +47,7 @@ export default function ImportOrdersPage() {
   const [file, setFile] = useState<File | null>(null);
   const [open, setOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     if (flash?.success) {
@@ -121,22 +99,82 @@ export default function ImportOrdersPage() {
     formData.append("file", file);
 
     setIsImporting(true);
+    setUploadProgress(0);
 
     try {
-      const response = await fetch("/orders/import", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRF-TOKEN": getCsrfToken(),
-        },
-        body: formData,
+      const progressToastId = "import-upload-progress";
+
+      toast.loading("Uploading orders...", {
+        id: progressToastId,
+        description: "0% complete",
       });
 
-      const data = await parseJsonResponse(response);
+      const response = await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
 
-      if (!response.ok) {
+        xhr.open("POST", "/orders/import", true);
+        xhr.responseType = "text";
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("Accept", "application/json");
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.setRequestHeader("X-CSRF-TOKEN", getCsrfToken());
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+          setUploadProgress(percent);
+
+          toast.loading("Uploading orders...", {
+            id: progressToastId,
+            description: (
+              <div className="space-y-2">
+                <div className="text-sm">{percent}% complete</div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-slate-900 transition-all"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </div>
+            ),
+          });
+        };
+
+        xhr.onload = () => {
+          try {
+            const contentType = xhr.getResponseHeader("content-type") || "";
+            const body = xhr.responseText || "";
+
+            if (!contentType.includes("application/json")) {
+              reject(
+                new Error(
+                  body.startsWith("<!DOCTYPE") || body.startsWith("<html")
+                    ? "The server returned HTML instead of JSON."
+                    : body || "Unexpected server response.",
+                ),
+              );
+              return;
+            }
+
+            resolve({
+              status: xhr.status,
+              body: body ? JSON.parse(body) : {},
+            });
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error("Failed to parse server response."));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Upload failed. Please check your connection and try again."));
+        xhr.onabort = () => reject(new Error("Upload was cancelled."));
+
+        xhr.send(formData);
+      });
+
+      const data = response.body as { message?: string; errors?: Record<string, string | string[]> };
+
+      if (response.status < 200 || response.status >= 300) {
         const message =
           data?.message ||
           Object.values(data?.errors || {})?.flat?.()[0] ||
@@ -144,12 +182,16 @@ export default function ImportOrdersPage() {
         throw new Error(typeof message === "string" ? message : "Failed to import orders");
       }
 
-      toast.success(data?.message || "Orders imported successfully");
+      setUploadProgress(100);
+      toast.success(data?.message || "Orders imported successfully", {
+        id: progressToastId,
+      });
       clearForm();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to import orders");
     } finally {
       setIsImporting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -293,7 +335,7 @@ export default function ImportOrdersPage() {
                 </Button>
                 <Button onClick={handleImport} disabled={isImporting} className="gap-2 text-white">
                   {isImporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                  {isImporting ? "Importing..." : "Import Orders"}
+                  {isImporting ? `Importing... ${uploadProgress}%` : "Import Orders"}
                 </Button>
               </div>
             </CardContent>

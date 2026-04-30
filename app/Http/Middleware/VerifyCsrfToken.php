@@ -9,8 +9,10 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         '/api/sheet-orders',
         'c2b/confirmation',
-    'c2b/validation',
-            'stk/stk-push',
-        ]; // exempt Apps Script route
+        'c2b/validation',
+        'stk/stk-push',
+        'locations/heartbeat',
+        'locations/login',
+    ];
     
 }

@@ -1,0 +1,17 @@
+export const EAST_AFRICAN_COUNTRIES = [
+    'Burundi',
+    'Comoros',
+    'Democratic Republic of the Congo',
+    'Djibouti',
+    'Eritrea',
+    'Ethiopia',
+    'Kenya',
+    'Rwanda',
+    'Seychelles',
+    'Somalia',
+    'South Sudan',
+    'Sudan',
+    'Tanzania',
+    'Uganda',
+    'Zambia',
+] as const;

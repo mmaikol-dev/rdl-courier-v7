@@ -8,6 +8,7 @@ use App\Models\BudgetTransaction;
 use App\Models\RequisitionCategory;
 use App\Models\RequisitionItem;
 use App\Models\User;
+use App\Support\CountryAccess;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
 
@@ -16,9 +17,42 @@ use Illuminate\Support\Facades\DB;
 
 class RequisitionController extends Controller
 {
+    private function requisitionQueryForUser(?\App\Models\User $user)
+    {
+        return CountryAccess::scopeByCountryName(
+            Requisition::query(),
+            $user
+        );
+    }
+
+    private function ensureCountryAccess(Request $request, Requisition $requisition): void
+    {
+        $user = $request->user()?->loadMissing('country');
+
+        if (CountryAccess::hasGlobalAccess($user)) {
+            return;
+        }
+
+        abort_unless(
+            CountryAccess::matchesCountryName($requisition->country, $user),
+            403
+        );
+    }
+
+    private function resolveCountryOrFail(?\App\Models\User $user): string
+    {
+        $country = CountryAccess::resolveCountryNameForWrite($user, null);
+
+        abort_if(! $country, 403, 'No country is assigned to this user.');
+
+        return $country;
+    }
+
     public function index(Request $request)
     {
-        $query = Requisition::with(['category', 'user', 'items', 'dailyBudget']);
+        $user = $request->user()?->loadMissing('country');
+        $query = $this->requisitionQueryForUser($user)
+            ->with(['category', 'user', 'items', 'dailyBudget']);
 
         // Filter by status - only if not empty
         if ($request->filled('status')) {
@@ -59,7 +93,10 @@ class RequisitionController extends Controller
         $categories = RequisitionCategory::all();
         
         // Fetch all users for dropdown
-        $users = User::select('id', 'name', 'email')->get();
+        $users = CountryAccess::scopeUsers(
+            User::query()->select('id', 'name', 'email'),
+            $user
+        )->get();
 
         return Inertia::render('requisitions/index', [
             'requisitions' => $requisitions,
@@ -79,6 +116,9 @@ class RequisitionController extends Controller
     public function store(Request $request)
     {
         try {
+            $authUser = $request->user()?->loadMissing('country');
+            $country = $this->resolveCountryOrFail($authUser);
+
             $validated = $request->validate([
                 'category_id' => 'required|exists:requisition_categories,id',
                 'user_id' => 'required|exists:users,id',
@@ -97,11 +137,15 @@ class RequisitionController extends Controller
             }
 
             // Get the selected user's name for the title
-            $selectedUser = User::find($request->user_id);
+            $selectedUser = CountryAccess::scopeUsers(
+                User::query(),
+                $authUser
+            )->findOrFail($request->user_id);
 
             $requisition = Requisition::create([
                 'category_id' => $request->category_id,
                 'user_id' => auth()->id(),
+                'country' => $country,
                 'title' => $selectedUser->name, // Use selected user's name as title
                 'description' => $request->description,
                 'total_amount' => $totalAmount,
@@ -151,6 +195,7 @@ class RequisitionController extends Controller
 
     public function show(Requisition $requisition)
     {
+        $this->ensureCountryAccess(request(), $requisition);
         $requisition->load(['category', 'user', 'items', 'dailyBudget', 'approver']);
 
         $itemNames = $requisition->items
@@ -168,6 +213,7 @@ class RequisitionController extends Controller
                 ->select('requisition_items.item_name', 'requisitions.id as requisition_id', 'requisitions.requisition_number')
                 ->join('requisitions', 'requisitions.id', '=', 'requisition_items.requisition_id')
                 ->where('requisition_items.requisition_id', '!=', $requisition->id)
+                ->where('requisitions.country', $requisition->country)
                 ->whereIn(DB::raw('LOWER(TRIM(requisition_items.item_name))'), $itemNames->map(fn ($name) => mb_strtolower($name))->all())
                 ->get();
 
@@ -201,6 +247,7 @@ class RequisitionController extends Controller
 
     public function updateStatus(Request $request, Requisition $requisition)
     {
+        $this->ensureCountryAccess($request, $requisition);
         $request->validate([
             'status' => 'required|in:pending,approved,rejected,paid',
         ]);
@@ -217,7 +264,12 @@ class RequisitionController extends Controller
             }
 
             if ($request->status === 'paid') {
-                $budget = DailyBudget::whereDate('budget_date', $requisition->requisition_date)->first();
+                $budget = CountryAccess::scopeByCountryName(
+                    DailyBudget::query(),
+                    $request->user()?->loadMissing('country')
+                )
+                    ->whereDate('budget_date', $requisition->requisition_date)
+                    ->first();
 
                 if (!$budget) {
                     DB::rollBack();
@@ -269,6 +321,8 @@ class RequisitionController extends Controller
 
     public function destroy(Requisition $requisition)
     {
+        $this->ensureCountryAccess(request(), $requisition);
+
         if ($requisition->status === 'paid') {
             return back()->withErrors(['message' => 'Cannot delete paid requisition']);
         }

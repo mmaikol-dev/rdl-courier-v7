@@ -65,6 +65,7 @@ interface SheetOrder {
   city: string;
   status: string;
   delivery_date: string;
+  code?: string;
   comments?: string;
   confirmed: number;
 }
@@ -130,6 +131,25 @@ export default function Index() {
   const [payingOrders, setPayingOrders] = React.useState<Set<number>>(new Set());
 
   const filteredOrders = orderedItems;
+
+  const closePaymentDialog = React.useCallback(() => {
+    if (loadingOrder && paymentResult?.status === "Success") {
+      setOrderedItems((currentOrders) =>
+        currentOrders.map((order) =>
+          order.id === loadingOrder.id
+            ? {
+                ...order,
+                status: "Delivered",
+                code: paymentResult.receipt ?? order.code,
+              }
+            : order,
+        ),
+      );
+    }
+
+    setPaymentResult(null);
+    setLoadingOrder(null);
+  }, [loadingOrder, paymentResult]);
 
   const getConfirmationBadge = (confirmed: number) => {
     return Number(confirmed) === 1
@@ -1233,10 +1253,7 @@ export default function Index() {
               </div>
               <Button
                 className="w-full gap-2 h-9 sm:h-10"
-                onClick={() => {
-                  setLoadingOrder(null);
-                  window.location.reload();
-                }}
+                onClick={closePaymentDialog}
               >
                 <CheckCircle2 className="h-4 w-4" />
                 Close
@@ -1263,7 +1280,7 @@ export default function Index() {
               <Button
                 className="w-full gap-2 h-9 sm:h-10"
                 variant="destructive"
-                onClick={() => setLoadingOrder(null)}
+                onClick={closePaymentDialog}
               >
                 <XCircle className="h-4 w-4" />
                 Close

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SheetOrder;
 use App\Models\User;
 use App\Models\Whatsapp;
+use App\Services\WhatsAppFallbackService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 
@@ -13,10 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsappController extends Controller
 {
-    private function wasenderClient(): \WasenderApi\WasenderClient
-    {
-        return new \WasenderApi\WasenderClient((string) config('services.wasender.api_key', ''));
-    }
+    public function __construct(private readonly WhatsAppFallbackService $whatsAppService) {}
 
     /**
      * Display a listing of the resource.
@@ -50,10 +48,9 @@ public function sendChat(Request $request)
         $to = $validated['to'];
         $messageText = $validated['message'];
 
-        // Format phone number for WasenderAPI (no + prefix)
-        $formattedPhone = preg_replace('/\D/', '', $to);
-        
-        if (!$formattedPhone || strlen($formattedPhone) < 9) {
+        $formattedPhone = $this->whatsAppService->formatForStorage($to, '254');
+
+        if (!$formattedPhone) {
             Log::error("❌ Invalid phone number format", ['to' => $to]);
             return response()->json([
                 'success' => false,
@@ -61,26 +58,18 @@ public function sendChat(Request $request)
             ], 400);
         }
 
-        // Ensure proper country code format (no + for WasenderAPI)
-        if (!preg_match('/^(254|255)/', $formattedPhone)) {
-            if (substr($formattedPhone, 0, 1) === '0') {
-                $formattedPhone = '254' . substr($formattedPhone, 1);
-            } else {
-                $formattedPhone = '254' . $formattedPhone;
-            }
-        }
-
         Log::info("📞 Formatted phone: {$formattedPhone}");
+        $result = $this->whatsAppService->sendText($formattedPhone, $messageText, [
+            'country_code' => '254',
+        ]);
 
-        $client = $this->wasenderClient();
+        Log::info('✅ WhatsApp send response', [
+            'provider' => $result['provider'],
+            'to' => $result['to'],
+            'message_id' => $result['message_id'],
+        ]);
 
-        // Send message via WasenderAPI
-        $response = $client->sendText($formattedPhone, $messageText);
-
-        Log::info("✅ WasenderAPI Response:", $response);
-
-        // Extract message ID from response
-        $messageId = $response['data']['key']['id'] ?? null;
+        $messageId = $result['message_id'];
 
         // Get conversation details from database
         $existingChat = Whatsapp::where('to', $to)
@@ -93,7 +82,7 @@ public function sendChat(Request $request)
 
         // Save message to database
         $whatsapp = Whatsapp::create([
-            'to' => $formattedPhone,
+            'to' => $result['to'],
             'client_name' => $clientName,
             'store_name' => $storeName,
             'cc_agents' => $ccAgents,
@@ -112,11 +101,12 @@ public function sendChat(Request $request)
             'success' => true,
             'message' => 'Message sent successfully',
             'sid' => $messageId,
+            'provider' => $result['provider'],
             'data' => $whatsapp
         ]);
 
-    } catch (\WasenderApi\Exceptions\WasenderApiException $e) {
-        Log::error("❌ WasenderAPI Error", [
+    } catch (\Throwable $e) {
+        Log::error("❌ WhatsApp provider error", [
             'error' => $e->getMessage(),
             'to' => $request->to ?? 'unknown'
         ]);
@@ -124,16 +114,6 @@ public function sendChat(Request $request)
         return response()->json([
             'success' => false,
             'error' => 'Failed to send message: ' . $e->getMessage()
-        ], 500);
-
-    } catch (\Exception $e) {
-        Log::error("❌ Failed to send chat message", [
-            'error' => $e->getMessage(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'error' => 'An error occurred while sending the message'
         ], 500);
     }
 }
@@ -504,19 +484,21 @@ public function sendMessage($id)
         
         Log::info("📝 Message content:", ['message' => $message]);
 
-        $client = $this->wasenderClient();
+        $result = $this->whatsAppService->sendText($phone, $message, [
+            'country_code' => strtoupper($store_name) === 'RDL3' ? '255' : '254',
+        ]);
 
-        // Send message via WasenderAPI
-        $response = $client->sendText($phone, $message);
+        Log::info('✅ WhatsApp send response for order message', [
+            'provider' => $result['provider'],
+            'to' => $result['to'],
+            'message_id' => $result['message_id'],
+        ]);
 
-        Log::info("✅ WasenderAPI Response:", $response);
-
-        // Extract message ID from response
-        $messageId = $response['data']['key']['id'] ?? null;
+        $messageId = $result['message_id'];
 
         // Save to database
         $whatsappData = [
-            'to' => $phone,
+            'to' => $result['to'],
             'client_name' => $client_name,
             'store_name' => $store_name,
             'cc_agents' => $cc_email,
@@ -533,21 +515,13 @@ public function sendMessage($id)
 
         return back()->with('success', 'WhatsApp message sent successfully ✅');
 
-    } catch (\WasenderApi\Exceptions\WasenderApiException $e) {
-        Log::error("❌ WasenderAPI Error", [
+    } catch (\Throwable $e) {
+        Log::error("❌ WhatsApp sending failed", [
             'error' => $e->getMessage(),
             'order_id' => $id
         ]);
 
         return back()->with('error', 'Failed to send WhatsApp message: ' . $e->getMessage() . ' ❌');
-
-    } catch (\Exception $e) {
-        Log::error("❌ WhatsApp sending failed", [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return back()->with('error', 'Failed to send WhatsApp message ❌');
     }
 }
 

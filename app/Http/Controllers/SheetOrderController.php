@@ -21,7 +21,7 @@ class SheetOrderController extends Controller
             return;
         }
 
-        abort_unless($order->country && $order->country === CountryAccess::userCountryName($user), 403);
+        abort_unless(CountryAccess::matchesCountryName($order->country, $user), 403);
     }
 
   public function index(Request $request)
@@ -35,9 +35,13 @@ class SheetOrderController extends Controller
             $query->where('merchant', $user->name);
         }
     
+        if ($request->filled('country')) {
+            $query->whereRaw('LOWER(country) = ?', [mb_strtolower(trim((string) $request->country))]);
+        }
+
         foreach ($request->all() as $key => $value) {
             if (!empty($value) && \Schema::hasColumn('sheet_orders', $key)) {
-                if (!in_array($key, ['status', 'merchant', 'cc_email'])) {
+                if (!in_array($key, ['status', 'merchant', 'cc_email', 'country'])) {
                     $query->where($key, 'like', "%{$value}%");
                 }
             }
@@ -188,6 +192,8 @@ class SheetOrderController extends Controller
             $request->sheet_name ?? 'DefaultSheet',
             $request->sheet_id
         );
+
+        $validated['updated_at'] = now();
 
         SheetOrder::create($validated);
 

@@ -5,21 +5,43 @@ namespace App\Http\Controllers;
 use App\Models\DailyBudget;
 use App\Models\BudgetTransaction;
 use App\Models\BudgetTopUp;
+use App\Support\CountryAccess;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class DailyBudgetController extends Controller
 {
+    private function budgetQueryForUser(?\App\Models\User $user)
+    {
+        return CountryAccess::scopeByCountryName(
+            DailyBudget::query(),
+            $user
+        );
+    }
+
+    private function resolveCountryOrFail(?\App\Models\User $user): string
+    {
+        $country = CountryAccess::resolveCountryNameForWrite($user, null);
+
+        abort_if(! $country, 403, 'No country is assigned to this user.');
+
+        return $country;
+    }
+
     public function index(Request $request)
     {
+        $user = $request->user()?->loadMissing('country');
+
         Log::info('DailyBudget index requested', [
             'user_id' => auth()->id(),
             'filters' => $request->all(),
         ]);
 
-        $query = DailyBudget::with(['transactions', 'topUps.addedBy']);
+        $query = $this->budgetQueryForUser($user)
+            ->with(['transactions', 'topUps.addedBy']);
 
         if ($request->has('date_from')) {
             $query->whereDate('budget_date', '>=', $request->date_from);
@@ -42,13 +64,22 @@ class DailyBudgetController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user()?->loadMissing('country');
+        $country = $this->resolveCountryOrFail($user);
+
         Log::info('Creating daily budget', [
             'user_id' => auth()->id(),
             'payload' => $request->only(['budget_date', 'initial_amount']),
         ]);
 
         $request->validate([
-            'budget_date' => 'required|date|unique:daily_budgets,budget_date',
+            'budget_date' => [
+                'required',
+                'date',
+                Rule::unique('daily_budgets', 'budget_date')->where(
+                    fn ($query) => $query->where('country', $country)
+                ),
+            ],
             'initial_amount' => 'required|numeric|min:0',
         ]);
 
@@ -57,6 +88,7 @@ class DailyBudgetController extends Controller
         try {
             $budget = DailyBudget::create([
                 'budget_date' => $request->budget_date,
+                'country' => $country,
                 'initial_amount' => $request->initial_amount,
                 'current_amount' => $request->initial_amount,
                 'spent_amount' => 0,
@@ -108,12 +140,15 @@ class DailyBudgetController extends Controller
 
     public function show($id)
     {
+        $user = request()->user()?->loadMissing('country');
+
         Log::info('Viewing daily budget', [
             'user_id' => auth()->id(),
             'budget_id' => $id,
         ]);
 
-        $budget = DailyBudget::with(['transactions.creator', 'topUps.addedBy', 'requisitions.items'])
+        $budget = $this->budgetQueryForUser($user)
+            ->with(['transactions.creator', 'topUps.addedBy', 'requisitions.items'])
             ->findOrFail($id);
 
         return Inertia::render('budgets/show', [
@@ -123,6 +158,8 @@ class DailyBudgetController extends Controller
 
     public function topUp(Request $request, $id)
     {
+        $user = $request->user()?->loadMissing('country');
+
         Log::info('Budget top-up requested', [
             'user_id' => auth()->id(),
             'budget_id' => $id,
@@ -137,7 +174,7 @@ class DailyBudgetController extends Controller
         DB::beginTransaction();
 
         try {
-            $budget = DailyBudget::findOrFail($id);
+            $budget = $this->budgetQueryForUser($user)->findOrFail($id);
             $balanceBefore = $budget->current_amount;
 
             Log::info('Top-up before balance', [
@@ -206,12 +243,15 @@ class DailyBudgetController extends Controller
 
     public function getByDate($date)
     {
+        $user = request()->user()?->loadMissing('country');
+
         Log::info('Fetching budget by date', [
             'user_id' => auth()->id(),
             'date' => $date,
         ]);
 
-        $budget = DailyBudget::with(['transactions.creator', 'topUps.addedBy', 'requisitions'])
+        $budget = $this->budgetQueryForUser($user)
+            ->with(['transactions.creator', 'topUps.addedBy', 'requisitions'])
             ->whereDate('budget_date', $date)
             ->first();
 

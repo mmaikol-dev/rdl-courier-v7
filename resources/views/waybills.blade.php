@@ -372,8 +372,12 @@
                     </tbody>
                 </table>
     
- <p style="font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 1px;">
-    PayBill No: 4 1 3 6 0 3 1<br>
+@php
+    $storeName = strtoupper(trim((string) ($order->store_name ?? 'RDL1')));
+    $paybillNumber = $storeName === 'RDL2' ? '4 1 8 4 5 0 7' : '4 1 3 6 0 3 1';
+@endphp
+<p style="font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 1px;">
+    PayBill No: {{ $paybillNumber }}<br>
     Account No: {{ $order->order_no }}
 </p>
 

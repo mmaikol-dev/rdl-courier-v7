@@ -52,6 +52,17 @@ return [
         'overdue_alert_api_key' => env('WASENDER_OVERDUE_ALERT_API_KEY'),
         'call_center_agents' => array_values(array_filter(array_map('trim', explode(',', (string) env('WASENDER_CALL_CENTER_AGENTS', ''))))),
     ],
+
+    'wawp' => [
+        'base_url' => env('WAWP_BASE_URL', 'https://api.wawp.net'),
+        'instance_id' => env('WAWP_INSTANCE_ID'),
+        'access_token' => env('WAWP_ACCESS_TOKEN'),
+        'timeout' => env('WAWP_TIMEOUT', 20),
+    ],
+
+    'product_alert' => [
+        'phones' => env('PRODUCT_ALERT_PHONES', ''),
+    ],
     
     'africastalking' => [
         'api_key' => env('AFRICASTALKING_API_KEY'),

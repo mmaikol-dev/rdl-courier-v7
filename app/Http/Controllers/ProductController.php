@@ -8,7 +8,10 @@ use App\Models\InventoryLog;
 use App\Models\Barcode;
 use App\Models\Category;
 use App\Models\Unit;
+use App\Models\User;
+use App\Models\Sheet;
 use App\Support\CountryAccess;
+use App\Services\ProductStockAlertService;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
@@ -22,20 +25,44 @@ class ProductController extends Controller
         $isMerchant = $user->roles === 'merchant';
         $categories = Category::select('id', 'name')->get();
         $units = Unit::select('id', 'name', 'short_code')->get();
-        $productsQuery = CountryAccess::scopeProducts(Product::query(), $user);
+        $merchantUsers = CountryAccess::scopeByCountryName(
+            Sheet::query()->whereNotNull('sheet_name')->where('sheet_name', '!=', ''),
+            $user,
+            'country'
+        )
+            ->selectRaw('sheet_name as name')
+            ->distinct()
+            ->orderBy('sheet_name')
+            ->pluck('name')
+            ->values()
+            ->map(fn ($name, $index) => [
+                'id' => $index + 1,
+                'name' => $name,
+            ]);
+        $productsQuery = CountryAccess::scopeProducts(
+            Product::query()->with(['user:id,name,store_address,country_id']),
+            $user
+        );
     
         // Apply merchant filter using UUIDs
         if ($isMerchant) {
             $productsQuery->where('uuid', $user->uuid);
         }
+
+        if ($request->filled('country')) {
+            $country = mb_strtolower(trim($request->string('country')->toString()));
+            $productsQuery->whereRaw('LOWER(country) = ?', [$country]);
+        }
     
         // Paginate with 50 items per page
-        $products = $productsQuery->orderBy('created_at', 'desc')->paginate(50);
+        $products = $productsQuery->orderBy('created_at', 'desc')->paginate(50)->withQueryString();
     
         return Inertia::render('products/index', [
             'products' => $products,
             'categories' => $categories,
             'units' => $units,
+            'merchantUsers' => $merchantUsers,
+            'filters' => $request->only(['country']),
         ]);
     }
     public function inventoryLogs($productCode)
@@ -58,11 +85,12 @@ class ProductController extends Controller
 
         abort_unless(
             CountryAccess::hasGlobalAccess($user->loadMissing('country')) ||
-            optional($product->user)->country_id === $user->country_id,
+            CountryAccess::matchesCountryName($product->country, $user),
             403
         );
 
-        $newQuantity = $product->quantity + $change;
+        $previousQuantity = (int) $product->quantity;
+        $newQuantity = $previousQuantity + $change;
 
         if ($newQuantity < 0) {
             return redirect()->route('products.index')
@@ -70,6 +98,13 @@ class ProductController extends Controller
         }
 
         $product->update(['quantity' => $newQuantity]);
+
+        app(ProductStockAlertService::class)->maybeSend(
+            $product,
+            $previousQuantity,
+            $newQuantity,
+            'Manual quantity update'
+        );
 
         InventoryLog::create([
             'product_name'    => $product->name,
@@ -118,6 +153,7 @@ class ProductController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'merchant' => 'nullable|string|max:255',
             'quantity' => 'required|numeric',
             'buying_price' => 'nullable|numeric',
             'selling_price' => 'nullable|numeric',
@@ -136,12 +172,15 @@ class ProductController extends Controller
         $slug = $this->generateSlug($request->name);
         $code = $this->generateUniqueCode();
         $storeName = $user->name . ' Store'; // Auto-generate store name from user
+        $country = trim((string) $user->store_address) ?: null;
 
         $data = [
             'user_id' => $user->id,
             'uuid' => $user->uuid,
             'name' => $request->name,
             'store_name' => $storeName,
+            'merchant' => $request->merchant,
+            'country' => $country,
             'slug' => $slug,
             'code' => $code,
             'quantity' => $request->quantity,
@@ -166,12 +205,13 @@ class ProductController extends Controller
     {
         $user = $request->user()->loadMissing('country');
         abort_unless(
-            CountryAccess::hasGlobalAccess($user) || optional($product->user)->country_id === $user->country_id,
+            CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($product->country, $user),
             403
         );
 
         $request->validate([
             'name' => 'required|string|max:255',
+            'merchant' => 'nullable|string|max:255',
             'quantity' => 'required|numeric',
             'buying_price' => 'nullable|numeric',
             'selling_price' => 'nullable|numeric',
@@ -192,6 +232,7 @@ class ProductController extends Controller
 
         $data = [
             'name' => $request->name,
+            'merchant' => $request->merchant,
             'slug' => $slug,
             'quantity' => $request->quantity,
             'buying_price' => $request->buying_price,
@@ -215,7 +256,7 @@ class ProductController extends Controller
     {
         $user = request()->user()?->loadMissing('country');
         abort_unless(
-            CountryAccess::hasGlobalAccess($user) || optional($product->user)->country_id === $user?->country_id,
+            CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($product->country, $user),
             403
         );
 
@@ -281,11 +322,13 @@ class ProductController extends Controller
         }
 
         // ✅ Update product quantity
+        $previousQuantity = (int) $product->quantity;
+
         if ($operationType === 'inbound') {
-            $newQuantity = $product->quantity + $totalBarcodes;
+            $newQuantity = $previousQuantity + $totalBarcodes;
             $quantityChange = $totalBarcodes;
         } else { // outbound
-            $newQuantity = $product->quantity - $totalBarcodes;
+            $newQuantity = $previousQuantity - $totalBarcodes;
             $quantityChange = -$totalBarcodes;
 
             if ($newQuantity < 0) {
@@ -298,6 +341,15 @@ class ProductController extends Controller
         }
 
         $product->update(['quantity' => $newQuantity]);
+
+        if ($operationType === 'outbound') {
+            app(ProductStockAlertService::class)->maybeSend(
+                $product,
+                $previousQuantity,
+                (int) $newQuantity,
+                'Barcode outbound scan'
+            );
+        }
 
         // ✅ Log the transaction
         InventoryLog::create([

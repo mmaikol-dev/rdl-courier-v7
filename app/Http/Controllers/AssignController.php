@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\assign;
 use App\Models\OrderHistory;
+use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Models\User;
+use App\Support\CountryAccess;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
@@ -18,15 +20,20 @@ class AssignController extends Controller
      */
     public function index(Request $request)
     {
-        $query = SheetOrder::query();
-    
-        if (auth()->user()->roles === 'merchant') {
-            $query->where('merchant', auth()->user()->name);
+        $user = $request->user()?->loadMissing('country');
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
+
+        if ($user?->roles === 'merchant') {
+            $query->where('merchant', $user->name);
         }
     
+        if ($request->filled('country')) {
+            $query->whereRaw('LOWER(country) = ?', [mb_strtolower(trim((string) $request->country))]);
+        }
+
         foreach ($request->all() as $key => $value) {
             if (!empty($value) && \Schema::hasColumn('sheet_orders', $key)) {
-                if (!in_array($key, ['status', 'merchant', 'cc_email', 'product_name'])) {
+                if (!in_array($key, ['status', 'merchant', 'cc_email', 'product_name', 'country'])) {
                     $query->where($key, 'like', "%{$value}%");
                 }
             }
@@ -45,7 +52,7 @@ class AssignController extends Controller
             });
         }
     
-        if ($request->filled('merchant') && auth()->user()->role !== 'merchant') {
+        if ($request->filled('merchant') && $user?->roles !== 'merchant') {
             $merchants = is_array($request->merchant) ? $request->merchant : explode(',', $request->merchant);
             $query->whereIn('merchant', $merchants);
         }
@@ -65,6 +72,10 @@ class AssignController extends Controller
             $to = Carbon::parse($request->to_date, 'Africa/Nairobi')->endOfDay();
             $query->whereBetween('delivery_date', [$from, $to]);
         }
+
+        if ($request->filled('delivery_date')) {
+            $query->whereDate('delivery_date', $request->delivery_date);
+        }
     
         $query->orderBy('created_at', 'desc');
     
@@ -72,7 +83,10 @@ class AssignController extends Controller
     
         $orders = $query->paginate(50)->appends($request->all());
     
-        $merchantData = SheetOrder::select('merchant', 'sheet_id', 'sheet_name')
+        $merchantData = CountryAccess::scopeByCountryName(
+            SheetOrder::select('merchant', 'sheet_id', 'sheet_name'),
+            $user
+        )
             ->whereNotNull('merchant')
             ->groupBy('merchant', 'sheet_id', 'sheet_name')
             ->get()
@@ -84,11 +98,25 @@ class AssignController extends Controller
                 ];
             });
     
-        $merchantUsers = User::where('roles', 'merchant')->pluck('name');
-        $ccUsers = User::where('roles', 'callcenter1')->pluck('name');
+        $merchantUsers = CountryAccess::scopeByCountryName(
+            Sheet::query()->whereNotNull('sheet_name')->where('sheet_name', '!=', ''),
+            $user,
+            'country'
+        )
+            ->distinct()
+            ->orderBy('sheet_name')
+            ->pluck('sheet_name')
+            ->values();
+        $ccUsers = CountryAccess::scopeUsers(
+            User::query()->where('roles', 'callcenter1'),
+            $user
+        )->pluck('name');
 
         // Get unique product names for filter
-        $productNames = SheetOrder::select('product_name')
+        $productNames = CountryAccess::scopeByCountryName(
+            SheetOrder::select('product_name'),
+            $user
+        )
             ->whereNotNull('product_name')
             ->where('product_name', '!=', '')
             ->distinct()
@@ -119,7 +147,11 @@ class AssignController extends Controller
         ]);
     
         try {
-            $orders = SheetOrder::whereIn('id', $request->order_ids)->get();
+            $user = $request->user()?->loadMissing('country');
+            $orders = CountryAccess::scopeByCountryName(
+                SheetOrder::query(),
+                $user
+            )->whereIn('id', $request->order_ids)->get();
             $ccAgents = $request->cc_emails;
             $updatedCount = 0;
             $agentIndex = 0;

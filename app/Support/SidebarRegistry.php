@@ -22,6 +22,7 @@ class SidebarRegistry
             ['key' => 'import', 'title' => 'Import Orders', 'href' => '/import', 'group' => 'Operations'],
             ['key' => 'whatsapp', 'title' => 'Whatsapp Chats', 'href' => '/whatsapp', 'group' => 'Operations'],
             ['key' => 'products', 'title' => 'Products', 'href' => '/products', 'group' => 'Inventory'],
+            ['key' => 'inventory-deductions', 'title' => 'Inventory Deductions', 'href' => '/inventory-deductions', 'group' => 'Inventory'],
             ['key' => 'transfer', 'title' => 'Transfer', 'href' => '/transfer', 'group' => 'Inventory'],
             ['key' => 'units', 'title' => 'Merchants', 'href' => '/units', 'group' => 'Inventory'],
             ['key' => 'categories', 'title' => 'Categories', 'href' => '/categories', 'group' => 'Inventory'],

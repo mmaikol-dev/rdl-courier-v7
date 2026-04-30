@@ -16,6 +16,7 @@ class Sheet extends Model
     protected $fillable = [
         'sheet_id',
         'sheet_name',
+        'store_name',
         'shopify_name',
         'access_token',
         'country',

@@ -12,6 +12,7 @@ import {
     ListCheckIcon,
     MapIcon,
     MessagesSquareIcon,
+    PackageSearch,
     PenLineIcon,
     PlusIcon,
     PrinterIcon,
@@ -41,6 +42,7 @@ export type SidebarItemKey =
     | 'import'
     | 'whatsapp'
     | 'products'
+    | 'inventory-deductions'
     | 'transfer'
     | 'units'
     | 'categories'
@@ -87,6 +89,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         label: 'Inventory',
         items: [
             { key: 'products', title: 'Products', href: '/products', icon: BoxesIcon, group: 'Inventory' },
+            { key: 'inventory-deductions', title: 'Inventory Deductions', href: '/inventory-deductions', icon: PackageSearch, group: 'Inventory' },
             { key: 'transfer', title: 'Transfer', href: '/transfer', icon: SendToBackIcon, group: 'Inventory' },
             { key: 'units', title: 'Merchants', href: '/units', icon: UserRoundIcon, group: 'Inventory' },
             { key: 'categories', title: 'Categories', href: '/categories', icon: SquareArrowDownLeftIcon, group: 'Inventory' },

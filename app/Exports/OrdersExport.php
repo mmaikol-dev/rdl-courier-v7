@@ -3,7 +3,6 @@
 namespace App\Exports;
 
 use App\Models\SheetOrder;
-use Illuminate\Contracts\View\View;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -17,30 +16,42 @@ class OrdersExport implements FromQuery, WithHeadings, WithMapping
         $this->filters = $filters;
     }
 
-   public function query()
-{
-    $query = SheetOrder::query()
-        ->when(!empty($this->filters['country']), function ($q) {
-            $q->where('country', $this->filters['country']);
-        })
-        ->when(!empty($this->filters['merchant']), function ($q) {
-            $q->where('merchant', $this->filters['merchant']);
-        })
-        ->when(!empty($this->filters['statuses']), function ($q) {
-            $q->whereIn('status', $this->filters['statuses']);
-        })
-        ->when(!empty($this->filters['from']) && !empty($this->filters['to']), function ($q) {
-            $q->whereBetween('delivery_date', [
-                $this->filters['from'], $this->filters['to']
-            ]);
-        });
+    public function query()
+    {
+        $workflowOrderIds = array_values(array_filter($this->filters['workflow_order_ids'] ?? []));
+        $extraStatuses = array_values(array_filter($this->filters['extra_statuses'] ?? []));
+        $from = $this->filters['from'] ?? null;
+        $to = $this->filters['to'] ?? null;
 
-    // Ensure product grouping
-     $query->orderBy('product_name')
-          ->orderBy('status');// optional, but cleaner
+        $query = SheetOrder::query()
+            ->when(!empty($this->filters['country']), function ($q) {
+                $q->where('country', $this->filters['country']);
+            })
+            ->when(!empty($this->filters['merchant']), function ($q) {
+                $q->where('merchant', $this->filters['merchant']);
+            })
+            ->where(function ($query) use ($workflowOrderIds, $extraStatuses, $from, $to): void {
+                if ($workflowOrderIds !== []) {
+                    $query->whereIn('id', $workflowOrderIds);
+                }
 
-    return $query;
-}
+                if ($extraStatuses !== []) {
+                    $query->orWhere(function ($extraQuery) use ($extraStatuses, $from, $to): void {
+                        $extraQuery
+                            ->whereIn('status', $extraStatuses)
+                            ->where(function ($statusQuery): void {
+                                $statusQuery->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
+                            })
+                            ->whereBetween('delivery_date', [$from, $to]);
+                    });
+                }
+            });
+
+        return $query
+            ->orderBy('status')
+            ->orderBy('product_name')
+            ->orderBy('delivery_date');
+    }
 
 
     public function headings(): array
@@ -59,7 +70,7 @@ class OrdersExport implements FromQuery, WithHeadings, WithMapping
             'Product Name',
             'Quantity',
             'Status',
-            'Agent',
+            'callcenter',
             'Delivery Date',
             'Instructions',
             'Merchant'
@@ -82,7 +93,7 @@ class OrdersExport implements FromQuery, WithHeadings, WithMapping
             $order->product_name,
             $order->quantity,
             $order->status,
-            $order->agent,
+            $order->cc_email,
             $order->delivery_date,
             $order->instructions,
             $order->merchant,

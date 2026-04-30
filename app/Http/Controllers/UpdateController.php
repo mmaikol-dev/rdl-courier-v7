@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SheetOrder;
 use App\Models\Update;
+use App\Support\CountryAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -14,12 +15,25 @@ class UpdateController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        //
-        return Inertia::render('updates/index', [
-            'updates' => SheetOrder::whereNotNull('updated_at')->get(),
+        $user = $request->user()?->loadMissing('country');
 
+        $updatesQuery = CountryAccess::scopeByCountryName(
+            SheetOrder::query(),
+            $user
+        )->whereNotNull('updated_at');
+
+        if ($request->filled('country')) {
+            $country = mb_strtolower(trim($request->string('country')->toString()));
+            $updatesQuery->whereRaw('LOWER(country) = ?', [$country]);
+        }
+
+        return Inertia::render('updates/index', [
+            'updates' => $updatesQuery
+                ->orderBy('updated_at')
+                ->get(),
+            'filters' => $request->only(['search', 'country']),
         ]);
     }
 

@@ -1,24 +1,17 @@
-"use client";
+'use client';
 
-import AppLayout from '@/layouts/app-layout';
-import { Head, usePage, router } from '@inertiajs/react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import type { BreadcrumbItem } from '@/components/ui/breadcrumb';
-import { toast } from 'sonner';
-import {
-    RefreshCcw,
-    Hash,
-    FileSpreadsheet,
-    Clock3,
-    Search,
-    Layers3,
-    LoaderCircle,
-    ArrowUpRight,
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import AppLayout from '@/layouts/app-layout';
+import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
+import { Head, router, usePage } from '@inertiajs/react';
+import { ArrowUpRight, Clock3, FileSpreadsheet, Hash, Layers3, LoaderCircle, RefreshCcw, Search } from 'lucide-react';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 interface SheetOrder {
     id: number;
@@ -34,7 +27,7 @@ export default function PendingUpdates() {
     const { props } = usePage();
     const { updates, filters } = props as unknown as {
         updates: SheetOrder[];
-        filters: { search?: string };
+        filters: { search?: string; country?: string };
     };
 
     const BREADCRUMBS: BreadcrumbItem[] = [
@@ -43,13 +36,15 @@ export default function PendingUpdates() {
     ];
 
     const [search, setSearch] = React.useState(filters?.search || '');
+    const [selectedCountry, setSelectedCountry] = React.useState(filters?.country || 'all');
     const [isRunning, setIsRunning] = React.useState(false);
 
     const filtered = React.useMemo(() => {
-        return updates.filter((order) =>
-            order.order_no.toLowerCase().includes(search.toLowerCase()) ||
-            order.merchant?.toLowerCase().includes(search.toLowerCase()) ||
-            order.sheet_name?.toLowerCase().includes(search.toLowerCase()),
+        return updates.filter(
+            (order) =>
+                order.order_no.toLowerCase().includes(search.toLowerCase()) ||
+                order.merchant?.toLowerCase().includes(search.toLowerCase()) ||
+                order.sheet_name?.toLowerCase().includes(search.toLowerCase()),
         );
     }, [search, updates]);
 
@@ -102,13 +97,38 @@ export default function PendingUpdates() {
                         </CardHeader>
                         <CardContent className="p-5">
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                 <Input
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
                                     placeholder="Search by order no, merchant, or sheet"
                                     className="h-11 pl-9"
                                 />
+                            </div>
+                            <div className="mt-3">
+                                <Select
+                                    value={selectedCountry}
+                                    onValueChange={(value) => {
+                                        setSelectedCountry(value);
+                                        router.get('/updates', value === 'all' ? {} : { country: value }, {
+                                            preserveState: true,
+                                            preserveScroll: true,
+                                            replace: true,
+                                        });
+                                    }}
+                                >
+                                    <SelectTrigger className="h-11">
+                                        <SelectValue placeholder="Filter by country" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All countries</SelectItem>
+                                        {EAST_AFRICAN_COUNTRIES.map((country) => (
+                                            <SelectItem key={country} value={country}>
+                                                {country}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </CardContent>
                     </Card>
@@ -120,7 +140,7 @@ export default function PendingUpdates() {
                                     <Layers3 className="h-5 w-5 text-sky-600" />
                                     <Badge variant="secondary">{filtered.length}</Badge>
                                 </div>
-                                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Pending Orders</p>
+                                <p className="mt-4 text-xs tracking-[0.2em] text-muted-foreground uppercase">Pending Orders</p>
                                 <p className="mt-1 text-2xl font-semibold">{updates.length}</p>
                             </CardContent>
                         </Card>
@@ -131,7 +151,7 @@ export default function PendingUpdates() {
                                     <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
                                     <Badge variant="secondary">{sheetCount}</Badge>
                                 </div>
-                                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Affected Sheets</p>
+                                <p className="mt-4 text-xs tracking-[0.2em] text-muted-foreground uppercase">Affected Sheets</p>
                                 <p className="mt-1 text-2xl font-semibold">{sheetCount}</p>
                             </CardContent>
                         </Card>
@@ -142,7 +162,7 @@ export default function PendingUpdates() {
                                     <Clock3 className="h-5 w-5 text-amber-600" />
                                     <Badge variant="secondary">{merchantCount}</Badge>
                                 </div>
-                                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Merchants</p>
+                                <p className="mt-4 text-xs tracking-[0.2em] text-muted-foreground uppercase">Merchants</p>
                                 <p className="mt-1 text-2xl font-semibold">{merchantCount}</p>
                                 <p className="mt-1 truncate text-xs text-slate-500">Oldest: {oldestUpdate}</p>
                             </CardContent>
@@ -157,16 +177,12 @@ export default function PendingUpdates() {
                                 <CardTitle className="text-xl">Pending Orders</CardTitle>
                                 <CardDescription>These records remain queued until the update command processes them.</CardDescription>
                             </div>
-                            <Badge className="w-fit bg-slate-900 text-white hover:bg-slate-900">
-                                {filtered.length} visible
-                            </Badge>
+                            <Badge className="w-fit bg-slate-900 text-white hover:bg-slate-900">{filtered.length} visible</Badge>
                         </div>
                     </CardHeader>
                     <CardContent className="p-4 sm:p-5">
                         {filtered.length === 0 && (
-                            <div className="rounded-2xl border border-dashed py-12 text-center text-muted-foreground">
-                                No pending updates found
-                            </div>
+                            <div className="rounded-2xl border border-dashed py-12 text-center text-muted-foreground">No pending updates found</div>
                         )}
 
                         {filtered.length > 0 && (
@@ -181,13 +197,11 @@ export default function PendingUpdates() {
                                                 <Hash className="h-3.5 w-3.5 shrink-0" />
                                                 <span className="truncate">{order.order_no}</span>
                                             </Badge>
-                                            <Badge className="shrink-0 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-100">
-                                                Pending
-                                            </Badge>
+                                            <Badge className="shrink-0 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-100">Pending</Badge>
                                         </div>
 
                                         <div className="mt-4 min-w-0 space-y-2">
-                                            <p className="line-clamp-2 min-h-[3rem] text-base font-semibold leading-6 text-slate-900">
+                                            <p className="line-clamp-2 min-h-[3rem] text-base leading-6 font-semibold text-slate-900">
                                                 {order.sheet_name}
                                             </p>
                                             <p className="truncate text-sm text-slate-500">{order.merchant}</p>

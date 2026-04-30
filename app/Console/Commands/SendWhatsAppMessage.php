@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use App\Models\Whatsapp;
 use App\Models\SheetOrder;
+use App\Services\WhatsAppFallbackService;
 use Carbon\Carbon;
 use Exception;
 
@@ -32,7 +33,7 @@ class SendWhatsAppMessage extends Command
 
         $this->info("📦 Found {$orders->count()} orders to process.");
 
-        $client = new \WasenderApi\WasenderClient((string) config('services.wasender.api_key', ''));
+        $sender = app(WhatsAppFallbackService::class);
 
         foreach ($orders as $order) {
             try {
@@ -70,15 +71,20 @@ class SendWhatsAppMessage extends Command
 
                 Log::info("📤 Sending message to {$phone} for order {$order_no}");
 
-                // Send via WasenderAPI
-                $response = $client->sendText($phone, $message);
+                $result = $sender->sendText($phone, $message, [
+                    'country_code' => strtoupper($store_name) === 'RDL3' ? '255' : '254',
+                ]);
 
-                Log::info("✅ WasenderAPI Response for order {$order_no}:", $response);
+                Log::info("✅ WhatsApp provider response for order {$order_no}:", [
+                    'provider' => $result['provider'],
+                    'to' => $result['to'],
+                    'message_id' => $result['message_id'],
+                ]);
 
-                $messageId = $response['data']['key']['id'] ?? null;
+                $messageId = $result['message_id'];
 
                 Whatsapp::create([
-                    'to'          => $phone,
+                    'to'          => $result['to'],
                     'client_name' => $client_name,
                     'store_name'  => $store_name,
                     'cc_agents'   => $cc_email,
@@ -96,8 +102,8 @@ class SendWhatsAppMessage extends Command
                 $this->info("⏳ Waiting {$delay}s...");
                 sleep($delay);
 
-            } catch (\WasenderApi\Exceptions\WasenderApiException $e) {
-                Log::error("❌ WasenderAPI error for order {$order->order_no}", [
+            } catch (Exception $e) {
+                Log::error("❌ WhatsApp provider error for order {$order->order_no}", [
                     'error' => $e->getMessage(),
                     'phone' => $order->phone,
                 ]);
@@ -112,26 +118,7 @@ class SendWhatsAppMessage extends Command
                     'status'      => 'failed',
                     'sid'         => null,
                 ]);
-
-                $this->error("❌ WasenderAPI error: " . $e->getMessage());
-
-            } catch (Exception $e) {
-                Log::error("❌ Unexpected error for order {$order->order_no}", [
-                    'error' => $e->getMessage(),
-                    'phone' => $order->phone,
-                ]);
-
-                Whatsapp::create([
-                    'to'          => $order->phone,
-                    'client_name' => $order->client_name ?? 'Client',
-                    'store_name'  => strtoupper($order->store_name ?? 'STORE'),
-                    'cc_agents'   => $order->cc_email ?? null,
-                    'message'     => "Order {$order->order_no} — message failed to send.",
-                    'status'      => 'failed',
-                    'sid'         => null,
-                ]);
-
-                $this->error("❌ Unexpected error: " . $e->getMessage());
+                $this->error("❌ WhatsApp provider error: " . $e->getMessage());
             }
         }
 

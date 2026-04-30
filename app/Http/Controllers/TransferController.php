@@ -6,6 +6,7 @@ use App\Models\Transfer;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Deduction;
+use App\Support\CountryAccess;
 use Illuminate\Support\Facades\Log;
 
 use Illuminate\Http\Request;
@@ -14,6 +15,15 @@ use Inertia\Inertia;
 
 class TransferController extends Controller
 {
+    private function resolveCountryOrFail(?\App\Models\User $user): string
+    {
+        $country = CountryAccess::resolveCountryNameForWrite($user, null);
+
+        abort_if(! $country, 403, 'No country is assigned to this user.');
+
+        return $country;
+    }
+
     public function index(Request $request)
     {
         $view = $request->get('view', 'grouped');
@@ -27,7 +37,9 @@ class TransferController extends Controller
 
     private function groupedView(Request $request)
     {
-        $query = Transfer::query()
+        $user = $request->user()?->loadMissing('country');
+
+        $query = CountryAccess::scopeByCountryName(Transfer::query(), $user)
             ->select(
                 'product_id',
                 'agent_id',
@@ -53,8 +65,13 @@ class TransferController extends Controller
 
         $groupedTransfers = $query->latest('last_transfer_date')->paginate(20);
 
-        $products = Product::select('id', 'name','unit_id')->get();
-        $agents = User::where('roles', 'agent')
+        $products = CountryAccess::scopeProducts(Product::query(), $user)
+            ->select('id', 'name', 'unit_id')
+            ->get();
+        $agents = CountryAccess::scopeUsers(
+            User::query()->where('roles', 'agent'),
+            $user
+        )
             ->select('id', 'name')
             ->orderBy('name')
             ->get();
@@ -69,7 +86,9 @@ class TransferController extends Controller
 
     private function detailedView(Request $request)
     {
-        $query = Transfer::with(['product', 'agent']);
+        $user = $request->user()?->loadMissing('country');
+        $query = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+            ->with(['product', 'agent']);
 
         if ($request->product_id) {
             $query->where('product_id', $request->product_id);
@@ -85,8 +104,13 @@ class TransferController extends Controller
 
         $transfers = $query->latest()->paginate(20);
 
-        $products = Product::select('id', 'name','unit_id')->get();
-        $agents = User::where('roles', 'agent')
+        $products = CountryAccess::scopeProducts(Product::query(), $user)
+            ->select('id', 'name', 'unit_id')
+            ->get();
+        $agents = CountryAccess::scopeUsers(
+            User::query()->where('roles', 'agent'),
+            $user
+        )
             ->select('id', 'name')
             ->orderBy('name')
             ->get();
@@ -101,7 +125,10 @@ class TransferController extends Controller
 
     public function show(Request $request, $productId, $agentId)
     {
-        $query = Transfer::where('product_id', $productId)
+        $user = $request->user()?->loadMissing('country');
+
+        $query = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+            ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->with(['product', 'agent', 'unit']);
     
@@ -112,17 +139,20 @@ class TransferController extends Controller
         $transfers = $query->latest()->paginate(20);
         
         // Get deductions for this product-agent combination
-        $deductions = Deduction::where('product_id', $productId)
+        $deductions = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+            ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->latest()
             ->get();
         
         // Calculate totals
-        $totalTransferred = Transfer::where('product_id', $productId)
+        $totalTransferred = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+            ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
             
-        $totalDeducted = Deduction::where('product_id', $productId)
+        $totalDeducted = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+            ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
             
@@ -141,6 +171,9 @@ class TransferController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user()?->loadMissing('country');
+        $country = $this->resolveCountryOrFail($user);
+
         $validated = $request->validate([
             'region' => 'required|string',
             'from' => 'required|string',
@@ -150,19 +183,28 @@ class TransferController extends Controller
             'transfers.*.agent_id' => 'required|exists:users,id',
         ]);
 
-        DB::transaction(function () use ($validated) {
+        DB::transaction(function () use ($validated, $user, $country) {
             foreach ($validated['transfers'] as $transferData) {
-                $product = Product::findOrFail($transferData['product_id']);
+                $product = CountryAccess::scopeProducts(
+                    Product::query(),
+                    $user
+                )->findOrFail($transferData['product_id']);
+
+                $agent = CountryAccess::scopeUsers(
+                    User::query()->where('roles', 'agent'),
+                    $user
+                )->findOrFail($transferData['agent_id']);
 
                 Transfer::create([
                     'product_id' => $product->id,
                     'merchant' => $product->unit_id ?? $product->merchant,
                     'quantity' => $transferData['quantity'],
-                    'agent_id' => $transferData['agent_id'],
+                    'agent_id' => $agent->id,
                     'date' => now()->toDateString(),
                     'region' => $validated['region'],
                     'store_name' => $product->name,
                     'from' => $validated['from'],
+                    'country' => $country,
                     'transfer_by' => auth()->user()->name ?? 'System',
                 ]);
             }
@@ -173,18 +215,29 @@ class TransferController extends Controller
     
     public function storeDeduction(Request $request, $productId, $agentId)
     {
+        $user = $request->user()?->loadMissing('country');
+        $country = $this->resolveCountryOrFail($user);
+
         $validated = $request->validate([
             'code' => 'required|string|unique:deductions,code',
             'quantity' => 'required|integer|min:1',
             'reason' => 'nullable|string|max:500',
         ]);
 
+        CountryAccess::scopeProducts(Product::query(), $user)->findOrFail($productId);
+        CountryAccess::scopeUsers(
+            User::query()->where('roles', 'agent'),
+            $user
+        )->findOrFail($agentId);
+
         // Calculate current remaining quantity
-        $totalTransferred = Transfer::where('product_id', $productId)
+        $totalTransferred = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+            ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
             
-        $totalDeducted = Deduction::where('product_id', $productId)
+        $totalDeducted = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+            ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
             
@@ -204,6 +257,7 @@ class TransferController extends Controller
             'quantity' => $validated['quantity'],
             'reason' => $validated['reason'],
             'deducted_by' => auth()->user()->name ?? 'System',
+            'country' => $country,
         ]);
 
         return redirect()->back()->with('success', 'Deduction recorded successfully!');
@@ -211,7 +265,10 @@ class TransferController extends Controller
     
     public function destroyDeduction($id)
     {
-        $deduction = Deduction::findOrFail($id);
+        $deduction = CountryAccess::scopeByCountryName(
+            Deduction::query(),
+            request()->user()?->loadMissing('country')
+        )->findOrFail($id);
         $deduction->delete();
         
         return redirect()->back()->with('success', 'Deduction deleted successfully!');

@@ -1,3 +1,4 @@
+import { cp, mkdir } from 'node:fs/promises';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
@@ -12,9 +13,20 @@ export default defineConfig({
             ssr: 'resources/js/ssr.tsx',
             refresh: true,
         }),
+        {
+            name: 'copy-pwa-icons-to-build',
+            async closeBundle() {
+                const sourceDir = resolve(__dirname, 'public/icons');
+                const targetDir = resolve(__dirname, 'public/build/icons');
+
+                await mkdir(targetDir, { recursive: true });
+                await cp(sourceDir, targetDir, { recursive: true });
+            },
+        },
         react(),
         tailwindcss(),
         VitePWA({
+            buildBase: '/build/',
             registerType: 'autoUpdate',
             devOptions: {
                 enabled: false,
@@ -24,6 +36,16 @@ export default defineConfig({
                 clientsClaim: true,
                 skipWaiting: true,
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+                manifestTransforms: [
+                    async (entries) => ({
+                        manifest: entries.map((entry) => ({
+                            ...entry,
+                            url: entry.url.startsWith('icons/') ? `/${entry.url}` : entry.url,
+                        })),
+                        warnings: [],
+                    }),
+                ],
+                navigateFallback: null,
                 navigateFallbackDenylist: [/^\/.*$/],
             },
             includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],

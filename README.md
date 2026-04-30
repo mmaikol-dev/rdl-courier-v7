@@ -19,7 +19,7 @@ RealDeal is a logistics operations platform that centralises everything from ord
 | **Dispatch Agent** | View assigned orders, generate waybills, mark deliveries |
 | **Warehouse** | Product management, barcode scanning, stock transfers |
 | **Merchant** | View and confirm their own orders via the finance workflow |
-| **Call Center** | WhatsApp/chat conversations, STK push, customer communication |
+| **Call Center** | WhatsApp/chat conversations, STK push, customer communication,orders  |
 
 ---
 
@@ -280,10 +280,6 @@ composer run dev
 ```
 
 > `composer run dev` starts the Laravel server, queue worker, and Vite dev server concurrently.
-
-## Deployment Notes
-
-For Railway deployment setup, common build errors, and the fixes used in this project, see [`RAILWAY_SETUP.md`](/home/atlas/Downloads/rdl-mcp%20(2)/RAILWAY_SETUP.md).
 
 ---
 

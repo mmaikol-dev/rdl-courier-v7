@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Sheet;
+use App\Models\User;
 use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,13 +24,14 @@ class SheetController extends Controller
     /**
      * Display a listing of the resource.
      */
-public function index()
+    public function index(Request $request)
 {
-    $user = auth()->user()?->loadMissing('country');
+    $user = $request->user()?->loadMissing('country');
     $query = CountryAccess::scopeByCountryName(Sheet::select(
         'id',
         'sheet_id',
         'sheet_name',
+        'store_name',
         'shopify_name',
         'access_token',
         'country',
@@ -42,10 +44,21 @@ public function index()
         $query->where('sheet_name', $user->name);
     }
 
+    if ($request->filled('country')) {
+        $country = mb_strtolower(trim($request->string('country')->toString()));
+        $query->whereRaw('LOWER(country) = ?', [$country]);
+    }
+
     $sheets = $query->orderBy('created_at', 'desc')->get();
+    $ccUsers = CountryAccess::scopeUsers(
+        User::query()->where('roles', 'callcenter1'),
+        $user
+    )->pluck('name');
 
     return Inertia::render('sheets/index', [
         'sheets' => $sheets,
+        'ccUsers' => $ccUsers,
+        'filters' => $request->only(['country']),
     ]);
 }
 
@@ -103,6 +116,7 @@ public function index()
         $request->validate([
             'sheet_id'      => 'required|string|unique:sheets,sheet_id',
             'sheet_name'    => 'required|string',
+            'store_name'    => 'nullable|string',
             'shopify_name'  => 'nullable|string',
             'access_token'  => 'nullable|string',
             'country'       => 'nullable|string',
@@ -111,6 +125,7 @@ public function index()
         ]);
 
         $validated = $request->all();
+        $validated['cc_agents'] = $this->normalizeCcAgents($validated['cc_agents'] ?? null);
         $validated['country'] = CountryAccess::resolveCountryNameForWrite(
             $request->user()?->loadMissing('country'),
             $request->country
@@ -144,20 +159,22 @@ public function index()
     {
         abort_unless(
             CountryAccess::hasGlobalAccess($request->user()?->loadMissing('country')) ||
-            $sheet->country === CountryAccess::userCountryName($request->user()?->loadMissing('country')),
+            CountryAccess::matchesCountryName($sheet->country, $request->user()?->loadMissing('country')),
             403
         );
 
         $validated = $request->validate([
             'sheet_name' => 'required|string|max:255',
             'sheet_id' => 'required|string|max:255',
+            'store_name' => 'nullable|string|max:255',
             'shopify_name' => 'nullable|string|max:255',
             'access_token' => 'nullable|string|max:255',
             'country' => 'nullable|string|max:100',
-            'cc_agents' => 'nullable|string|max:255',
+            'cc_agents' => 'nullable|string',
             'sku' => 'nullable|string|max:255',
         ]);
 
+        $validated['cc_agents'] = $this->normalizeCcAgents($validated['cc_agents'] ?? null);
         $validated['country'] = CountryAccess::resolveCountryNameForWrite(
             $request->user()?->loadMissing('country'),
             $validated['country'] ?? null
@@ -175,12 +192,62 @@ public function index()
     {
         abort_unless(
             CountryAccess::hasGlobalAccess(request()->user()?->loadMissing('country')) ||
-            $sheet->country === CountryAccess::userCountryName(request()->user()?->loadMissing('country')),
+            CountryAccess::matchesCountryName($sheet->country, request()->user()?->loadMissing('country')),
             403
         );
 
         $sheet->delete();
 
         return redirect()->back()->with('success', 'Sheet deleted successfully.');
+    }
+
+    private function normalizeCcAgents(?string $raw): ?string
+    {
+        $raw = trim((string) $raw);
+
+        if ($raw === '') {
+            return null;
+        }
+
+        if (str_starts_with($raw, '{')) {
+            $decoded = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            }
+        }
+
+        $lines = preg_split('/\r?\n/', $raw);
+        $map = [];
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (strpos($line, ':') === false) {
+                continue;
+            }
+
+            [$sheetName, $agentsRaw] = array_map('trim', explode(':', $line, 2));
+
+            if ($sheetName === '' || $agentsRaw === '') {
+                continue;
+            }
+
+            $agents = array_filter(array_map('trim', explode(',', $agentsRaw)));
+
+            if ($agents === []) {
+                continue;
+            }
+
+            $map[$sheetName] = array_values($agents);
+        }
+
+        if ($map === []) {
+            return $raw;
+        }
+
+        return json_encode($map, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 }

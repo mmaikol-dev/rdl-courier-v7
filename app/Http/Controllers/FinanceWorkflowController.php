@@ -14,6 +14,13 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class FinanceWorkflowController extends Controller
 {
+    private function activeWorkflowScope($query)
+    {
+        return $query->where(function ($query): void {
+            $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
+        });
+    }
+
     private function deliveredScope($query)
     {
         return $query->where(function ($query): void {
@@ -36,20 +43,18 @@ class FinanceWorkflowController extends Controller
 
         return match ($stage) {
             'delivery' => $query
-                ->where('status', 'scheduled')
+                ->whereIn('status', ['scheduled', 'dispatched'])
                 ->whereNotNull('code')
                 ->where('code', '!=', ''),
-            'confirmation' => $this->deliveredScope($query)
-                ->whereNull('merchant_confirmed_at')
-                ->where(function ($query): void {
-                    $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-                }),
-            'remit' => $query
-                ->whereNotNull('report_generated_at')
-                ->whereNotNull('merchant_confirmed_at')
-                ->where(function ($query): void {
-                    $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-                }),
+            'confirmation' => $this->activeWorkflowScope(
+                $this->deliveredScope($query)
+                    ->whereNull('merchant_confirmed_at')
+            ),
+            'remit' => $this->activeWorkflowScope(
+                $query
+                    ->whereNotNull('report_generated_at')
+                    ->whereNotNull('merchant_confirmed_at')
+            ),
             'history' => $query
                 ->whereNotNull('report_generated_at')
                 ->where('agent', 'Remitted'),
@@ -63,7 +68,7 @@ class FinanceWorkflowController extends Controller
         $baseQuery = $this->merchantBaseQuery($user);
 
         $readyForDelivery = (clone $baseQuery)
-            ->where('status', 'scheduled')
+            ->whereIn('status', ['scheduled', 'dispatched'])
             ->whereNotNull('code')
             ->where('code', '!=', '')
             ->selectRaw('merchant, COUNT(*) as orders_count, SUM(COALESCE(amount, 0)) as total_amount, MIN(delivery_date) as earliest_delivery, MAX(delivery_date) as latest_delivery')
@@ -78,11 +83,10 @@ class FinanceWorkflowController extends Controller
                 'latest_delivery' => $row->latest_delivery,
             ]);
 
-        $awaitingConfirmation = $this->deliveredScope(clone $baseQuery)
-            ->whereNull('merchant_confirmed_at')
-            ->where(function ($query): void {
-                $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-            })
+        $awaitingConfirmation = $this->activeWorkflowScope(
+            $this->deliveredScope(clone $baseQuery)
+                ->whereNull('merchant_confirmed_at')
+        )
             ->selectRaw('merchant, COUNT(*) as orders_count, SUM(COALESCE(amount, 0)) as total_amount, MAX(report_generated_at) as report_generated_at')
             ->groupBy('merchant')
             ->orderBy('merchant')
@@ -94,12 +98,9 @@ class FinanceWorkflowController extends Controller
                 'report_generated_at' => $row->report_generated_at,
             ]);
 
-        $readyToRemit = (clone $baseQuery)
+        $readyToRemit = $this->activeWorkflowScope(clone $baseQuery)
             ->whereNotNull('report_generated_at')
             ->whereNotNull('merchant_confirmed_at')
-            ->where(function ($query): void {
-                $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-            })
             ->selectRaw('merchant, COUNT(*) as orders_count, SUM(COALESCE(amount, 0)) as total_amount, MAX(merchant_confirmed_at) as merchant_confirmed_at')
             ->groupBy('merchant')
             ->orderBy('merchant')
@@ -185,50 +186,89 @@ class FinanceWorkflowController extends Controller
     {
         $validated = $request->validate([
             'merchant' => ['required', 'string', 'max:255'],
+            'order_ids' => ['nullable', 'array', 'min:1'],
+            'order_ids.*' => ['integer'],
         ]);
 
         $user = $request->user()?->loadMissing('country');
 
-        CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
             ->where('merchant', $validated['merchant'])
-            ->where('status', 'scheduled')
+            ->whereIn('status', ['scheduled', 'dispatched'])
             ->whereNotNull('code')
-            ->where('code', '!=', '')
-            ->update([
+            ->where('code', '!=', '');
+
+        if (! empty($validated['order_ids'])) {
+            $query->whereIn('id', $validated['order_ids']);
+        }
+
+        $updated = $query->update([
                 'status' => 'Delivered',
                 'delivered_at' => now(),
                 'delivered_by' => $user?->id,
             ]);
 
-        return back()->with('success', 'Orders marked as delivered.');
+        if ($updated === 0) {
+            return back()->withErrors([
+                'merchant' => 'No eligible orders were selected for delivery confirmation.',
+            ]);
+        }
+
+        return back()->with('success', $updated . ' order(s) marked as delivered.');
     }
 
     public function downloadMerchantReport(Request $request)
     {
         $validated = $request->validate([
             'merchant' => ['required', 'string', 'max:255'],
-            'statuses' => ['required', 'array', 'min:1'],
-            'statuses.*' => ['required', 'string', 'max:255'],
+            'extra_statuses' => ['nullable', 'array'],
+            'extra_statuses.*' => ['required', 'string', 'max:255'],
+            'from' => ['nullable', 'date', 'required_with:to,extra_statuses'],
+            'to' => ['nullable', 'date', 'required_with:from,extra_statuses', 'after_or_equal:from'],
         ]);
 
         $user = $request->user()?->loadMissing('country');
+        $merchant = $validated['merchant'];
+        $extraStatuses = collect($validated['extra_statuses'] ?? [])
+            ->map(fn ($status): string => trim((string) $status))
+            ->filter(fn (string $status): bool => $status !== '' && strtolower($status) !== 'delivered')
+            ->unique()
+            ->values()
+            ->all();
 
-        CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
-            ->where('merchant', $validated['merchant'])
-            ->whereIn('status', $validated['statuses'])
-            ->where(function ($query): void {
-                $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-            })
+        if ($extraStatuses !== [] && (empty($validated['from']) || empty($validated['to']))) {
+            return back()->withErrors([
+                'extra_statuses' => 'Select a date range for the additional statuses.',
+            ]);
+        }
+
+        $workflowOrdersQuery = $this->stageQuery('confirmation', $user)
+            ->where('merchant', $merchant);
+
+        $workflowOrderIds = (clone $workflowOrdersQuery)
+            ->pluck('id')
+            ->all();
+
+        if ($workflowOrderIds === []) {
+            return back()->withErrors([
+                'merchant' => 'No delivered workflow orders are available for this merchant right now.',
+            ]);
+        }
+
+        $workflowOrdersQuery
             ->update([
                 'report_generated_at' => now(),
                 'report_generated_by' => $user?->id,
             ]);
 
         return Excel::download(new OrdersExport([
-            'merchant' => $validated['merchant'],
-            'statuses' => $validated['statuses'],
+            'merchant' => $merchant,
             'country' => CountryAccess::userCountryName($user),
-        ]), 'merchant_report_' . str()->slug($validated['merchant']) . '.xlsx');
+            'workflow_order_ids' => $workflowOrderIds,
+            'extra_statuses' => $extraStatuses,
+            'from' => $validated['from'] ?? null,
+            'to' => $validated['to'] ?? null,
+        ]), 'merchant_report_' . str()->slug($merchant) . '.xlsx');
     }
 
     public function markConfirmed(Request $request): RedirectResponse

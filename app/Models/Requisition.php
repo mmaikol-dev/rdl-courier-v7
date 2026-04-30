@@ -26,9 +26,10 @@ class Requisition extends Model
     //     'approved_by',
     // ];
 
-protected $guarded = [];
+    protected $guarded = [];
 
     protected $casts = [
+        'country' => 'string',
         'total_amount' => 'decimal:2',
         'requisition_date' => 'date',
         'approved_at' => 'datetime',

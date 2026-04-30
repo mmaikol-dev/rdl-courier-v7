@@ -19,6 +19,7 @@ class Transfer extends Model
         'transfer_by',
         'store_name',
         'from',
+        'country',
     ];
 
     // 🔗 Relationship to Product

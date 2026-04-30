@@ -28,6 +28,8 @@ class Product extends Model
         'product_image',
         'category_id',
         'store_name',
+        'merchant',
+        'country',
         'unit_id',
         'movement_score',
         'created_at',
