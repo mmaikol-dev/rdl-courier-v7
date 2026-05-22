@@ -20,51 +20,52 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     public function index(Request $request)
-    {
-        $user = $request->user()->loadMissing('country');
-        $isMerchant = $user->roles === 'merchant';
-        $categories = Category::select('id', 'name')->get();
-        $units = Unit::select('id', 'name', 'short_code')->get();
-        $merchantUsers = CountryAccess::scopeByCountryName(
-            Sheet::query()->whereNotNull('sheet_name')->where('sheet_name', '!=', ''),
-            $user,
-            'country'
-        )
-            ->selectRaw('sheet_name as name')
-            ->distinct()
-            ->orderBy('sheet_name')
-            ->pluck('name')
-            ->values()
-            ->map(fn ($name, $index) => [
-                'id' => $index + 1,
-                'name' => $name,
-            ]);
-        $productsQuery = CountryAccess::scopeProducts(
-            Product::query()->with(['user:id,name,store_address,country_id']),
-            $user
-        );
-    
-        // Apply merchant filter using UUIDs
-        if ($isMerchant) {
-            $productsQuery->where('uuid', $user->uuid);
-        }
-
-        if ($request->filled('country')) {
-            $country = mb_strtolower(trim($request->string('country')->toString()));
-            $productsQuery->whereRaw('LOWER(country) = ?', [$country]);
-        }
-    
-        // Paginate with 50 items per page
-        $products = $productsQuery->orderBy('created_at', 'desc')->paginate(50)->withQueryString();
-    
-        return Inertia::render('products/index', [
-            'products' => $products,
-            'categories' => $categories,
-            'units' => $units,
-            'merchantUsers' => $merchantUsers,
-            'filters' => $request->only(['country']),
+{
+    $user = $request->user()->loadMissing('country');
+    $isMerchant = $user->roles === 'merchant';
+    $categories = Category::select('id', 'name')->get();
+    $units = Unit::select('id', 'name', 'short_code')->get();
+    $merchantUsers = CountryAccess::scopeByCountryName(
+        Sheet::query()->whereNotNull('sheet_name')->where('sheet_name', '!=', ''),
+        $user,
+        'country'
+    )
+        ->selectRaw('sheet_name as name')
+        ->distinct()
+        ->orderBy('sheet_name')
+        ->pluck('name')
+        ->values()
+        ->map(fn ($name, $index) => [
+            'id' => $index + 1,
+            'name' => $name,
         ]);
+
+    $productsQuery = CountryAccess::scopeProducts(
+        Product::query()->with(['user:id,name,store_address,country_id']),
+        $user
+    );
+
+    // Scope merchant to their own products by name
+    if ($isMerchant) {
+        $productsQuery->where('merchant', $user->name);
     }
+
+    // Country filter applies to everyone including merchants
+    if ($request->filled('country')) {
+        $country = mb_strtolower(trim($request->string('country')->toString()));
+        $productsQuery->whereRaw('LOWER(country) = ?', [$country]);
+    }
+
+    $products = $productsQuery->orderBy('created_at', 'desc')->paginate(50)->withQueryString();
+
+    return Inertia::render('products/index', [
+        'products' => $products,
+        'categories' => $categories,
+        'units' => $units,
+        'merchantUsers' => $merchantUsers,
+        'filters' => $request->only(['country']),
+    ]);
+}
     public function inventoryLogs($productCode)
     {
         $logs = InventoryLog::where('product_code', $productCode)
@@ -297,7 +298,7 @@ class ProductController extends Controller
                 ->latest()
                 ->first();
 
-            // 🚫 Prevent scanning out again if already outbound
+            // ðŸš« Prevent scanning out again if already outbound
             if ($existing && $existing->operation_type === 'outbound' && $operationType === 'outbound') {
                 DB::rollBack();
                 return response()->json([
@@ -306,7 +307,7 @@ class ProductController extends Controller
                 ], 400);
             }
 
-            // ✅ Otherwise create new scan record
+            // âœ… Otherwise create new scan record
             $barcode = Barcode::create([
                 'product_id'     => $product->id,
                 'product_code'   => $product->code,
@@ -321,7 +322,7 @@ class ProductController extends Controller
             $savedBarcodes[] = $barcode;
         }
 
-        // ✅ Update product quantity
+        // âœ… Update product quantity
         $previousQuantity = (int) $product->quantity;
 
         if ($operationType === 'inbound') {
@@ -351,7 +352,7 @@ class ProductController extends Controller
             );
         }
 
-        // ✅ Log the transaction
+        // âœ… Log the transaction
         InventoryLog::create([
             'product_name'    => $product->name,
             'product_code'    => $product->code,

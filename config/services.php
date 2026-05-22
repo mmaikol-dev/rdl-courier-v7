@@ -52,6 +52,13 @@ return [
         'overdue_alert_api_key' => env('WASENDER_OVERDUE_ALERT_API_KEY'),
         'call_center_agents' => array_values(array_filter(array_map('trim', explode(',', (string) env('WASENDER_CALL_CENTER_AGENTS', ''))))),
     ],
+  
+    'openwa' => [
+        'base_url'    => env('OPENWA_BASE_URL'),
+        'session_id'  => env('OPENWA_SESSION_ID'),
+        'api_key'     => env('OPENWA_API_KEY'),
+    ],
+
 
     'wawp' => [
         'base_url' => env('WAWP_BASE_URL', 'https://api.wawp.net'),

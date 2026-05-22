@@ -221,6 +221,8 @@ class FinanceWorkflowController extends Controller
     {
         $validated = $request->validate([
             'merchant' => ['required', 'string', 'max:255'],
+            'order_ids' => ['nullable', 'array', 'min:1'],
+            'order_ids.*' => ['integer'],
             'extra_statuses' => ['nullable', 'array'],
             'extra_statuses.*' => ['required', 'string', 'max:255'],
             'from' => ['nullable', 'date', 'required_with:to,extra_statuses'],
@@ -244,6 +246,10 @@ class FinanceWorkflowController extends Controller
 
         $workflowOrdersQuery = $this->stageQuery('confirmation', $user)
             ->where('merchant', $merchant);
+
+        if (! empty($validated['order_ids'])) {
+            $workflowOrdersQuery->whereIn('id', $validated['order_ids']);
+        }
 
         $workflowOrderIds = (clone $workflowOrdersQuery)
             ->pluck('id')
@@ -275,23 +281,37 @@ class FinanceWorkflowController extends Controller
     {
         $validated = $request->validate([
             'merchant' => ['required', 'string', 'max:255'],
+            'order_ids' => ['nullable', 'array', 'min:1'],
+            'order_ids.*' => ['integer'],
         ]);
 
         $user = $request->user()?->loadMissing('country');
 
-        CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
             ->where('merchant', $validated['merchant'])
             ->whereNotNull('report_generated_at')
             ->whereNull('merchant_confirmed_at')
             ->where(function ($query): void {
                 $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-            })
+            });
+
+        if (! empty($validated['order_ids'])) {
+            $query->whereIn('id', $validated['order_ids']);
+        }
+
+        $updated = $query
             ->update([
                 'merchant_confirmed_at' => now(),
                 'merchant_confirmed_by' => $user?->id,
             ]);
 
-        return back()->with('success', 'Merchant confirmation recorded.');
+        if ($updated === 0) {
+            return back()->withErrors([
+                'merchant' => 'No eligible orders were selected for merchant confirmation.',
+            ]);
+        }
+
+        return back()->with('success', $updated . ' order(s) confirmed.');
     }
 
     public function markRemitted(Request $request): RedirectResponse

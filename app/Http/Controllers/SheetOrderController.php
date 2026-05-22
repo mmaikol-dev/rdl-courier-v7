@@ -25,109 +25,108 @@ class SheetOrderController extends Controller
     }
 
   public function index(Request $request)
-    {
-        
-        
-        $user = $request->user()->loadMissing('country');
-        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
-    
-        if ($user->roles === 'merchant') {
-            $query->where('merchant', $user->name);
-        }
-    
-        if ($request->filled('country')) {
-            $query->whereRaw('LOWER(country) = ?', [mb_strtolower(trim((string) $request->country))]);
-        }
+{
+    $user = $request->user()->loadMissing('country');
+    $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
 
-        foreach ($request->all() as $key => $value) {
-            if (!empty($value) && \Schema::hasColumn('sheet_orders', $key)) {
-                if (!in_array($key, ['status', 'merchant', 'cc_email', 'country'])) {
-                    $query->where($key, 'like', "%{$value}%");
-                }
-            }
-        }
-        
-        if ($request->filled('product_name')) {
-    $keyword = $request->product_name;
-
-    $query->where(function ($q) use ($keyword) {
-        $q->where('product_name', 'like', "%{$keyword}%")
-          ->orWhere('product_name', 'like', "%{$keyword}%")
-          ->orWhere('product_name', 'like', "%{$keyword}%");
-    });
-}
-
-    
-        if ($request->filled('status')) {
-            $statuses = is_array($request->status) ? $request->status : explode(',', $request->status);
-            $query->where(function($q) use ($statuses) {
-                if (in_array('New Orders', $statuses)) {
-                    $q->orWhereNull('status')->orWhere('status', '');
-                }
-                $otherStatuses = array_diff($statuses, ['New Orders']);
-                if (!empty($otherStatuses)) {
-                    $q->orWhereIn('status', $otherStatuses);
-                }
-            });
-        }
-    
-        if ($request->filled('merchant') && $user->roles !== 'merchant') {
-            $merchants = is_array($request->merchant) ? $request->merchant : explode(',', $request->merchant);
-            $query->whereIn('merchant', $merchants);
-        }
-    
-        if ($request->filled('cc_email')) {
-            $ccs = is_array($request->cc_email) ? $request->cc_email : explode(',', $request->cc_email);
-            $query->whereIn('cc_email', $ccs);
-        }
-    
-        if ($request->filled('from_date') && $request->filled('to_date')) {
-            $from = Carbon::parse($request->from_date, 'Africa/Nairobi')->startOfDay();
-            $to = Carbon::parse($request->to_date, 'Africa/Nairobi')->endOfDay();
-            $query->whereBetween('delivery_date', [$from, $to]);
-        }
-    
-        $query->orderBy('created_at', 'desc');
-    
-        // Clone before pagination to get total count that respects filters
-        $totalOrders = (clone $query)->count();
-    
-        $orders = $query->paginate(50)->appends($request->all());
-    
-        $merchantData = CountryAccess::scopeByCountryName(
-            SheetOrder::select('merchant', 'sheet_id', 'sheet_name'),
-            $user
-        )
-            ->whereNotNull('merchant')
-            ->groupBy('merchant', 'sheet_id', 'sheet_name')
-            ->get()
-            ->groupBy('merchant')
-            ->map(function ($items, $merchant) {
-                return [
-                    'sheet_id'    => $items->first()->sheet_id,
-                    'sheet_names' => $items->pluck('sheet_name')->unique()->values(),
-                ];
-            });
-    
-        $merchantUsers = CountryAccess::scopeByCountryName(
-            Sheet::query(),
-            $user
-        )->distinct()->pluck('sheet_name');
-
-        $ccUsers = CountryAccess::scopeUsers(
-            User::query()->where('roles', 'callcenter1'),
-            $user
-        )->pluck('name');
-    
-        return inertia('sheetorders/index', [
-            'orders'        => $orders,
-            'filters'       => $request->all(),
-            'merchantUsers' => $merchantUsers,
-            'merchantData'  => $merchantData,
-            'ccUsers'       => $ccUsers,
-            'totalOrders'   => $totalOrders, // ✅ added total order count
-        ]);
+    if ($user->roles === 'merchant') {
+        $query->where('merchant', $user->name);
     }
+
+    if ($request->filled('country')) {
+        $query->whereRaw('LOWER(country) = ?', [mb_strtolower(trim((string) $request->country))]);
+    }
+
+    // Fields handled separately — excluded from the generic foreach loop
+    $excludedKeys = [
+        'status', 'merchant', 'cc_email', 'country',
+        'product_name', 'from_date', 'to_date',
+        'page', '_token', '_method',
+    ];
+
+    foreach ($request->all() as $key => $value) {
+        if (
+            !empty($value) &&
+            !in_array($key, $excludedKeys) &&
+            \Schema::hasColumn('sheet_orders', $key)
+        ) {
+            $query->where($key, 'like', "%{$value}%");
+        }
+    }
+
+    if ($request->filled('product_name')) {
+        $query->where('product_name', 'like', "%{$request->product_name}%");
+    }
+
+    if ($request->filled('status')) {
+        $statuses = is_array($request->status) ? $request->status : explode(',', $request->status);
+        $query->where(function ($q) use ($statuses) {
+            if (in_array('New Orders', $statuses)) {
+                $q->orWhereNull('status')->orWhere('status', '');
+            }
+            $otherStatuses = array_diff($statuses, ['New Orders']);
+            if (!empty($otherStatuses)) {
+                $q->orWhereIn('status', $otherStatuses);
+            }
+        });
+    }
+
+    if ($request->filled('merchant') && $user->roles !== 'merchant') {
+        $merchants = is_array($request->merchant) ? $request->merchant : explode(',', $request->merchant);
+        $query->whereIn('merchant', $merchants);
+    }
+
+    if ($request->filled('cc_email')) {
+        $ccs = is_array($request->cc_email) ? $request->cc_email : explode(',', $request->cc_email);
+        $query->whereIn('cc_email', $ccs);
+    }
+
+    if ($request->filled('from_date') && $request->filled('to_date')) {
+        $from = Carbon::parse($request->from_date, 'Africa/Nairobi')->startOfDay();
+        $to   = Carbon::parse($request->to_date, 'Africa/Nairobi')->endOfDay();
+        $query->whereBetween('delivery_date', [$from, $to]);
+    }
+
+    $query->orderBy('created_at', 'desc');
+
+    $totalOrders = (clone $query)->count();
+
+    $orders = $query->paginate(50)->appends($request->all());
+
+    $merchantData = CountryAccess::scopeByCountryName(
+        SheetOrder::select('merchant', 'sheet_id', 'sheet_name'),
+        $user
+    )
+        ->whereNotNull('merchant')
+        ->groupBy('merchant', 'sheet_id', 'sheet_name')
+        ->get()
+        ->groupBy('merchant')
+        ->map(function ($items, $merchant) {
+            return [
+                'sheet_id'    => $items->first()->sheet_id,
+                'sheet_names' => $items->pluck('sheet_name')->unique()->values(),
+            ];
+        });
+
+    $merchantUsers = CountryAccess::scopeByCountryName(
+        Sheet::query(),
+        $user
+    )->distinct()->pluck('sheet_name');
+
+    $ccUsers = CountryAccess::scopeUsers(
+        User::query()->where('roles', 'callcenter1'),
+        $user
+    )->pluck('name');
+
+    return inertia('sheetorders/index', [
+        'orders'        => $orders,
+        'filters'       => $request->all(),
+        'merchantUsers' => $merchantUsers,
+        'merchantData'  => $merchantData,
+        'ccUsers'       => $ccUsers,
+        'totalOrders'   => $totalOrders,
+    ]);
+}
 
 
 

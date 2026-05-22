@@ -267,12 +267,19 @@ public function updateTimestamp(Request $request)
 
     private function findExistingOrderForAppScript(array $validatedData): ?SheetOrder
     {
-        $orderNo = $this->normalizeIdentityValue($validatedData['order_no'] ?? null);
-        $sheetId = $this->normalizeIdentityValue($validatedData['sheet_id'] ?? null);
+        $orderNo   = $this->normalizeIdentityValue($validatedData['order_no'] ?? null);
+        $sheetId   = $this->normalizeIdentityValue($validatedData['sheet_id'] ?? null);
         $sheetName = $this->normalizeIdentityValue($validatedData['sheet_name'] ?? null);
-        $clientName = $this->normalizeIdentityValue($validatedData['client_name'] ?? null);
-        $phone = $this->normalizeIdentityValue($validatedData['phone'] ?? null);
-        $productName = $this->normalizeIdentityValue($validatedData['product_name'] ?? null);
+
+        // order_no is always present and globally unique — it is the sole identity signal.
+        // If it is somehow missing after validation, bail out and let a new record be created.
+        if ($orderNo === null) {
+            Log::warning('AppScript order received with no order_no — skipping dedup.', [
+                'data' => $validatedData,
+            ]);
+
+            return null;
+        }
 
         $orderNoMatches = SheetOrder::query()
             ->lockForUpdate()
@@ -280,47 +287,41 @@ public function updateTimestamp(Request $request)
             ->orderBy('id')
             ->get();
 
+        // A count > 1 means the database already has a data integrity violation.
+        // Throw immediately so it surfaces loudly rather than being silently absorbed.
         if ($orderNoMatches->count() > 1) {
-            Log::warning('Multiple existing rows found for AppScript order number.', [
-                'order_no' => $validatedData['order_no'],
+            Log::error('Duplicate order_no detected in database — data integrity violation.', [
+                'order_no'    => $validatedData['order_no'],
                 'matched_ids' => $orderNoMatches->pluck('id')->all(),
             ]);
+
+            throw new \RuntimeException(
+                "Duplicate order_no [{$validatedData['order_no']}] found in database. Manual intervention required."
+            );
         }
 
-        $scopedOrderNoMatch = $orderNoMatches->first(function (SheetOrder $order) use ($sheetId, $sheetName) {
-            $existingSheetId = $this->normalizeIdentityValue($order->sheet_id);
+        // Scope the single match against sheet_id and sheet_name.
+        // If either conflicts (both sides non-null and different), treat as no match.
+        return $orderNoMatches->first(function (SheetOrder $order) use ($sheetId, $sheetName) {
+            $existingSheetId   = $this->normalizeIdentityValue($order->sheet_id);
             $existingSheetName = $this->normalizeIdentityValue($order->sheet_name);
 
-            if ($sheetId !== null && $existingSheetId !== null && $sheetId !== $existingSheetId) {
+            if ($sheetId !== null && $existingSheetId !== $sheetId) {
                 return false;
             }
 
-            if ($sheetName !== null && $existingSheetName !== null && $sheetName !== $existingSheetName) {
+            if ($sheetName !== null && $existingSheetName !== $sheetName) {
                 return false;
             }
 
             return true;
         });
 
-        if ($scopedOrderNoMatch) {
-            return $scopedOrderNoMatch;
-        }
-
-        return SheetOrder::query()
-            ->lockForUpdate()
-            ->when($sheetId !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(sheet_id)) = ?', [$sheetId]))
-            ->when($sheetName !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(sheet_name)) = ?', [$sheetName]))
-            ->when($clientName !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(client_name)) = ?', [$clientName]))
-            ->when($phone !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(phone)) = ?', [$phone]))
-            ->when($productName !== null, fn ($query) => $query->whereRaw('LOWER(TRIM(product_name)) = ?', [$productName]))
-            ->where('quantity', $validatedData['quantity'])
-            ->where('amount', $validatedData['amount'])
-            ->when(
-                ! empty($validatedData['delivery_date']),
-                fn ($query) => $query->whereDate('delivery_date', $validatedData['delivery_date'])
-            )
-            ->orderBy('id')
-            ->first();
+        // NOTE: Phase 2 fuzzy fallback (matching by client_name, phone, product_name etc.)
+        // has been intentionally removed. Since order_no is guaranteed present and globally
+        // unique, the fuzzy match was causing false positives — repeat clients ordering the
+        // same product were incorrectly matched to their previous order instead of creating
+        // a new one.
     }
 
     private function shouldBackfillValue(mixed $existingValue, mixed $incomingValue): bool

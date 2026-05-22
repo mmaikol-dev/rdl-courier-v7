@@ -114,17 +114,23 @@ export default function FinanceWorkflowPage() {
   const [drawerOrders, setDrawerOrders] = React.useState<WorkflowOrder[]>([]);
   const [drawerLoading, setDrawerLoading] = React.useState(false);
   const [selectedDeliveryOrderIds, setSelectedDeliveryOrderIds] = React.useState<number[]>([]);
+  const [selectedConfirmationOrderIds, setSelectedConfirmationOrderIds] = React.useState<number[]>([]);
   const { statusOptions } = usePage<FinanceWorkflowPageProps>().props;
   const [reportMerchant, setReportMerchant] = React.useState<string | null>(null);
+  const [reportOrderIds, setReportOrderIds] = React.useState<number[]>([]);
   const [selectedStatuses, setSelectedStatuses] = React.useState<string[]>([]);
   const [reportDateRange, setReportDateRange] = React.useState<DateRange | undefined>();
   const [reportDatePickerOpen, setReportDatePickerOpen] = React.useState(false);
   const [merchantSearch, setMerchantSearch] = React.useState('');
   const [merchantPickerOpen, setMerchantPickerOpen] = React.useState(false);
   const isDeliveryDrawer = drawerStage === 'delivery';
+  const isConfirmationDrawer = drawerStage === 'confirmation';
   const allDeliverySelected = isDeliveryDrawer
     && drawerOrders.length > 0
     && selectedDeliveryOrderIds.length === drawerOrders.length;
+  const allConfirmationSelected = isConfirmationDrawer
+    && drawerOrders.length > 0
+    && selectedConfirmationOrderIds.length === drawerOrders.length;
   const normalizedMerchantSearch = merchantSearch.trim().toLowerCase();
   const filterMerchants = React.useCallback(
     (rows: MerchantWorkflowRow[]) =>
@@ -161,17 +167,27 @@ export default function FinanceWorkflowPage() {
   }, []);
 
   const postAction = React.useCallback(
-    (url: string, merchant: string, successMessage: string) => {
+    (
+      url: string,
+      merchant: string,
+      successMessage: string,
+      orderIds?: number[],
+      onSuccessCallback?: () => void,
+    ) => {
       const actionKey = `${url}:${merchant}`;
       setPendingKey(actionKey);
 
       router.post(
         url,
-        { merchant },
+        {
+          merchant,
+          ...(orderIds && orderIds.length > 0 ? { order_ids: orderIds } : {}),
+        },
         {
           preserveScroll: true,
           onSuccess: () => {
             toast.success(successMessage);
+            onSuccessCallback?.();
             visitWorkflow();
           },
           onError: (errors) => {
@@ -185,8 +201,9 @@ export default function FinanceWorkflowPage() {
     [visitWorkflow],
   );
 
-  const openReportDialog = React.useCallback((merchant: string) => {
+  const openReportDialog = React.useCallback((merchant: string, orderIds: number[]) => {
     setReportMerchant(merchant);
+    setReportOrderIds(orderIds);
     setSelectedStatuses([]);
     setReportDateRange(undefined);
     setReportDatePickerOpen(false);
@@ -194,6 +211,10 @@ export default function FinanceWorkflowPage() {
 
   const downloadReport = React.useCallback(() => {
     if (!reportMerchant) return;
+    if (reportOrderIds.length === 0) {
+      toast.error('Select at least one delivered order to continue');
+      return;
+    }
     if (selectedStatuses.length > 0 && (!reportDateRange?.from || !reportDateRange?.to)) {
       toast.error('Select a date range for the additional statuses');
       return;
@@ -203,6 +224,7 @@ export default function FinanceWorkflowPage() {
     setPendingKey(actionKey);
 
     const params = new URLSearchParams({ merchant: reportMerchant });
+    reportOrderIds.forEach((orderId) => params.append('order_ids[]', String(orderId)));
     selectedStatuses.forEach((status) => params.append('extra_statuses[]', status));
     if (reportDateRange?.from) params.append('from', format(reportDateRange.from, 'yyyy-MM-dd'));
     if (reportDateRange?.to) params.append('to', format(reportDateRange.to, 'yyyy-MM-dd'));
@@ -216,12 +238,13 @@ export default function FinanceWorkflowPage() {
     window.setTimeout(() => {
       setPendingKey(null);
       setReportMerchant(null);
+      setReportOrderIds([]);
       setSelectedStatuses([]);
       setReportDateRange(undefined);
       setReportDatePickerOpen(false);
       visitWorkflow();
     }, 900);
-  }, [reportDateRange, reportMerchant, selectedStatuses, visitWorkflow]);
+  }, [reportDateRange, reportMerchant, reportOrderIds, selectedStatuses, visitWorkflow]);
 
   const renderActionButton = (
     actionKey: string,
@@ -261,6 +284,7 @@ export default function FinanceWorkflowPage() {
       const data = (await response.json()) as { orders: WorkflowOrder[] };
       setDrawerOrders(data.orders ?? []);
       setSelectedDeliveryOrderIds(stage === 'delivery' ? (data.orders ?? []).map((order) => order.id) : []);
+      setSelectedConfirmationOrderIds(stage === 'confirmation' ? (data.orders ?? []).map((order) => order.id) : []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load merchant orders');
     } finally {
@@ -278,11 +302,22 @@ export default function FinanceWorkflowPage() {
     setSelectedDeliveryOrderIds(checked ? drawerOrders.map((order) => order.id) : []);
   }, [drawerOrders]);
 
+  const toggleConfirmationOrder = React.useCallback((orderId: number, checked: boolean) => {
+    setSelectedConfirmationOrderIds((current) =>
+      checked ? [...current, orderId] : current.filter((id) => id !== orderId),
+    );
+  }, []);
+
+  const toggleAllConfirmationOrders = React.useCallback((checked: boolean) => {
+    setSelectedConfirmationOrderIds(checked ? drawerOrders.map((order) => order.id) : []);
+  }, [drawerOrders]);
+
   const closeDrawer = React.useCallback(() => {
     setDrawerMerchant(null);
     setDrawerStage(null);
     setDrawerOrders([]);
     setSelectedDeliveryOrderIds([]);
+    setSelectedConfirmationOrderIds([]);
   }, []);
 
   const confirmSelectedDeliveryOrders = React.useCallback(() => {
@@ -316,6 +351,32 @@ export default function FinanceWorkflowPage() {
       },
     );
   }, [closeDrawer, drawerMerchant, selectedDeliveryOrderIds, visitWorkflow]);
+
+  const openConfirmationReportDialog = React.useCallback(() => {
+    if (!drawerMerchant) return;
+    if (selectedConfirmationOrderIds.length === 0) {
+      toast.error('Select at least one delivered order to continue');
+      return;
+    }
+
+    openReportDialog(drawerMerchant, selectedConfirmationOrderIds);
+  }, [drawerMerchant, openReportDialog, selectedConfirmationOrderIds]);
+
+  const confirmSelectedMerchantOrders = React.useCallback(() => {
+    if (!drawerMerchant) return;
+    if (selectedConfirmationOrderIds.length === 0) {
+      toast.error('Select at least one delivered order to continue');
+      return;
+    }
+
+    postAction(
+      '/finance-workflow/mark-confirmed',
+      drawerMerchant,
+      `${selectedConfirmationOrderIds.length} order(s) confirmed`,
+      selectedConfirmationOrderIds,
+      closeDrawer,
+    );
+  }, [closeDrawer, drawerMerchant, postAction, selectedConfirmationOrderIds]);
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -481,7 +542,7 @@ export default function FinanceWorkflowPage() {
               <CardHeader>
                 <CardTitle>Delivered and waiting for merchant confirmation</CardTitle>
                 <CardDescription>
-                  Generate the report for the merchant, then mark confirmation when they approve the statement.
+                  Open a merchant to choose the delivered orders you want to continue with, generate the report for those, then mark only those as confirmed.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -514,19 +575,6 @@ export default function FinanceWorkflowPage() {
                                   () => openOrdersDrawer(row.merchant, 'confirmation'),
                                   <Eye className="size-4" />,
                                   'outline',
-                                )}
-                                {renderActionButton(
-                                  `report-options:${row.merchant}`,
-                                  'Report Options',
-                                  () => openReportDialog(row.merchant),
-                                  <Download className="size-4" />,
-                                  'outline',
-                                )}
-                                {renderActionButton(
-                                  `/finance-workflow/mark-confirmed:${row.merchant}`,
-                                  'Mark Confirmed',
-                                  () => postAction('/finance-workflow/mark-confirmed', row.merchant, `${row.merchant} confirmed`),
-                                  <CheckCircle2 className="size-4" />,
                                 )}
                               </div>
                             </TableCell>
@@ -689,16 +737,63 @@ export default function FinanceWorkflowPage() {
                   </div>
                 ) : null}
 
+                {isConfirmationDrawer ? (
+                  <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          checked={allConfirmationSelected}
+                          onCheckedChange={(checked) => toggleAllConfirmationOrders(Boolean(checked))}
+                        />
+                        <div className="text-sm">
+                          <div className="font-medium">Choose which delivered orders continue now</div>
+                          <div className="text-muted-foreground">
+                            {selectedConfirmationOrderIds.length} of {drawerOrders.length} selected
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      <Button
+                        variant="outline"
+                        onClick={openConfirmationReportDialog}
+                        disabled={pendingKey === `download:${drawerMerchant}`}
+                        className="gap-2"
+                      >
+                        {pendingKey === `download:${drawerMerchant}`
+                          ? <LoaderCircle className="size-4 animate-spin" />
+                          : <Download className="size-4" />}
+                        Report For Selected
+                      </Button>
+                      <Button
+                        onClick={confirmSelectedMerchantOrders}
+                        disabled={pendingKey === `/finance-workflow/mark-confirmed:${drawerMerchant}`}
+                        className="gap-2"
+                      >
+                        {pendingKey === `/finance-workflow/mark-confirmed:${drawerMerchant}`
+                          ? <LoaderCircle className="size-4 animate-spin" />
+                          : <CheckCircle2 className="size-4" />}
+                        Mark Selected Confirmed
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="space-y-3 sm:hidden">
                   {drawerOrders.map((order) => (
                     <Card key={order.id} className="border-border/60 shadow-none">
                       <CardContent className="space-y-3 p-4 text-sm">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 items-start gap-3">
-                            {isDeliveryDrawer ? (
+                            {isDeliveryDrawer || isConfirmationDrawer ? (
                               <Checkbox
-                                checked={selectedDeliveryOrderIds.includes(order.id)}
-                                onCheckedChange={(checked) => toggleDeliveryOrder(order.id, Boolean(checked))}
+                                checked={isDeliveryDrawer
+                                  ? selectedDeliveryOrderIds.includes(order.id)
+                                  : selectedConfirmationOrderIds.includes(order.id)}
+                                onCheckedChange={(checked) => (isDeliveryDrawer
+                                  ? toggleDeliveryOrder(order.id, Boolean(checked))
+                                  : toggleConfirmationOrder(order.id, Boolean(checked)))}
                               />
                             ) : null}
                             <div className="min-w-0">
@@ -754,7 +849,7 @@ export default function FinanceWorkflowPage() {
 	                  <Table className="table-fixed">
 	                      <TableHeader>
 	                      <TableRow>
-	                        {isDeliveryDrawer ? <TableHead className="w-[6%]">Pick</TableHead> : null}
+	                        {isDeliveryDrawer || isConfirmationDrawer ? <TableHead className="w-[6%]">Pick</TableHead> : null}
 	                        <TableHead className="w-[12%]">Order No</TableHead>
 	                        <TableHead className="w-[14%]">Client</TableHead>
 	                        <TableHead className="w-[18%]">Product</TableHead>
@@ -769,11 +864,15 @@ export default function FinanceWorkflowPage() {
 	                    <TableBody>
 	                      {drawerOrders.map((order) => (
 	                        <TableRow key={order.id}>
-                          {isDeliveryDrawer ? (
+                          {isDeliveryDrawer || isConfirmationDrawer ? (
                             <TableCell>
                               <Checkbox
-                                checked={selectedDeliveryOrderIds.includes(order.id)}
-                                onCheckedChange={(checked) => toggleDeliveryOrder(order.id, Boolean(checked))}
+                                checked={isDeliveryDrawer
+                                  ? selectedDeliveryOrderIds.includes(order.id)
+                                  : selectedConfirmationOrderIds.includes(order.id)}
+                                onCheckedChange={(checked) => (isDeliveryDrawer
+                                  ? toggleDeliveryOrder(order.id, Boolean(checked))
+                                  : toggleConfirmationOrder(order.id, Boolean(checked)))}
                               />
                             </TableCell>
                           ) : null}
@@ -820,6 +919,7 @@ export default function FinanceWorkflowPage() {
         onOpenChange={(open) => {
           if (!open) {
             setReportMerchant(null);
+            setReportOrderIds([]);
             setSelectedStatuses([]);
             setReportDateRange(undefined);
             setReportDatePickerOpen(false);
@@ -836,7 +936,7 @@ export default function FinanceWorkflowPage() {
 
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-              Included automatically: delivered orders for this merchant that are currently in the finance workflow and not yet remitted.
+              Included automatically: the selected delivered orders for this merchant that you chose to continue with right now.
             </div>
 
             <div className="space-y-3">
@@ -910,6 +1010,7 @@ export default function FinanceWorkflowPage() {
               variant="outline"
               onClick={() => {
                 setReportMerchant(null);
+                setReportOrderIds([]);
                 setSelectedStatuses([]);
                 setReportDateRange(undefined);
                 setReportDatePickerOpen(false);
