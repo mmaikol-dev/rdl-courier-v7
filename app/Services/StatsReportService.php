@@ -101,7 +101,7 @@ class StatsReportService
 
         $now = Carbon::now();
 
-        $overdueScheduled = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $overdueScheduled = $this->scopeVisibleOrders($user)
             ->select(
                 'cc_email',
                 'merchant',
@@ -131,7 +131,7 @@ class StatsReportService
                 'days_overdue' => (int) $order->days_overdue,
             ]);
 
-        $overdueScheduledSummary = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $overdueScheduledSummary = $this->scopeVisibleOrders($user)
             ->select(
                 'cc_email',
                 DB::raw('count(*) as overdue_count'),
@@ -156,7 +156,7 @@ class StatsReportService
                 'avg_days_overdue' => round($item->avg_days_overdue ?? 0, 1),
             ]);
 
-        $overduePending = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $overduePending = $this->scopeVisibleOrders($user)
             ->select(
                 'cc_email',
                 'merchant',
@@ -184,7 +184,7 @@ class StatsReportService
                 'days_pending' => (int) $order->days_pending,
             ]);
 
-        $overduePendingSummary = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $overduePendingSummary = $this->scopeVisibleOrders($user)
             ->select(
                 'cc_email',
                 DB::raw('count(*) as overdue_count'),
@@ -221,7 +221,7 @@ class StatsReportService
                 'revenue' => round($item->revenue ?? 0, 2),
             ]);
 
-        $trendQuery = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
+        $trendQuery = $this->scopeVisibleOrders($user);
         if ($dateRange !== 'all_time') {
             $dates = $this->getDateRange($dateRange);
             $trendQuery->whereBetween($dateColumn, [$dates['start'], $dates['end']]);
@@ -326,7 +326,7 @@ class StatsReportService
 
     private function filteredBaseQuery(User $user, array $filters): Builder
     {
-        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
+        $query = $this->scopeVisibleOrders($user);
 
         if ($filters['date_range'] !== 'all_time') {
             $dates = $this->getDateRange($filters['date_range']);
@@ -337,7 +337,7 @@ class StatsReportService
             $query->where('cc_email', $filters['cc_email']);
         }
 
-        if ($filters['merchant']) {
+        if ($filters['merchant'] && ! $this->isMerchant($user)) {
             $query->where('merchant', $filters['merchant']);
         }
 
@@ -370,10 +370,11 @@ class StatsReportService
     {
         return Cache::remember(
             sprintf(
-                'stats-filter-options:v1:user:%s:role:%s:country:%s',
+                'stats-filter-options:v1:user:%s:role:%s:country:%s:name:%s',
                 $user->getKey(),
                 strtolower(trim((string) $user->roles)),
-                strtolower(trim((string) CountryAccess::userCountryName($user)))
+                strtolower(trim((string) CountryAccess::userCountryName($user))),
+                strtolower(trim((string) $user->name))
             ),
             now()->addMinutes(5),
             function () use ($user): array {
@@ -383,12 +384,9 @@ class StatsReportService
                         ->whereNotNull('username')
                         ->orderBy('username')
                         ->pluck('username'),
-                    'merchants' => User::where('roles', 'merchant')
-                        ->when(! CountryAccess::hasGlobalAccess($user), fn ($query) => $query->where('country_id', $user->country_id))
-                        ->whereNotNull('username')
-                        ->orderBy('username')
-                        ->pluck('username'),
-                    'statuses' => SheetOrder::select('status')
+                    'merchants' => $this->merchantOptions($user),
+                    'statuses' => $this->scopeVisibleOrders($user)
+                        ->select('status')
                         ->distinct()
                         ->whereNotNull('status')
                         ->where('status', '!=', '')
@@ -396,7 +394,8 @@ class StatsReportService
                         ->pluck('status'),
                     'countries' => collect(CountryAccess::allowedCountries(
                         $user,
-                        SheetOrder::select('country')
+                        $this->scopeVisibleOrders($user)
+                            ->select('country')
                             ->distinct()
                             ->whereNotNull('country')
                             ->where('country', '!=', '')
@@ -413,12 +412,42 @@ class StatsReportService
         ksort($filters);
 
         return sprintf(
-            'stats-report:v1:user:%s:role:%s:country:%s:%s',
+            'stats-report:v1:user:%s:role:%s:country:%s:name:%s:%s',
             $user->getKey(),
             strtolower(trim((string) $user->roles)),
             strtolower(trim((string) CountryAccess::userCountryName($user))),
+            strtolower(trim((string) $user->name)),
             sha1(json_encode($filters))
         );
+    }
+
+    private function scopeVisibleOrders(User $user): Builder
+    {
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
+
+        if ($this->isMerchant($user)) {
+            $query->where('merchant', $user->name);
+        }
+
+        return $query;
+    }
+
+    private function isMerchant(User $user): bool
+    {
+        return strtolower(trim((string) $user->roles)) === 'merchant';
+    }
+
+    private function merchantOptions(User $user)
+    {
+        if ($this->isMerchant($user)) {
+            return collect([$user->name])->filter()->values();
+        }
+
+        return User::where('roles', 'merchant')
+            ->when(! CountryAccess::hasGlobalAccess($user), fn ($query) => $query->where('country_id', $user->country_id))
+            ->whereNotNull('username')
+            ->orderBy('username')
+            ->pluck('username');
     }
 
     private function getDateRange(string $range): array

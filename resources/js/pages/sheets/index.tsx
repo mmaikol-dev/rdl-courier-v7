@@ -36,7 +36,7 @@ interface Sheet {
     sku: string;
 }
 
-interface PageProps {
+interface PageProps extends Record<string, unknown> {
     sheets: Sheet[];
     ccUsers: string[];
     auth: { user: { roles: string } };
@@ -267,7 +267,7 @@ function buildCcAgentsJson(existingRaw: string | undefined, selections: Record<s
 }
 
 export default function SheetsView() {
-    const { sheets, auth, flash, ccUsers, filters } = usePage<PageProps>().props;
+    const { sheets, flash, ccUsers, filters } = usePage<PageProps>().props;
 
     const [filter, setFilter] = React.useState('');
     const [selectedCountry, setSelectedCountry] = React.useState(filters?.country || 'all');
@@ -470,11 +470,9 @@ export default function SheetsView() {
                             </SelectContent>
                         </Select>
                     </div>
-                    {!['operations', 'finance', 'callcenter1', ''].includes(auth.user.roles) && (
-                        <Button size="sm" onClick={() => setCreatingSheet(true)} className="flex items-center gap-1">
-                            <Plus size={16} /> Create New Sheet
-                        </Button>
-                    )}
+                    <Button size="sm" onClick={() => setCreatingSheet(true)} className="flex items-center gap-1">
+                        <Plus size={16} /> Create New Sheet
+                    </Button>
                 </div>
 
                 {/* Sheets Grid */}
@@ -521,16 +519,12 @@ export default function SheetsView() {
                                     ))}
                                 </CardContent>
                                 <div className="flex flex-wrap justify-end gap-2 p-2">
-                                    {!['operations', 'finance', 'callcenter1', ''].includes(auth.user.roles) && (
-                                        <>
-                                            <Button size="sm" variant="outline" onClick={() => handleEditOpen(sheet)}>
-                                                <Edit size={16} />
-                                            </Button>
-                                            <Button size="sm" variant="destructive" onClick={() => setDeletingSheet(sheet)}>
-                                                <Trash2 size={16} />
-                                            </Button>
-                                        </>
-                                    )}
+                                    <Button size="sm" variant="outline" onClick={() => handleEditOpen(sheet)}>
+                                        <Edit size={16} />
+                                    </Button>
+                                    <Button size="sm" variant="destructive" onClick={() => setDeletingSheet(sheet)}>
+                                        <Trash2 size={16} />
+                                    </Button>
                                     <Button
                                         size="sm"
                                         variant="outline"
@@ -553,7 +547,7 @@ export default function SheetsView() {
                 onOpenChange={(open) => {
                     if (!open) {
                         setCreatingSheet(false);
-                        setCreateCcAgents([]);
+                        setCreateCcAgents({});
                     }
                 }}
             >
@@ -664,7 +658,7 @@ export default function SheetsView() {
                 onOpenChange={(open) => {
                     if (!open) {
                         setEditingSheet(null);
-                        setEditCcAgents([]);
+                        setEditCcAgents({});
                     }
                 }}
             >
