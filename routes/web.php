@@ -56,8 +56,12 @@ Route::get('/', function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
 Route::get('maps', [MapController::class, 'index'])->name('maps.index');
-Route::post('locations/heartbeat', [UserLocationController::class, 'heartbeat'])->name('locations.heartbeat');
-Route::post('locations/login', [UserLocationController::class, 'login'])->name('locations.login');
+Route::post('locations/heartbeat', [UserLocationController::class, 'heartbeat'])
+    ->middleware('throttle:6,1')
+    ->name('locations.heartbeat');
+Route::post('locations/login', [UserLocationController::class, 'login'])
+    ->middleware('throttle:3,1')
+    ->name('locations.login');
 
     //dashboard
   
@@ -196,7 +200,8 @@ Route::post('/orders/import', [ImportController::class, 'store'])->name('orders.
 Route::resource('ai',AiController::class);
 
  // updates
-    Route::post('/sheet-updates/run', [UpdateController::class, 'run']);
+    Route::post('/sheet-updates/run', [UpdateController::class, 'run'])
+        ->middleware('throttle:2,1');
     Route::resource('updates', UpdateController::class);
 
 

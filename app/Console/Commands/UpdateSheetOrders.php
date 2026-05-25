@@ -15,7 +15,7 @@ use Exception;
 
 class UpdateSheetOrders extends Command
 {
-    protected $signature = 'orders:update-sheets';
+    protected $signature = 'orders:update-sheets {--limit= : Maximum orders to process in one run}';
     protected $description = 'Automatically update orders in the Google Sheet';
 
     // The spreadsheet id that has a special layout (order no in column N)
@@ -41,10 +41,14 @@ class UpdateSheetOrders extends Command
         try {
             // We fetch a larger set to have enough per-spreadsheet grouping,
             // but the actual per-run limit is enforced below.
-            $fetchSize = 1000;
+            $fetchSize = max(1, (int) ($this->option('limit') ?: $this->maxPerRun));
 
-            // Fetch records that need syncing (ordered by oldest updated_at first)
+            // Fetch records that are due for syncing. Future timestamps are used
+            // as a retry delay, so they must not be picked up immediately.
             $sheetOrders = SheetOrder::whereNotNull('updated_at')
+                ->where('updated_at', '<=', now())
+                ->whereNotNull('sheet_id')
+                ->whereNotNull('sheet_name')
                 ->orderBy('updated_at')
                 ->limit($fetchSize)
                 ->get();
@@ -66,7 +70,7 @@ class UpdateSheetOrders extends Command
             Log::info("Found " . $sheetOrders->count() . " pending orders across " . count($ordersBySpreadsheet) . " spreadsheets");
 
             $currentCount = 0;
-            $maxLimit = $this->maxPerRun;
+            $maxLimit = $fetchSize;
 
             foreach ($ordersBySpreadsheet as $spreadsheetId => $orders) {
                 $spreadsheetCount = $orders->count();

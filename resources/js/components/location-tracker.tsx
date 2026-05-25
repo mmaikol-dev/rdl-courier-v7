@@ -14,8 +14,8 @@ type GeoPayload = {
 
 const HEARTBEAT_URL = '/locations/heartbeat';
 const LOGIN_URL = '/locations/login';
-const MIN_SEND_INTERVAL_MS = 15_000;
-const MIN_DISTANCE_METERS = 15;
+const MIN_SEND_INTERVAL_MS = 60_000;
+const MIN_DISTANCE_METERS = 50;
 
 function getCsrfToken() {
     return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';

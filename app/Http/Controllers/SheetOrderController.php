@@ -252,6 +252,13 @@ class SheetOrderController extends Controller
             ]);
         }
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'order' => $sheetorder->fresh(),
+            ]);
+        }
+
         return redirect()->back()->with('success', 'Order updated successfully.');
     }
 

@@ -42,6 +42,25 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dispatch', href: '/dispatch' },
 ];
 
+function getCsrfToken() {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || '';
+}
+
+function getCookieValue(name: string) {
+    return document.cookie
+        .split('; ')
+        .find((row) => row.startsWith(`${name}=`))
+        ?.split('=')
+        .slice(1)
+        .join('=');
+}
+
+function getXsrfToken() {
+    const cookieToken = getCookieValue('XSRF-TOKEN');
+
+    return cookieToken ? decodeURIComponent(cookieToken) : getCsrfToken();
+}
+
 interface SheetOrder {
     id: number;
     order_no: string;
@@ -184,11 +203,10 @@ export default function DispatchView() {
         form.action = '/dispatch/bulk-assign';
         form.target = '_blank'; // Open PDF in new tab
 
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = '_token';
-        csrfInput.value = csrfToken || '';
+        csrfInput.value = getXsrfToken();
         form.appendChild(csrfInput);
 
         const orderInput = document.createElement('input');
@@ -240,11 +258,10 @@ export default function DispatchView() {
         form.method = 'POST';
         form.action = '/dispatch/bulk-download-waybills';
 
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = '_token';
-        csrfInput.value = csrfToken || '';
+        csrfInput.value = getXsrfToken();
         form.appendChild(csrfInput);
 
         // Add order numbers if provided

@@ -22,7 +22,11 @@ class UpdateController extends Controller
         $updatesQuery = CountryAccess::scopeByCountryName(
             SheetOrder::query(),
             $user
-        )->whereNotNull('updated_at');
+        )
+            ->whereNotNull('updated_at')
+            ->where('updated_at', '<=', now())
+            ->whereNotNull('sheet_id')
+            ->whereNotNull('sheet_name');
 
         if ($request->filled('country')) {
             $country = mb_strtolower(trim($request->string('country')->toString()));
@@ -31,7 +35,9 @@ class UpdateController extends Controller
 
         return Inertia::render('updates/index', [
             'updates' => $updatesQuery
+                ->select(['id', 'order_no', 'sheet_id', 'sheet_name', 'merchant', 'status', 'updated_at'])
                 ->orderBy('updated_at')
+                ->limit(500)
                 ->get(),
             'filters' => $request->only(['search', 'country']),
         ]);
@@ -39,11 +45,11 @@ class UpdateController extends Controller
 
     public function run(): JsonResponse
     {
-        Artisan::call('orders:update-sheets');
+        Artisan::call('orders:update-sheets', ['--limit' => 100]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Sheet update command started',
+            'message' => 'Sheet update command completed',
         ]);
     }
 

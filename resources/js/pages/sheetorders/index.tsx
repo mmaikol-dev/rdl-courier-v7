@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Spinner } from '@/components/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
@@ -22,7 +23,6 @@ import {
     CopyIcon,
     EyeIcon,
     FilterIcon,
-    Loader2,
     MessageCircleMoreIcon,
     MicIcon,
     MicOffIcon,
@@ -96,6 +96,25 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 // ✅ Memoize filtered columns to prevent recreation
 const FILTERED_COLUMNS = COLUMNS.filter((col) => !['quantity', 'amount', 'instructions'].includes(col));
 const FILTER_FIELDS = [...FILTERED_COLUMNS, 'country'] as const;
+
+function getCsrfToken() {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+}
+
+function getCookieValue(name: string) {
+    return document.cookie
+        .split('; ')
+        .find((row) => row.startsWith(`${name}=`))
+        ?.split('=')
+        .slice(1)
+        .join('=');
+}
+
+function getXsrfToken() {
+    const cookieToken = getCookieValue('XSRF-TOKEN');
+
+    return cookieToken ? decodeURIComponent(cookieToken) : getCsrfToken();
+}
 
 const normalizeMultiSelectFilter = (value: string | string[] | undefined): string[] => {
     if (Array.isArray(value)) {
@@ -186,6 +205,7 @@ const TableRowMemo = React.memo(
             <TableRow className="hover:bg-muted/10">
                 {COLUMNS.map((col) => {
                     const key = `${order.id}-${col}`;
+                    const isSavingCell = loadingCells[`save-${key}`];
 
                     // ✅ Display "New Orders" if status is null/empty
                     const value =
@@ -210,7 +230,11 @@ const TableRowMemo = React.memo(
                             onClick={() => onEdit(order, col)}
                             title={value}
                         >
-                            {canCopyFromColumn ? (
+                            {isSavingCell ? (
+                                <div className="flex w-full items-center justify-center">
+                                    <Spinner className="text-black" />
+                                </div>
+                            ) : canCopyFromColumn ? (
                                 <div className="flex items-center justify-between gap-1">
                                     <span className="truncate">{value}</span>
                                     <Button
@@ -266,7 +290,7 @@ const TableRowMemo = React.memo(
                         }}
                         title="Copy Row"
                     >
-                        {isCopyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CopyIcon className="h-4 w-4" />}
+                        {isCopyLoading ? <Spinner /> : <CopyIcon className="h-4 w-4" />}
                     </Button>
 
                     {/* View History */}
@@ -277,7 +301,7 @@ const TableRowMemo = React.memo(
                         onClick={() => onHistory(order.id, order.order_no)}
                         title="View History"
                     >
-                        {isHistoryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <EyeIcon className="h-4 w-4" />}
+                        {isHistoryLoading ? <Spinner /> : <EyeIcon className="h-4 w-4" />}
                     </Button>
 
                     {/* Send WhatsApp */}
@@ -288,7 +312,7 @@ const TableRowMemo = React.memo(
                         onClick={() => onWhatsapp(order.id)}
                         title="Send WhatsApp"
                     >
-                        {isWhatsappLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircleMoreIcon className="h-4 w-4" />}
+                        {isWhatsappLoading ? <Spinner /> : <MessageCircleMoreIcon className="h-4 w-4" />}
                     </Button>
 
                     {/* Delete */}
@@ -299,7 +323,7 @@ const TableRowMemo = React.memo(
                             disabled={isDeleteLoading}
                             onClick={() => onDelete(order)}
                         >
-                            {isDeleteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2Icon className="h-4 w-4" />}
+                            {isDeleteLoading ? <Spinner /> : <Trash2Icon className="h-4 w-4" />}
                         </Button>
                     )}
                 </TableCell>
@@ -363,6 +387,7 @@ export default function Index() {
     );
     const [editing, setEditing] = React.useState<{ order: SheetOrder; field: keyof SheetOrder } | null>(null);
     const [editValue, setEditValue] = React.useState('');
+    const [localOrders, setLocalOrders] = React.useState<SheetOrder[]>(orders.data);
     const [highlighted, setHighlighted] = React.useState<Record<string, boolean>>({});
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
     const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
@@ -384,7 +409,6 @@ export default function Index() {
     const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [isCreating, setIsCreating] = React.useState(false);
     const [isDeleting, setIsDeleting] = React.useState(false);
-    const [isSaving, setIsSaving] = React.useState(false);
 
     // Voice-to-text states
     const [isListening, setIsListening] = React.useState(false);
@@ -403,6 +427,10 @@ export default function Index() {
             return next;
         });
     }, []);
+
+    React.useEffect(() => {
+        setLocalOrders(orders.data);
+    }, [orders.data]);
 
     // Initialize speech recognition
     React.useEffect(() => {
@@ -594,36 +622,66 @@ export default function Index() {
             }
 
             if (editValue !== String(editing.order[editing.field] || '')) {
-                setIsSaving(true);
-                router.put(
-                    `/sheetorders/${editing.order.id}`,
-                    { [editing.field]: editValue },
-                    {
-                        preserveState: true,
-                        preserveScroll: true,
-                        only: ['orders'],
-                        onSuccess: () => {
-                            const key = `${editing.order.id}-${editing.field}`;
-                            setHighlighted((prev) => ({ ...prev, [key]: true }));
-                            setTimeout(() => {
-                                setHighlighted((prev) => {
-                                    const updated = { ...prev };
-                                    delete updated[key];
-                                    return updated;
-                                });
-                            }, 2000);
-                            setIsSaving(false);
-                        },
-                        onError: () => {
-                            setIsSaving(false);
-                        },
+                const orderId = editing.order.id;
+                const field = editing.field;
+                const value = editValue;
+                const key = `${orderId}-${field}`;
+                setLoadingCell(`save-${key}`, true);
+
+                fetch(`/sheetorders/${orderId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        'X-XSRF-TOKEN': getXsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
                     },
-                );
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ [field]: value }),
+                })
+                    .then(async (response) => {
+                        if (!response.ok) {
+                            const payload = await response.json().catch(() => null);
+                            throw new Error(payload?.message || 'Failed to save order update');
+                        }
+
+                        return response.json();
+                    })
+                    .then((payload) => {
+                        const updatedOrder = payload.order as SheetOrder | undefined;
+
+                        setLocalOrders((current) =>
+                            current.map((order) =>
+                                order.id === orderId
+                                    ? {
+                                          ...order,
+                                          ...(updatedOrder || {}),
+                                          [field]: updatedOrder?.[field] ?? value,
+                                      }
+                                    : order,
+                            ),
+                        );
+                        setHighlighted((prev) => ({ ...prev, [key]: true }));
+                        setTimeout(() => {
+                            setHighlighted((prev) => {
+                                const updated = { ...prev };
+                                delete updated[key];
+                                return updated;
+                            });
+                        }, 2000);
+                    })
+                    .catch((error) => {
+                        toast.error(error instanceof Error ? error.message : 'Failed to save order update');
+                    })
+                    .finally(() => {
+                        setLoadingCell(`save-${key}`, false);
+                    });
             }
         }
         setEditing(null);
         setEditValue('');
-    }, [editing, editValue]);
+    }, [editing, editValue, setLoadingCell]);
 
     const handleNewOrderChange = React.useCallback((field: keyof SheetOrder, value: string) => {
         setNewOrder((prev) => ({ ...prev, [field]: value }));
@@ -756,7 +814,7 @@ export default function Index() {
                 <div className="flex space-x-2">
                     {/* Filter Orders */}
                     <Button className="h-8 w-8 p-0 text-sm" disabled={isFiltering} onClick={() => setFilterDialogOpen(true)}>
-                        {isFiltering ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilterIcon className="h-4 w-4" />}
+                        {isFiltering ? <Spinner /> : <FilterIcon className="h-4 w-4" />}
                     </Button>
 
                     <Sheet open={isCallSheetOpen} onOpenChange={setIsCallSheetOpen}>
@@ -777,7 +835,7 @@ export default function Index() {
 
                     {/* Refresh Button */}
                     <Button className="h-8 w-8 p-0 text-sm" disabled={isRefreshing} onClick={refreshOrders}>
-                        {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
+                        {isRefreshing ? <Spinner /> : <RefreshCwIcon className="h-4 w-4" />}
                     </Button>
 
                     {/* Create Order Button */}
@@ -810,7 +868,7 @@ export default function Index() {
                                 </TableHeader>
 
                                 <TableBody>
-                                    {orders.data.map((order) => (
+                                    {localOrders.map((order) => (
                                         <TableRowMemo
                                             key={order.id}
                                             order={order}
@@ -1065,7 +1123,7 @@ export default function Index() {
                             <Button variant="outline" disabled={isFiltering} onClick={clearFilters}>
                                 {isFiltering ? (
                                     <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        <Spinner className="mr-2" />
                                         Clearing...
                                     </>
                                 ) : (
@@ -1075,7 +1133,7 @@ export default function Index() {
                             <Button disabled={isFiltering} onClick={applyFilters}>
                                 {isFiltering ? (
                                     <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        <Spinner className="mr-2" />
                                         Applying...
                                     </>
                                 ) : (
@@ -1114,14 +1172,13 @@ export default function Index() {
                             ) : editing.field === 'instructions' ? (
                                 <>
                                     <div className="relative">
-                                        <Textarea
-                                            value={editValue}
-                                            onChange={(e) => setEditValue(e.target.value)}
-                                            rows={5}
-                                            placeholder="Enter instructions..."
-                                            className="pr-12"
-                                            disabled={isSaving}
-                                        />
+                                            <Textarea
+                                                value={editValue}
+                                                onChange={(e) => setEditValue(e.target.value)}
+                                                rows={5}
+                                                placeholder="Enter instructions..."
+                                                className="pr-12"
+                                            />
                                         {isSpeechSupported && (
                                             <div className="absolute top-2 right-2">
                                                 <Button
@@ -1131,7 +1188,6 @@ export default function Index() {
                                                     onClick={toggleListening}
                                                     title={isListening ? 'Stop recording' : 'Start voice recording'}
                                                     type="button"
-                                                    disabled={isSaving}
                                                 >
                                                     {isListening ? <MicOffIcon className="h-4 w-4" /> : <MicIcon className="h-4 w-4" />}
                                                 </Button>
@@ -1159,7 +1215,7 @@ export default function Index() {
                             ) : editing.field === 'delivery_date' ? (
                                 <Popover>
                                     <PopoverTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-start text-left font-normal" disabled={isSaving}>
+                                        <Button variant="outline" className="w-full justify-start text-left font-normal">
                                             <Calendar1Icon className="mr-2 h-4 w-4" />
                                             {editValue ? format(new Date(editValue), 'yyyy-MM-dd') : 'Pick a delivery date'}
                                         </Button>
@@ -1176,7 +1232,7 @@ export default function Index() {
                                     </PopoverContent>
                                 </Popover>
                             ) : (
-                                <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} disabled={isSaving} />
+                                <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} />
                             )}
                         </div>
                     </DialogContent>
@@ -1238,7 +1294,7 @@ export default function Index() {
                             <Button variant="destructive" disabled={isDeleting} onClick={handleDelete}>
                                 {isDeleting ? (
                                     <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        <Spinner className="mr-2" />
                                         Deleting...
                                     </>
                                 ) : (
@@ -1507,7 +1563,7 @@ export default function Index() {
                         <Button disabled={isCreating} onClick={handleCreateOrder}>
                             {isCreating ? (
                                 <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    <Spinner className="mr-2" />
                                     Creating...
                                 </>
                             ) : (

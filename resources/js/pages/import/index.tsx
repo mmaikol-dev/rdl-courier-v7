@@ -37,6 +37,21 @@ function getCsrfToken() {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
 }
 
+function getCookieValue(name: string) {
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")
+    .slice(1)
+    .join("=");
+}
+
+function getXsrfToken() {
+  const cookieToken = getCookieValue("XSRF-TOKEN");
+
+  return cookieToken ? decodeURIComponent(cookieToken) : getCsrfToken();
+}
+
 export default function ImportOrdersPage() {
   const { props } = usePage<{ sheets: Sheet[]; flash?: { success?: string; error?: string; errors?: Record<string, string | string[]> } }>();
   const sheets = props.sheets || [];
@@ -118,6 +133,7 @@ export default function ImportOrdersPage() {
         xhr.setRequestHeader("Accept", "application/json");
         xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
         xhr.setRequestHeader("X-CSRF-TOKEN", getCsrfToken());
+        xhr.setRequestHeader("X-XSRF-TOKEN", getXsrfToken());
 
         xhr.upload.onprogress = (event) => {
           if (!event.lengthComputable) return;
