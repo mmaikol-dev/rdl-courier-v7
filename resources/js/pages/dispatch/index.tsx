@@ -46,19 +46,23 @@ function getCsrfToken() {
     return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || '';
 }
 
-function getCookieValue(name: string) {
-    return document.cookie
-        .split('; ')
-        .find((row) => row.startsWith(`${name}=`))
-        ?.split('=')
-        .slice(1)
-        .join('=');
-}
-
 function getXsrfToken() {
-    const cookieToken = getCookieValue('XSRF-TOKEN');
-
-    return cookieToken ? decodeURIComponent(cookieToken) : getCsrfToken();
+    // Prefer the meta tag token as it's always fresh from the server
+    const metaToken = getCsrfToken();
+    if (metaToken) {
+        return metaToken;
+    }
+    
+    // Fallback to cookie if meta tag is not available
+    const cookieName = 'XSRF-TOKEN';
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${cookieName}=`);
+    if (parts.length === 2) {
+        const cookieValue = parts.pop()?.split(';').shift();
+        return cookieValue ? decodeURIComponent(cookieValue) : '';
+    }
+    
+    return '';
 }
 
 interface SheetOrder {
@@ -257,6 +261,7 @@ export default function DispatchView() {
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/dispatch/bulk-download-waybills';
+        form.target = '_blank'; // Open PDF in new tab/window to maintain session
 
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
