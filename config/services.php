@@ -53,11 +53,16 @@ return [
         'call_center_agents' => array_values(array_filter(array_map('trim', explode(',', (string) env('WASENDER_CALL_CENTER_AGENTS', ''))))),
     ],
   
-    'openwa' => [
-        'base_url'    => env('OPENWA_BASE_URL'),
-        'session_id'  => env('OPENWA_SESSION_ID'),
-        'api_key'     => env('OPENWA_API_KEY'),
+   'openwa' => [
+    'base_url' => env('OPENWA_BASE_URL', 'https://api.sitebase.co.ke'),
+    'api_key'  => env('OPENWA_API_KEY'),
+    'sessions' => [
+        '254' => env('OPENWA_SESSION_KENYA'),
+        '255' => env('OPENWA_SESSION_TANZANIA'),
+        '256' => env('OPENWA_SESSION_UGANDA'),
+        '260' => env('OPENWA_SESSION_ZAMBIA'),
     ],
+],
 
 
     'wawp' => [

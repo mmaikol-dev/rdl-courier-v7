@@ -97,25 +97,6 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 const FILTERED_COLUMNS = COLUMNS.filter((col) => !['quantity', 'amount', 'instructions'].includes(col));
 const FILTER_FIELDS = [...FILTERED_COLUMNS, 'country'] as const;
 
-function getCsrfToken() {
-    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
-}
-
-function getCookieValue(name: string) {
-    return document.cookie
-        .split('; ')
-        .find((row) => row.startsWith(`${name}=`))
-        ?.split('=')
-        .slice(1)
-        .join('=');
-}
-
-function getXsrfToken() {
-    const cookieToken = getCookieValue('XSRF-TOKEN');
-
-    return cookieToken ? decodeURIComponent(cookieToken) : getCsrfToken();
-}
-
 const normalizeMultiSelectFilter = (value: string | string[] | undefined): string[] => {
     if (Array.isArray(value)) {
         return value.filter((item) => item.trim() !== '');
@@ -628,55 +609,42 @@ export default function Index() {
                 const key = `${orderId}-${field}`;
                 setLoadingCell(`save-${key}`, true);
 
-                fetch(`/sheetorders/${orderId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'X-CSRF-TOKEN': getCsrfToken(),
-                        'X-XSRF-TOKEN': getXsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
+                router.put(
+                    `/sheetorders/${orderId}`,
+                    { [field]: value },
+                    {
+                        preserveState: true,
+                        preserveScroll: true,
+                        only: ['orders'],
+                        onSuccess: () => {
+                            setLocalOrders((current) =>
+                                current.map((order) =>
+                                    order.id === orderId
+                                        ? {
+                                              ...order,
+                                              [field]: value,
+                                          }
+                                        : order,
+                                ),
+                            );
+                            setHighlighted((prev) => ({ ...prev, [key]: true }));
+                            setTimeout(() => {
+                                setHighlighted((prev) => {
+                                    const updated = { ...prev };
+                                    delete updated[key];
+                                    return updated;
+                                });
+                            }, 2000);
+                        },
+                        onError: (errors) => {
+                            const firstError = Object.values(errors ?? {}).flat()[0];
+                            toast.error(typeof firstError === 'string' ? firstError : 'Failed to save order update');
+                        },
+                        onFinish: () => {
+                            setLoadingCell(`save-${key}`, false);
+                        },
                     },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ [field]: value }),
-                })
-                    .then(async (response) => {
-                        if (!response.ok) {
-                            const payload = await response.json().catch(() => null);
-                            throw new Error(payload?.message || 'Failed to save order update');
-                        }
-
-                        return response.json();
-                    })
-                    .then((payload) => {
-                        const updatedOrder = payload.order as SheetOrder | undefined;
-
-                        setLocalOrders((current) =>
-                            current.map((order) =>
-                                order.id === orderId
-                                    ? {
-                                          ...order,
-                                          ...(updatedOrder || {}),
-                                          [field]: updatedOrder?.[field] ?? value,
-                                      }
-                                    : order,
-                            ),
-                        );
-                        setHighlighted((prev) => ({ ...prev, [key]: true }));
-                        setTimeout(() => {
-                            setHighlighted((prev) => {
-                                const updated = { ...prev };
-                                delete updated[key];
-                                return updated;
-                            });
-                        }, 2000);
-                    })
-                    .catch((error) => {
-                        toast.error(error instanceof Error ? error.message : 'Failed to save order update');
-                    })
-                    .finally(() => {
-                        setLoadingCell(`save-${key}`, false);
-                    });
+                );
             }
         }
         setEditing(null);

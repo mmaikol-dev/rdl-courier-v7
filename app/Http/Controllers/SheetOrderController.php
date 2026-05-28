@@ -218,10 +218,16 @@ class SheetOrderController extends Controller
     public function update(Request $request, SheetOrder $sheetorder)
     {
         $this->ensureCountryAccess($request, $sheetorder);
-        $field = $request->keys()[0] ?? null;
+        $field = collect($request->keys())
+            ->reject(fn ($key) => in_array($key, ['_token', '_method'], true))
+            ->first();
         $value = $request->input($field);
 
         if (!$field) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'No field provided.'], 422);
+            }
+
             return redirect()->back()->with('error', 'No field provided.');
         }
 
@@ -254,7 +260,7 @@ class SheetOrderController extends Controller
 
         if ($request->expectsJson()) {
             return response()->json([
-                'success' => true,
+                'message' => 'Order updated successfully.',
                 'order' => $sheetorder->fresh(),
             ]);
         }
@@ -264,6 +270,13 @@ class SheetOrderController extends Controller
 
    public function destroy($id)
 {
+    // Check if the logged-in user has the 'G.O.D' role
+    if (auth()->user()->roles !== 'G.O.D') {
+        return redirect()->route('sheetorders.index')
+                         ->with('error', 'Access denied. Only G.O.D can delete orders.');
+    }
+
+    // Proceed to delete only if user is G.O.D
     $order = SheetOrder::findOrFail($id);
     $this->ensureCountryAccess(request(), $order);
     $order->delete();

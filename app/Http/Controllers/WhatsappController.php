@@ -15,23 +15,68 @@ class WhatsappController extends Controller
     public function __construct(private readonly WhatsAppFallbackService $whatsAppService) {}
 
     /**
-     * Display a listing of the resource.
+     * Country name → country code mapping.
      */
-    public function index()
+    private function getCountryCode(string $country): string
     {
-        //
+        return match(strtolower(trim($country))) {
+            'kenya'    => '254',
+            'tanzania' => '255',
+            'uganda'   => '256',
+            'zambia'   => '260',
+            default    => '254',
+        };
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Country code → OpenWA session ID. Returns null if not configured.
      */
-    public function create()
+    private function getSessionForCountry(string $countryCode): ?string
     {
-        //
+        $session = match($countryCode) {
+            '254' => env('OPENWA_SESSION_KENYA',    null),
+            '255' => env('OPENWA_SESSION_TANZANIA', null),
+            '256' => env('OPENWA_SESSION_UGANDA',   null),
+            '260' => env('OPENWA_SESSION_ZAMBIA',   null),
+            default => null,
+        };
+
+        return !empty($session) ? $session : null;
     }
 
     /**
-     * Send a custom chat message (primary + fallback to OpenWA if primary fails explicitly).
+     * Country code → currency.
+     */
+    private function getCurrencyForCountry(string $countryCode): string
+    {
+        return match($countryCode) {
+            '254' => 'KES',
+            '255' => 'TZS',
+            '256' => 'UGX',
+            '260' => 'ZMW',
+            default => 'KES',
+        };
+    }
+
+    /**
+     * Country code → contact number.
+     */
+    private function getContactForCountry(string $countryCode): string
+    {
+        return match($countryCode) {
+            '254' => '0740801187', // Kenya
+            '255' => '0740801187', // Tanzania — update when branch opens
+            '256' => '0740801187', // Uganda — update when branch opens
+            '260' => '0740801187', // Zambia — update when branch opens
+            default => '0740801187',
+        };
+    }
+
+    public function index() {}
+    public function create() {}
+
+    /**
+     * Send a custom chat message (primary + fallback to OpenWA).
      */
     public function sendChat(Request $request)
     {
@@ -41,12 +86,15 @@ class WhatsappController extends Controller
             $validated = $request->validate([
                 'to'      => 'required|string',
                 'message' => 'required|string|max:4096',
+                'country' => 'nullable|string',
             ]);
 
-            $to = $validated['to'];
+            $to          = $validated['to'];
             $messageText = $validated['message'];
+            $country     = $validated['country'] ?? 'kenya';
+            $countryCode = $this->getCountryCode($country);
 
-            $formattedPhone = $this->whatsAppService->formatForStorage($to, '254');
+            $formattedPhone = $this->whatsAppService->formatForStorage($to, $countryCode);
 
             if (!$formattedPhone) {
                 Log::error("❌ Invalid phone number format", ['to' => $to]);
@@ -58,9 +106,8 @@ class WhatsappController extends Controller
 
             Log::info("📞 Formatted phone: {$formattedPhone}");
 
-            // Use the unified sender with fallback
             $result = $this->sendWithFallback($formattedPhone, $messageText, [
-                'country_code' => '254',
+                'country_code' => $countryCode,
             ]);
 
             Log::info('✅ WhatsApp send response', [
@@ -71,16 +118,14 @@ class WhatsappController extends Controller
 
             $messageId = $result['message_id'];
 
-            // Get conversation context
             $existingChat = Whatsapp::where('to', $to)
                 ->orWhere('to', $formattedPhone)
                 ->first();
 
             $clientName = $existingChat->client_name ?? 'Customer';
-            $storeName  = $existingChat->store_name ?? 'CHAT';
+            $storeName  = $existingChat->store_name ?? $country;
             $ccAgents   = $existingChat->cc_agents ?? null;
 
-            // Save message
             $whatsapp = Whatsapp::create([
                 'to'          => $result['to'],
                 'client_name' => $clientName,
@@ -119,7 +164,7 @@ class WhatsappController extends Controller
     }
 
     /**
-     * Send an order notification (primary + fallback to OpenWA if primary fails explicitly).
+     * Send an order notification (primary + fallback to OpenWA).
      */
     public function sendMessage($id)
     {
@@ -129,16 +174,25 @@ class WhatsappController extends Controller
             $order = SheetOrder::findOrFail($id);
 
             $client_name  = $order->client_name ?? 'Client';
-            $store_name   = strtoupper($order->store_name ?? 'STORE');
             $order_no     = $order->order_no;
             $product_name = $order->product_name;
             $quantity     = $order->quantity;
             $amount       = $order->amount;
             $cc_email     = $order->cc_email ?? null;
 
-            Log::info("🔍 Order details", compact('client_name', 'store_name', 'order_no', 'product_name', 'quantity', 'amount', 'cc_email'));
+            // Derive everything from country
+            $country     = $order->country ?? 'kenya';
+            $countryCode = $this->getCountryCode($country);
 
-            $phone = $this->getPhoneNumberForWasenderAPI($order->phone, $order->alt_no, $store_name);
+            Log::info("🔍 Order details", compact('client_name', 'country', 'countryCode', 'order_no', 'product_name', 'quantity', 'amount', 'cc_email'));
+
+            // Skip if no OpenWA session configured for this country
+            if ($this->getSessionForCountry($countryCode) === null) {
+                Log::warning("⏭️ No OpenWA session configured for country: {$country} ({$countryCode})");
+                return back()->with('error', "No WhatsApp session configured for {$country} ❌");
+            }
+
+            $phone = $this->getPhoneNumberForWasenderAPI($order->phone, $order->alt_no, $countryCode);
 
             if (!$phone) {
                 Log::error("❌ Invalid phone numbers", ['phone' => $order->phone, 'alt_no' => $order->alt_no]);
@@ -147,11 +201,11 @@ class WhatsappController extends Controller
 
             Log::info("📞 Phone formatted: {$phone}");
 
-            $message = $this->createOrderMessage($client_name, $order_no, $product_name, $quantity, $amount, $store_name);
+            $message = $this->createOrderMessage($client_name, $order_no, $product_name, $quantity, $amount, $countryCode);
             Log::info("📝 Message content: {$message}");
 
             $result = $this->sendWithFallback($phone, $message, [
-                'country_code' => strtoupper($store_name) === 'RDL3' ? '255' : '254',
+                'country_code' => $countryCode,
             ]);
 
             Log::info('✅ WhatsApp send response for order message', [
@@ -160,16 +214,14 @@ class WhatsappController extends Controller
                 'message_id' => $result['message_id'],
             ]);
 
-            $messageId = $result['message_id'];
-
             $whatsapp = Whatsapp::create([
                 'to'          => $result['to'],
                 'client_name' => $client_name,
-                'store_name'  => $store_name,
+                'store_name'  => $country,
                 'cc_agents'   => $cc_email,
                 'message'     => $message,
                 'status'      => 'sent',
-                'sid'         => $messageId,
+                'sid'         => $result['message_id'],
             ]);
 
             Log::info("✅ Saved WhatsApp record: {$whatsapp->id}");
@@ -187,7 +239,7 @@ class WhatsappController extends Controller
     }
 
     /**
-     * Webhook handler (unchanged).
+     * Webhook handler.
      */
     public function webhook(Request $request)
     {
@@ -251,8 +303,7 @@ class WhatsappController extends Controller
                         $from = explode('@', $from)[0];
                     }
 
-                    $pushName = $messageData['pushName'] ?? 'UNKNOWN';
-
+                    $pushName    = $messageData['pushName'] ?? 'UNKNOWN';
                     $messageBody = '';
                     $message     = $messageData['message'] ?? [];
 
@@ -306,12 +357,10 @@ class WhatsappController extends Controller
                     ]);
                 }
             }
-        }
-        elseif ($event === 'message.status' || $event === 'messages.update') {
+        } elseif ($event === 'message.status' || $event === 'messages.update') {
             Log::info("📊 Processing STATUS UPDATE event");
 
             $statusData = $data['data'] ?? [];
-
             Log::info("📊 Status Data:", $statusData);
 
             $messageId  = $statusData['key']['id'] ?? null;
@@ -328,8 +377,7 @@ class WhatsappController extends Controller
                 ];
 
                 $statusText = $statusMap[$statusCode] ?? "unknown_{$statusCode}";
-
-                $updated = Whatsapp::where('sid', $messageId)->update(['status' => $statusText]);
+                $updated    = Whatsapp::where('sid', $messageId)->update(['status' => $statusText]);
 
                 if ($updated) {
                     Log::info("✅ Status updated for message {$messageId}: {$statusText}");
@@ -339,8 +387,7 @@ class WhatsappController extends Controller
             } else {
                 Log::warning("⚠️ Missing messageId or status in update event", compact('messageId', 'statusCode'));
             }
-        }
-        else {
+        } else {
             Log::info("ℹ️ Unhandled event type: {$event}", ['data' => $data]);
         }
 
@@ -352,35 +399,24 @@ class WhatsappController extends Controller
     // --------------------------------------------------------------------------
 
     /**
-     * Send message via primary provider, with fallback to OpenWA only if
-     * the primary returns an explicit error (e.g., success: false).
+     * Try primary provider first, fall back to OpenWA if it fails.
      */
     private function sendWithFallback(string $to, string $message, array $options = []): array
     {
         try {
             $result = $this->whatsAppService->sendText($to, $message, $options);
 
-            // Check for explicit failure inside the response
             $isError = $result['response']['success'] ?? null;
             if ($isError === false) {
                 Log::warning('Primary WhatsApp provider returned an explicit error, falling back to OpenWA', [
                     'error_message' => $result['response']['message'] ?? 'Unknown error',
-                    'to' => $to,
+                    'to'            => $to,
                 ]);
                 throw new \Exception('Primary provider error: ' . ($result['response']['message'] ?? ''));
             }
 
-            // No explicit error – treat as success (even if message_id is missing)
             if (empty($result['message_id'])) {
-                Log::warning('Primary provider sent successfully but did not return a message_id (callback URL may not be set). Proceeding with success.', [
-                    'to' => $to,
-                ]);
-            } else {
-                Log::info('WhatsApp send completed via primary provider.', [
-                    'provider'   => $result['provider'] ?? 'wasender',
-                    'to'         => $result['to'] ?? $to,
-                    'message_id' => $result['message_id'],
-                ]);
+                Log::warning('Primary provider sent successfully but did not return a message_id. Proceeding.', ['to' => $to]);
             }
 
             return $result;
@@ -396,25 +432,28 @@ class WhatsappController extends Controller
     }
 
     /**
-     * Send message via the OpenWA API instance (your backup).
-     * Reads credentials from config('services.openwa') or .env.
+     * Send via self-hosted OpenWA/WaZuri, routing by country code.
+     * Skips if no session is configured for the country.
      */
     private function sendViaOpenWA(string $to, string $message, array $options = []): array
     {
-        $config = config('services.openwa');
+        $countryCode = $options['country_code'] ?? '254';
+        $sessionId   = $this->getSessionForCountry($countryCode);
+        $baseUrl     = config('services.openwa.base_url', env('OPENWA_BASE_URL', 'https://api.sitebase.co.ke'));
+        $apiKey      = config('services.openwa.api_key',  env('OPENWA_API_KEY',  ''));
 
-        $baseUrl   = $config['base_url']   ?? env('OPENWA_BASE_URL', 'http://185.197.195.22:2785');
-        $sessionId = $config['session_id'] ?? env('OPENWA_SESSION_ID', 'dd9b83bd-7eb8-46a9-9243-f7e3db0d8457');
-        $apiKey    = $config['api_key']    ?? env('OPENWA_API_KEY', 'owa_k1_eba490672ee354b3b8c098252fd1b5d281b4dab1cf7ef2b6438dc827fb5c04c1');
+        if ($sessionId === null) {
+            Log::warning("⏭️ OpenWA fallback skipped — no session configured for country code {$countryCode}");
+            throw new \Exception("No OpenWA session configured for country code {$countryCode}. Skipping.");
+        }
 
-        $cleanNumber = ltrim($to, '+');
-        $chatId = $cleanNumber . '@c.us';
-
-        $url = rtrim($baseUrl, '/') . "/api/sessions/{$sessionId}/messages/send-text";
+        $chatId = ltrim($to, '+') . '@c.us';
+        $url    = rtrim($baseUrl, '/') . "/api/sessions/{$sessionId}/messages/send-text";
 
         Log::info('Attempting OpenWA fallback request', [
-            'url'    => $url,
-            'chatId' => $chatId,
+            'url'          => $url,
+            'chatId'       => $chatId,
+            'country_code' => $countryCode,
         ]);
 
         $response = Http::withHeaders([
@@ -426,8 +465,8 @@ class WhatsappController extends Controller
         ]);
 
         Log::info('OpenWA fallback response', [
-            'status'  => $response->status(),
-            'body'    => $response->body(),
+            'status' => $response->status(),
+            'body'   => $response->body(),
         ]);
 
         if (!$response->successful()) {
@@ -447,6 +486,7 @@ class WhatsappController extends Controller
         Log::info('Message sent via OpenWA fallback', [
             'to'        => $chatId,
             'messageId' => $data['messageId'],
+            'country'   => $countryCode,
         ]);
 
         return [
@@ -456,63 +496,42 @@ class WhatsappController extends Controller
         ];
     }
 
-    private function formatPhoneNumber($phoneNumber, $storeName)
+    private function getPhoneNumberForWasenderAPI($primaryPhone, $altPhone, string $countryCode): ?string
     {
-        if (!$phoneNumber) return null;
-
-        $phone = preg_replace('/\D/', '', $phoneNumber);
-        $countryCode = strtoupper($storeName) === 'RDL3' ? '255' : '254';
-
-        if (substr($phone, 0, strlen($countryCode)) === $countryCode) {
-            return '+' . $phone;
-        }
-        if (substr($phone, 0, 1) === '0') {
-            return '+' . $countryCode . substr($phone, 1);
-        }
-        if (strlen($phone) === 9) {
-            return '+' . $countryCode . $phone;
-        }
-        if (strlen($phone) === 10) {
-            return '+' . $countryCode . substr($phone, -9);
-        }
-        return null;
-    }
-
-    private function getPhoneNumberForWasenderAPI($primaryPhone, $altPhone, $storeName)
-    {
-        $phone = $this->formatPhoneForWasender($primaryPhone);
+        $phone = $this->formatPhoneForWasender($primaryPhone, $countryCode);
         if (!$phone) {
-            $phone = $this->formatPhoneForWasender($altPhone);
+            $phone = $this->formatPhoneForWasender($altPhone, $countryCode);
         }
         return $phone;
     }
 
-    private function formatPhoneForWasender($phoneNumber)
+    private function formatPhoneForWasender(?string $phoneNumber, string $countryCode = '254'): ?string
     {
         if (!$phoneNumber) return null;
 
         $phone = preg_replace('/\D/', '', $phoneNumber);
         if (!$phone || strlen($phone) < 9) return null;
 
-        if (!preg_match('/^(254|255)/', $phone)) {
+        if (!preg_match('/^(254|255|256|260)/', $phone)) {
             if (substr($phone, 0, 1) === '0') {
-                $phone = '254' . substr($phone, 1);
+                $phone = $countryCode . substr($phone, 1);
             } else {
-                $phone = '254' . $phone;
+                $phone = $countryCode . $phone;
             }
         }
 
         if (strlen($phone) >= 12 && strlen($phone) <= 13) {
-            return $phone;   // no leading '+'
+            return $phone;
         }
+
         return null;
     }
 
-    private function createOrderMessage($clientName, $orderNo, $productName, $quantity, $amount, $storeName)
+    private function createOrderMessage($clientName, $orderNo, $productName, $quantity, $amount, string $countryCode): string
     {
-        $currency = strtoupper($storeName) === 'RDL3' ? 'TZS' : 'KES';
+        $currency        = $this->getCurrencyForCountry($countryCode);
         $formattedAmount = number_format($amount);
-        $contactNumber = '0740801187';
+        $contactNumber   = $this->getContactForCountry($countryCode);
 
         return <<<MESSAGE
 *REALDEAL LOGISTICS - ORDER NOTIFICATION*
@@ -534,10 +553,9 @@ _Delivering Excellence, Every Time._
 MESSAGE;
     }
 
-    // (Unused media methods – kept for completeness)
     private function handleMediaDecryption(array $mediaInfo, string $mediaType, string $messageId): void
     {
-        $url = $mediaInfo['url'] ?? null;
+        $url      = $mediaInfo['url'] ?? null;
         $mediaKey = $mediaInfo['mediaKey'] ?? null;
 
         if (!$url || !$mediaKey) {
@@ -549,9 +567,9 @@ MESSAGE;
             throw new \Exception("Failed to download media from URL: {$url}");
         }
 
-        $keys = $this->getDecryptionKeys($mediaKey, $mediaType);
-        $iv = substr($keys, 0, 16);
-        $cipherKey = substr($keys, 16, 32);
+        $keys       = $this->getDecryptionKeys($mediaKey, $mediaType);
+        $iv         = substr($keys, 0, 16);
+        $cipherKey  = substr($keys, 16, 32);
         $ciphertext = substr($encryptedData, 0, -10);
 
         $decryptedData = openssl_decrypt($ciphertext, 'aes-256-cbc', $cipherKey, OPENSSL_RAW_DATA, $iv);
@@ -559,11 +577,11 @@ MESSAGE;
             throw new \Exception('Failed to decrypt media.');
         }
 
-        $mimeType = $mediaInfo['mimetype'] ?? 'application/octet-stream';
-        $extension = explode('/', $mimeType)[1] ?? 'bin';
-        $filename = $mediaInfo['fileName'] ?? "{$messageId}.{$extension}";
-
+        $mimeType    = $mediaInfo['mimetype'] ?? 'application/octet-stream';
+        $extension   = explode('/', $mimeType)[1] ?? 'bin';
+        $filename    = $mediaInfo['fileName'] ?? "{$messageId}.{$extension}";
         $storagePath = "whatsapp-media/{$filename}";
+
         \Storage::put($storagePath, $decryptedData);
 
         Log::info("✅ Media decrypted and saved", [
