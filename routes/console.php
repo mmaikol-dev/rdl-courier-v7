@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Foundation\Inspiring;
-use App\Jobs\RunArtisanCommandJob;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -10,20 +9,18 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Schedule your custom command. Keep this conservative in production because
-// each run can touch the database and the Google Sheets API.
-Schedule::job(new RunArtisanCommandJob('orders:update-sheets', ['--limit' => 1000]))
+// Keep scheduled work conservative in production: these commands touch the
+// database and external APIs, so the command itself should hold the overlap lock.
+Schedule::command('orders:update-sheets', ['--limit' => 250])
     ->everyFiveMinutes()
-    ->withoutOverlapping(10);
+    ->withoutOverlapping(30);
 
-Schedule::job(new RunArtisanCommandJob('orders:process-synced'))
-    ->everyTenMinutes()
-    ->withoutOverlapping(10);
 
-Schedule::job(new RunArtisanCommandJob('c2b:process-transactions'))
-    ->everyMinute()
-    ->withoutOverlapping(10);
+Schedule::command('whatsapp:send-meta')
+    ->dailyAt('06:00')
+    ->withoutOverlapping(60);
 
-Schedule::job(new RunArtisanCommandJob('whatsapp:send-meta'))
-    ->dailyAt('08:00')
-    ->withoutOverlapping(10);
+
+Schedule::command('whatsapp:notify-overdue')
+        ->dailyAt('07:00')
+        ->withoutOverlapping(60);

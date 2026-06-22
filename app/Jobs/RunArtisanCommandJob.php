@@ -3,13 +3,14 @@
 namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Artisan;
 
-class RunArtisanCommandJob implements ShouldQueue
+class RunArtisanCommandJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -19,6 +20,8 @@ class RunArtisanCommandJob implements ShouldQueue
     public int $tries = 3;
 
     public int $timeout = 1200;
+
+    public int $uniqueFor = 1200;
 
     public function __construct(
         private string $command,
@@ -33,5 +36,10 @@ class RunArtisanCommandJob implements ShouldQueue
     public function handle(): void
     {
         Artisan::call($this->command, $this->parameters);
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->command . ':' . sha1(json_encode($this->parameters));
     }
 }

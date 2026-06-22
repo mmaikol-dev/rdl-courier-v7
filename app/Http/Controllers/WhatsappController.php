@@ -12,11 +12,45 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsappController extends Controller
 {
-    public function __construct(private readonly WhatsAppFallbackService $whatsAppService) {}
+    private WhatsAppFallbackService $whatsAppService;
 
-    /**
-     * Country name → country code mapping.
-     */
+    // -----------------------------------------------------------------
+    //  Message templates – pool of variations
+    // -----------------------------------------------------------------
+    private array $messageTemplates = [];
+
+    public function __construct(WhatsAppFallbackService $whatsAppService)
+    {
+        $this->whatsAppService = $whatsAppService;
+        $this->initMessageTemplates();
+    }
+
+    private function initMessageTemplates(): void
+    {
+        $this->messageTemplates = [
+            // Variation 1 – original "unreachable" style
+            "*REALDEAL LOGISTICS - ORDER NOTIFICATION*\n\nHello {name},\n\nWe tried contacting you regarding your order *{order}* but your phone was unreachable.\n\n*Order Details:*\n📦 Product: {product}\n🔢 Quantity: {qty} pcs\n💰 Amount: {currency} {amount}\n\n*Please call us back on {contact}* to confirm your availability for delivery.\n\nThank you for choosing Realdeal Logistics!\n\n_Delivering Excellence, Every Time._",
+
+            // Variation 2 – friendly reminder
+            "Hi {name} 👋\n\nRealdeal Logistics here! We missed you on your phone and wanted to follow up about your order *{order}* ({product}, {qty} pcs, {currency} {amount}).\n\nPlease call us on {contact} when you're free so we can arrange delivery.\n\nCheers,\nRealdeal Team",
+
+            // Variation 3 – urgent
+            "⚠️ *URGENT: ORDER PENDING* ⚠️\n\nDear {name},\n\nYour order *{order}* – {product} ({qty} pcs) worth {currency} {amount} could not be delivered because we couldn't reach you.\n\nCall us immediately on {contact} to avoid delays.\n\n- Realdeal Logistics",
+
+            // Variation 4 – short
+            "Hi {name}, we tried calling about your order {order} ({product}). Please call us back on {contact} to confirm delivery. Thanks! – Realdeal Logistics",
+
+            // Variation 5 – enthusiastic
+            "Good news, {name}! 🚚\n\nYour {product} order (No. {order}) is ready for delivery. Value: {currency} {amount}.\n\nWe tried calling but missed you – please call us on {contact} when you're available.\n\nWarm regards,\nRealdeal Logistics",
+
+            // Variation 6 – plain but polite
+            "Dear {name},\n\nWe attempted to contact you regarding your order {order} ({product}, {qty} pieces). Kindly return our call on {contact} at your earliest convenience.\n\nSincerely,\nRealdeal Logistics",
+        ];
+    }
+
+    // -----------------------------------------------------------------
+    //  Country helpers
+    // -----------------------------------------------------------------
     private function getCountryCode(string $country): string
     {
         return match(strtolower(trim($country))) {
@@ -28,9 +62,6 @@ class WhatsappController extends Controller
         };
     }
 
-    /**
-     * Country code → OpenWA session ID. Returns null if not configured.
-     */
     private function getSessionForCountry(string $countryCode): ?string
     {
         $session = match($countryCode) {
@@ -44,9 +75,6 @@ class WhatsappController extends Controller
         return !empty($session) ? $session : null;
     }
 
-    /**
-     * Country code → currency.
-     */
     private function getCurrencyForCountry(string $countryCode): string
     {
         return match($countryCode) {
@@ -58,20 +86,50 @@ class WhatsappController extends Controller
         };
     }
 
-    /**
-     * Country code → contact number.
-     */
     private function getContactForCountry(string $countryCode): string
     {
         return match($countryCode) {
-            '254' => '0740801187', // Kenya
-            '255' => '0740801187', // Tanzania — update when branch opens
-            '256' => '0740801187', // Uganda — update when branch opens
-            '260' => '0740801187', // Zambia — update when branch opens
+            '254' => '254740801187',
+            '255' => '255614924382',
+            '256' => '256701600293',
+            '260' => '0740801187',
             default => '0740801187',
         };
     }
 
+    // -----------------------------------------------------------------
+    //  Message builder (uses random template)
+    // -----------------------------------------------------------------
+    private function createOrderMessage(
+        string $clientName,
+        string $orderNo,
+        string $productName,
+        $quantity,
+        $amount,
+        string $countryCode
+    ): string {
+        $currency = $this->getCurrencyForCountry($countryCode);
+        $formattedAmount = number_format($amount);
+        $contactNumber = $this->getContactForCountry($countryCode);
+
+        $template = $this->messageTemplates[array_rand($this->messageTemplates)];
+
+        $replacements = [
+            '{name}'     => $clientName,
+            '{order}'    => $orderNo,
+            '{product}'  => $productName,
+            '{qty}'      => $quantity,
+            '{currency}' => $currency,
+            '{amount}'   => $formattedAmount,
+            '{contact}'  => $contactNumber,
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $template);
+    }
+
+    // -----------------------------------------------------------------
+    //  Public endpoints
+    // -----------------------------------------------------------------
     public function index() {}
     public function create() {}
 
@@ -180,16 +238,14 @@ class WhatsappController extends Controller
             $amount       = $order->amount;
             $cc_email     = $order->cc_email ?? null;
 
-            // Derive everything from country
             $country     = $order->country ?? 'kenya';
             $countryCode = $this->getCountryCode($country);
 
             Log::info("🔍 Order details", compact('client_name', 'country', 'countryCode', 'order_no', 'product_name', 'quantity', 'amount', 'cc_email'));
 
-            // Skip if no OpenWA session configured for this country
+            // Only log a warning if no OpenWA session – still try primary provider
             if ($this->getSessionForCountry($countryCode) === null) {
-                Log::warning("⏭️ No OpenWA session configured for country: {$country} ({$countryCode})");
-                return back()->with('error', "No WhatsApp session configured for {$country} ❌");
+                Log::warning("⏭️ No OpenWA session for {$country} ({$countryCode}) – will only try primary provider.");
             }
 
             $phone = $this->getPhoneNumberForWasenderAPI($order->phone, $order->alt_no, $countryCode);
@@ -201,6 +257,7 @@ class WhatsappController extends Controller
 
             Log::info("📞 Phone formatted: {$phone}");
 
+            // Use the new varied template
             $message = $this->createOrderMessage($client_name, $order_no, $product_name, $quantity, $amount, $countryCode);
             Log::info("📝 Message content: {$message}");
 
@@ -239,7 +296,7 @@ class WhatsappController extends Controller
     }
 
     /**
-     * Webhook handler.
+     * Webhook handler (unchanged – receives incoming messages & status updates).
      */
     public function webhook(Request $request)
     {
@@ -395,11 +452,12 @@ class WhatsappController extends Controller
     }
 
     // --------------------------------------------------------------------------
-    //  Private helper methods
+    //  Fallback logic
     // --------------------------------------------------------------------------
 
     /**
      * Try primary provider first, fall back to OpenWA if it fails.
+     * Respects OPENWA_FALLBACK_ENABLED (default true).
      */
     private function sendWithFallback(string $to, string $message, array $options = []): array
     {
@@ -422,10 +480,15 @@ class WhatsappController extends Controller
             return $result;
 
         } catch (\Throwable $e) {
-            Log::warning('Primary WhatsApp provider failed, switching to OpenWA fallback', [
+            Log::warning('Primary WhatsApp provider failed, considering fallback', [
                 'error' => $e->getMessage(),
                 'to'    => $to,
             ]);
+
+            // Fallback toggle (default enabled while Wasender is unpaid)
+            if (!env('OPENWA_FALLBACK_ENABLED', true)) {
+                throw new \Exception('OpenWA fallback is disabled. Primary provider failed.');
+            }
 
             return $this->sendViaOpenWA($to, $message, $options);
         }
@@ -433,7 +496,7 @@ class WhatsappController extends Controller
 
     /**
      * Send via self-hosted OpenWA/WaZuri, routing by country code.
-     * Skips if no session is configured for the country.
+     * Uses obfuscated headers to mimic official WhatsApp Web.
      */
     private function sendViaOpenWA(string $to, string $message, array $options = []): array
     {
@@ -443,8 +506,7 @@ class WhatsappController extends Controller
         $apiKey      = config('services.openwa.api_key',  env('OPENWA_API_KEY',  ''));
 
         if ($sessionId === null) {
-            Log::warning("⏭️ OpenWA fallback skipped — no session configured for country code {$countryCode}");
-            throw new \Exception("No OpenWA session configured for country code {$countryCode}. Skipping.");
+            throw new \Exception("No OpenWA session configured for country code {$countryCode}.");
         }
 
         $chatId = ltrim($to, '+') . '@c.us';
@@ -456,10 +518,7 @@ class WhatsappController extends Controller
             'country_code' => $countryCode,
         ]);
 
-        $response = Http::withHeaders([
-            'X-API-Key'    => $apiKey,
-            'Content-Type' => 'application/json',
-        ])->post($url, [
+        $response = Http::withHeaders($this->openwaHeaders($apiKey))->post($url, [
             'chatId' => $chatId,
             'text'   => $message,
         ]);
@@ -496,6 +555,28 @@ class WhatsappController extends Controller
         ];
     }
 
+    /**
+     * Headers that mimic official WhatsApp Web traffic.
+     */
+    private function openwaHeaders(string $apiKey): array
+    {
+        return [
+            'X-API-Key'      => $apiKey,
+            'Content-Type'   => 'application/json',
+            'User-Agent'     => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept'         => 'application/json, text/plain, */*',
+            'Accept-Language'=> 'en-US,en;q=0.9',
+            'Origin'         => 'https://web.whatsapp.com',
+            'Referer'        => 'https://web.whatsapp.com/',
+            'Sec-Fetch-Dest' => 'empty',
+            'Sec-Fetch-Mode' => 'cors',
+            'Sec-Fetch-Site' => 'same-origin',
+        ];
+    }
+
+    // --------------------------------------------------------------------------
+    //  Phone formatting helpers
+    // --------------------------------------------------------------------------
     private function getPhoneNumberForWasenderAPI($primaryPhone, $altPhone, string $countryCode): ?string
     {
         $phone = $this->formatPhoneForWasender($primaryPhone, $countryCode);
@@ -520,39 +601,12 @@ class WhatsappController extends Controller
             }
         }
 
-        if (strlen($phone) >= 12 && strlen($phone) <= 13) {
-            return $phone;
-        }
-
-        return null;
+        return (strlen($phone) >= 12 && strlen($phone) <= 13) ? $phone : null;
     }
 
-    private function createOrderMessage($clientName, $orderNo, $productName, $quantity, $amount, string $countryCode): string
-    {
-        $currency        = $this->getCurrencyForCountry($countryCode);
-        $formattedAmount = number_format($amount);
-        $contactNumber   = $this->getContactForCountry($countryCode);
-
-        return <<<MESSAGE
-*REALDEAL LOGISTICS - ORDER NOTIFICATION*
-
-Hello {$clientName},
-
-We tried contacting you regarding your order *{$orderNo}* but your phone was unreachable.
-
-*Order Details:*
-📦 Product: {$productName}
-🔢 Quantity: {$quantity} pcs
-💰 Amount: {$currency} {$formattedAmount}
-
-*Please call us back on {$contactNumber}* to confirm your availability for delivery.
-
-Thank you for choosing Realdeal Logistics!
-
-_Delivering Excellence, Every Time._
-MESSAGE;
-    }
-
+    // --------------------------------------------------------------------------
+    //  Media decryption helpers (unchanged, used by webhook if needed)
+    // --------------------------------------------------------------------------
     private function handleMediaDecryption(array $mediaInfo, string $mediaType, string $messageId): void
     {
         $url      = $mediaInfo['url'] ?? null;

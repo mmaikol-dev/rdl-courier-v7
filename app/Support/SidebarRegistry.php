@@ -20,6 +20,7 @@ class SidebarRegistry
             ['key' => 'maps', 'title' => 'Maps', 'href' => '/maps', 'group' => 'Operations'],
             ['key' => 'sheets', 'title' => 'Sheets', 'href' => '/sheets', 'group' => 'Operations'],
             ['key' => 'import', 'title' => 'Import Orders', 'href' => '/import', 'group' => 'Operations'],
+            ['key' => 'incoming-sheet-orders', 'title' => 'Incoming Orders', 'href' => '/incoming-sheet-orders', 'group' => 'Operations'],
             ['key' => 'whatsapp', 'title' => 'Whatsapp Chats', 'href' => '/whatsapp', 'group' => 'Operations'],
             ['key' => 'products', 'title' => 'Products', 'href' => '/products', 'group' => 'Inventory'],
             ['key' => 'inventory-deductions', 'title' => 'Inventory Deductions', 'href' => '/inventory-deductions', 'group' => 'Inventory'],

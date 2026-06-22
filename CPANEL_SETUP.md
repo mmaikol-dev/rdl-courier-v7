@@ -66,6 +66,39 @@ php artisan route:cache
 php artisan view:cache
 ```
 
+## Scheduler
+
+Create exactly one cron entry for Laravel's scheduler. Use the real project path on your cPanel account:
+
+```bash
+* * * * * cd /home/username/rdl-courier-v7 && /usr/local/bin/php artisan schedule:run >> /dev/null 2>&1
+```
+
+Do not create separate cron entries for `orders:update-sheets`, `orders:process-synced`, `c2b:process-transactions`, or `whatsapp:send-meta`. The scheduler already controls those intervals and overlap locks.
+
+## Queue Workers
+
+Order imports from Google Sheets are buffered into the database and processed on the `imports` queue. Scheduled/manual command jobs use the `scheduled` queue. Keep worker counts fixed so traffic bursts do not spawn unlimited PHP processes.
+
+Start with these two worker processes from the project root:
+
+```bash
+php artisan queue:work database --queue=imports --sleep=3 --tries=3 --timeout=120 --max-jobs=300 --max-time=3600
+php artisan queue:work database --queue=scheduled,default --sleep=5 --tries=1 --timeout=1200 --max-jobs=100 --max-time=3600
+```
+
+If the server has spare CPU after observing production traffic, add one more `imports` worker. Avoid more than two import workers on shared hosting.
+
+If your cPanel has a process manager, create one entry for each command above. If it only supports cron, run a checked startup script every minute rather than adding many raw `queue:work` cron entries. The script must first check whether the worker is already running before starting it.
+
+Useful health checks:
+
+```bash
+php artisan queue:failed
+php artisan schedule:list
+php artisan queue:restart
+```
+
 ## Permissions
 
 Make sure these are writable:

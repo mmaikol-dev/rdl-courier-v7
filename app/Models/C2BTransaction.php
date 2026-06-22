@@ -28,6 +28,7 @@ class C2BTransaction extends Model
         'payer_phone',
         'business_shortcode',
         'processed',
+        'last_attempted_at',
     ];
 
     /**
@@ -37,5 +38,7 @@ class C2BTransaction extends Model
      */
     protected $casts = [
         'amount' => 'decimal:2',
+        'processed' => 'boolean',
+        'last_attempted_at' => 'datetime',
     ];
 }

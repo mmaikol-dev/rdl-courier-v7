@@ -76,19 +76,23 @@ class UpdateSheetOrders extends Command
                 $spreadsheetCount = $orders->count();
                 $remaining = $maxLimit - $currentCount;
 
-                // OPTION B rule: skip entire spreadsheet if it would exceed remaining capacity
-                if ($spreadsheetCount > $remaining) {
-                    Log::warning("Skipping spreadsheet {$spreadsheetId} — has {$spreadsheetCount} orders but only {$remaining} slots remain for this run.");
-                    continue;
+                if ($remaining <= 0) {
+                    break;
                 }
 
-                Log::info("Processing spreadsheet {$spreadsheetId} (orders: {$spreadsheetCount}; remaining slots: {$remaining})");
+                $ordersForRun = $orders->take($remaining)->values();
 
-                $processedFromSpreadsheet = $this->processSpreadsheet($service, $spreadsheetId, $orders);
+                if ($spreadsheetCount > $remaining) {
+                    Log::info("Processing first {$remaining} orders from spreadsheet {$spreadsheetId}; {$spreadsheetCount} are due.");
+                } else {
+                    Log::info("Processing spreadsheet {$spreadsheetId} (orders: {$spreadsheetCount}; remaining slots: {$remaining})");
+                }
 
-                $currentCount += $processedFromSpreadsheet;
+                $processedFromSpreadsheet = $this->processSpreadsheet($service, $spreadsheetId, $ordersForRun);
 
-                Log::info("Processed {$processedFromSpreadsheet} orders from spreadsheet {$spreadsheetId}. Total processed this run: {$currentCount}/{$maxLimit}");
+                $currentCount += $ordersForRun->count();
+
+                Log::info("Fully synced {$processedFromSpreadsheet} orders from spreadsheet {$spreadsheetId}. Total attempted this run: {$currentCount}/{$maxLimit}");
 
                 // Stop completely if we've reached our per-run cap
                 if ($currentCount >= $maxLimit) {
@@ -249,8 +253,10 @@ class UpdateSheetOrders extends Command
                         'error_message' => $msg
                     ]);
 
-                    // Don't mark orders; they still have updated_at set and will be retried.
-                    sleep(120); // pause a bit before next spreadsheet/run
+                    SheetOrder::whereIn('id', collect($allProcessedOrders)->pluck('id'))
+                        ->update(['updated_at' => now()->addMinutes(15)]);
+
+                    // Don't hold a PHP process asleep; delay the affected rows instead.
                     return 0;
                 }
 

@@ -140,8 +140,7 @@ class ProcessSyncedOrders extends Command
             $msg = $e->getMessage();
 
             if (str_contains($msg, 'Rate Limit') || str_contains($msg, 'Too Many Requests')) {
-                Log::warning("⚠ Quota reached for spreadsheet {$spreadsheetId}. Waiting 2 minutes...");
-                sleep(120);
+                Log::warning("Quota reached for spreadsheet {$spreadsheetId}. Skipping this run; scheduler will retry later.");
             } else {
                 Log::error("✗ Error processing spreadsheet {$spreadsheetId}", [
                     'message' => $msg,

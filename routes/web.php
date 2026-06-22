@@ -12,6 +12,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\AssignController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ImportController;
+use App\Http\Controllers\IncomingSheetOrderController;
 use App\Http\Controllers\InventoryDeductionController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ChatController;
@@ -195,6 +196,7 @@ Route::resource('whatsapp',ChatController::class);
 //import
 Route::resource('import',ImportController::class);
 Route::post('/orders/import', [ImportController::class, 'store'])->name('orders.import.store');
+Route::get('/incoming-sheet-orders', [IncomingSheetOrderController::class, 'index'])->name('incoming-sheet-orders.index');
 
 //Ai
 Route::resource('ai',AiController::class);

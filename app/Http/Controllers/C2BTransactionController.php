@@ -105,13 +105,26 @@ class C2BTransactionController extends Controller
         'BusinessShortCode' => $businessShortCode,
     ]);
 
-    if (!$transId || !$billRefNumber || !$transAmount || !$businessShortCode) {
-        Log::error('Missing required fields from Safaricom');
-        return response()->json([
-            'ResultCode' => 1,
-            'ResultDesc' => 'Missing required fields'
-        ]);
+    // Generate fallback values for missing fields
+    if (!$transId) {
+        $transId = 'unknown_' . time();
     }
+    if (!$billRefNumber) {
+        $billRefNumber = 'no_ref_' . time();
+    }
+    if (!$transAmount) {
+        $transAmount = 0;
+    }
+    if (!$businessShortCode) {
+        $businessShortCode = 'unknown_shortcode';
+    }
+
+    Log::warning('C2B Callback with missing fields saved with fallbacks', [
+        'TransID' => $transId,
+        'BillRefNumber' => $billRefNumber,
+        'TransAmount' => $transAmount,
+        'BusinessShortCode' => $businessShortCode,
+    ]);
 
     try {
         // Prevent duplicates

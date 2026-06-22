@@ -45,11 +45,12 @@ class UpdateController extends Controller
 
     public function run(): JsonResponse
     {
-        RunArtisanCommandJob::dispatch('orders:update-sheets', ['--limit' => 100]);
+        RunArtisanCommandJob::dispatch('orders:update-sheets', ['--limit' => 100])
+            ->onQueue('scheduled');
 
         return response()->json([
             'success' => true,
-            'message' => 'Sheet update command queued',
+            'message' => 'Sheet update command queued on the scheduled worker',
         ]);
     }
 

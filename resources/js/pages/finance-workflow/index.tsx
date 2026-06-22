@@ -79,6 +79,19 @@ function formatDateTime(value?: string | null) {
   return new Date(value).toLocaleString();
 }
 
+/**
+ * Safely extracts the date-only part from a delivery date string.
+ * This avoids timezone shifts that can cause off-by-one errors.
+ * Expects inputs like "2025-10-17T..." or "2025-10-17 00:00:00".
+ * Returns the raw "YYYY-MM-DD" part or "-" if the value is absent.
+ */
+function formatDateOnly(value?: string | null): string {
+  if (!value) return '-';
+  // Split on either 'T' (ISO) or a space (common database format)
+  const datePart = value.split(/[T\s]/)[0];
+  return datePart;
+}
+
 function EmptyState({ message }: { message: string }) {
   return (
     <Card className="border-dashed">
@@ -837,7 +850,8 @@ export default function FinanceWorkflowPage() {
                           </div>
                           <div className="col-span-2 min-w-0">
                             <div className="text-xs uppercase tracking-wide text-muted-foreground">Delivery Date</div>
-                            <div className="truncate" title={order.delivery_date ?? '-'}>{order.delivery_date ?? '-'}</div>
+                            {/* FIX: Use formatDateOnly to avoid timezone off-by-one */}
+                            <div className="truncate" title={formatDateOnly(order.delivery_date)}>{formatDateOnly(order.delivery_date)}</div>
                           </div>
                         </div>
                       </CardContent>
@@ -901,7 +915,8 @@ export default function FinanceWorkflowPage() {
                             <TruncatedCell value={order.code} />
                           </TableCell>
                           <TableCell>
-                            <TruncatedCell value={order.delivery_date} />
+                            {/* FIX: Use formatDateOnly to avoid timezone off-by-one */}
+                            <TruncatedCell value={formatDateOnly(order.delivery_date)} />
                           </TableCell>
                         </TableRow>
                       ))}
