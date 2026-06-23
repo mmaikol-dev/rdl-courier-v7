@@ -175,6 +175,22 @@ class FinanceWorkflowController extends Controller
                 'delivery_date',
                 'phone',
                 'address',
+            ])
+            ->map(fn (SheetOrder $order) => [
+                'id' => $order->id,
+                'order_no' => $order->order_no,
+                'client_name' => $order->client_name,
+                'product_name' => $order->product_name,
+                'amount' => $order->amount,
+                'quantity' => $order->quantity,
+                'status' => $order->status,
+                'agent' => $order->agent,
+                'code' => $order->code,
+                'delivery_date' => $order->getRawOriginal('delivery_date')
+                    ? substr((string) $order->getRawOriginal('delivery_date'), 0, 10)
+                    : null,
+                'phone' => $order->phone,
+                'address' => $order->address,
             ]);
 
         return response()->json([
