@@ -3,6 +3,7 @@ import {
     BoxesIcon,
     BrainCircuitIcon,
     CoinsIcon,
+    Download,
     FileAxis3DIcon,
     FileSpreadsheetIcon,
     FileX,
@@ -40,6 +41,7 @@ export type SidebarItemKey =
     | 'maps'
     | 'sheets'
     | 'import'
+    | 'incoming-sheet-orders'
     | 'whatsapp'
     | 'products'
     | 'inventory-deductions'
@@ -82,6 +84,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
             { key: 'maps', title: 'Maps', href: '/maps', icon: MapIcon, group: 'Operations' },
             { key: 'sheets', title: 'Sheets', href: '/sheets', icon: FileSpreadsheetIcon, group: 'Operations' },
             { key: 'import', title: 'Import Orders', href: '/import', icon: PlusIcon, group: 'Operations' },
+            { key: 'incoming-sheet-orders', title: 'Incoming Orders', href: '/incoming-sheet-orders', icon: Download, group: 'Operations' },
             { key: 'whatsapp', title: 'Whatsapp Chats', href: '/whatsapp', icon: MessagesSquareIcon, group: 'Operations' },
         ],
     },

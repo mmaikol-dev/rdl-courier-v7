@@ -6,7 +6,7 @@
 /public/storage
 /storage/*.key
 /storage/project-423911-84ac0fbdde59.json
-/storage/rdl-478707-2c066429878f.json
+/storage/rdl-478707-7e105ca93b29.json
 /storage/pail
 /vendor
 .env
@@ -25,3 +25,7 @@ yarn-error.log
 /.vscode
 /.zed
 /realdea1_realdeal (1).sql
+/error_log
+/config/error_log
+localhost.sql
+/build

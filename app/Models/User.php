@@ -95,4 +95,8 @@ protected static function boot()
         return $this->hasOne(UserLoginLocation::class)->latestOfMany('logged_in_at');
     }
 
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(Transfer::class, 'agent_id');
+    }
 }

@@ -26,12 +26,22 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 
 export default function TransferDetails() {
-  const { transfers, deductions, productId, agentId, totalTransferred, totalDeducted, remainingQuantity } = usePage().props as any;
+  const { transfers, deductions, productId, agentId, totalTransferred, totalDeducted, remainingQuantity, flash } = usePage().props as any;
   const [isDeductionOpen, setIsDeductionOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (flash?.success) toast.success(flash.success);
+    if (flash?.error) toast.error(flash.error);
+    if (flash?.errors) {
+      const firstError = Object.values(flash.errors)[0];
+      if (typeof firstError === "string") toast.error(firstError);
+    }
+  }, [flash]);
 
   const { data, setData, post, processing, errors, reset } = useForm({
     code: "",
@@ -45,6 +55,7 @@ export default function TransferDetails() {
     e.preventDefault();
     post(`/transfers/${productId}/${agentId}/deductions`, {
       onSuccess: () => {
+        toast.success("Deduction recorded successfully!");
         reset();
         setIsDeductionOpen(false);
       },
@@ -54,6 +65,7 @@ export default function TransferDetails() {
   const handleDeleteDeduction = (id: number) => {
     router.delete(`/deductions/${id}`, {
       onSuccess: () => {
+        toast.success("Deduction deleted successfully!");
         setDeleteId(null);
       },
     });
@@ -73,11 +85,11 @@ export default function TransferDetails() {
         <div className="flex items-center justify-between mb-6">
           <Button
             variant="outline"
-            onClick={() => router.get("/transfer")}
+            onClick={() => router.get(`/transfers/agent/${agentId}`)}
             className="flex items-center gap-2"
           >
             <ArrowLeftIcon className="w-4 h-4" />
-            Back to Transfers
+            <span className="hidden sm:inline">{firstTransfer?.agent?.name || "Agent"} Transfers</span>
           </Button>
 
           <Dialog open={isDeductionOpen} onOpenChange={setIsDeductionOpen}>
@@ -160,7 +172,7 @@ export default function TransferDetails() {
 
         {/* Summary Cards */}
         {firstTransfer && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">

@@ -3,8 +3,9 @@
 import AppLayout from '@/layouts/app-layout'
 import { Head, usePage } from '@inertiajs/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Bar, BarChart, CartesianGrid, XAxis, LabelList, ResponsiveContainer } from "recharts"
-import { TrendingUp, Package, Barcode, Truck, Layers } from "lucide-react"
+import { TrendingUp, Package, Barcode, Truck, Layers, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart"
 
 interface DashboardProps {
@@ -15,6 +16,8 @@ interface DashboardProps {
     totalTransfers: number
     totalStock: number
   }
+  depletedProducts: { id: number, name: string, quantity: number }[]
+  nearDepletedProducts: { id: number, name: string, quantity: number, quantity_alert: number }[]
   transfersByRegion: { region: string, total: number }[]
   scansByOperation: { operation_type: string, total: number }[]
   recentScans: {
@@ -28,7 +31,7 @@ interface DashboardProps {
 }
 
 export default function WarehouseDashboard() {
-  const { userName, summary, transfersByRegion, scansByOperation, recentScans } = usePage<DashboardProps>().props
+  const { userName, summary, depletedProducts, nearDepletedProducts, transfersByRegion, scansByOperation, recentScans } = usePage<DashboardProps>().props
 
   const chartConfig = {
     total: { label: "Total", color: "var(--chart-1)" },
@@ -51,6 +54,56 @@ export default function WarehouseDashboard() {
           <SummaryCard title="Total Barcodes" value={summary.totalBarcodes} icon={<Barcode className="h-5 w-5" />} />
           <SummaryCard title="Total Transfers" value={summary.totalTransfers} icon={<Truck className="h-5 w-5" />} />
           <SummaryCard title="Stock Quantity" value={summary.totalStock} icon={<Layers className="h-5 w-5" />} />
+        </div>
+
+        {/* Depleted / Near-Depleted Alerts */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border-destructive/30 shadow-md">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-destructive/10 p-2.5 shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 text-destructive" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-destructive">{depletedProducts.length} Depleted Product{depletedProducts.length !== 1 ? 's' : ''}</p>
+                  {depletedProducts.length > 0 ? (
+                    <div className="max-h-24 overflow-y-auto mt-1.5 space-y-1 scrollbar-thin">
+                      {depletedProducts.map((p: any) => (
+                        <Badge key={p.id} variant="outline" className="text-xs text-destructive border-destructive/30">
+                          {p.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1.5">No products at zero stock</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border border-border shadow-md">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-muted p-2.5 shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">{nearDepletedProducts.length} Near-Depleted Product{nearDepletedProducts.length !== 1 ? 's' : ''}</p>
+                  {nearDepletedProducts.length > 0 ? (
+                    <div className="max-h-24 overflow-y-auto mt-1.5 space-y-1 scrollbar-thin">
+                      {nearDepletedProducts.map((p: any) => (
+                        <Badge key={p.id} variant="outline" className="text-xs">
+                          {p.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1.5">All products above alert threshold</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Charts Section */}

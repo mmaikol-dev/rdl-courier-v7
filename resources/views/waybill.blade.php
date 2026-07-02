@@ -360,7 +360,8 @@
 
 @if($isUganda)
     <p style="font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 1px;">
-        Send Money to <strong>0798010311</strong>
+        Send Money: 0749311425<br>
+        Name: Amina namutebi
     </p>
 @else
     <p style="font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 1px;">

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\IncomingSheetOrder;
+use App\Jobs\ProcessIncomingSheetOrder;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -62,5 +64,24 @@ class IncomingSheetOrderController extends Controller
                 'failed' => (int) ($statusCounts['failed'] ?? 0),
             ],
         ]);
+    }
+
+    public function retry(int $id): RedirectResponse
+    {
+        $incoming = IncomingSheetOrder::findOrFail($id);
+
+        if ($incoming->status !== 'failed') {
+            return back()->with('error', 'Only failed orders can be retried.');
+        }
+
+        $incoming->forceFill([
+            'status' => 'pending',
+            'error_message' => null,
+            'available_at' => now(),
+        ])->save();
+
+        ProcessIncomingSheetOrder::dispatch($incoming->id)->onQueue('imports');
+
+        return back()->with('success', "Order {$incoming->order_no} re-queued for processing.");
     }
 }

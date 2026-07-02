@@ -169,7 +169,7 @@ export default function IncomingSheetOrdersIndex() {
                                         <TableHead className="min-w-[180px]">Queued</TableHead>
                                         <TableHead className="min-w-[180px]">Processed</TableHead>
                                         <TableHead className="min-w-[260px]">Error</TableHead>
-                                        <TableHead className="w-[90px] text-right">Payload</TableHead>
+                                        <TableHead className="w-[120px] text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -209,9 +209,24 @@ export default function IncomingSheetOrdersIndex() {
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => setPayloadOrder(order)}>
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {order.status === 'failed' && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                router.post(`/incoming-sheet-orders/${order.id}/retry`, undefined, {
+                                                                    preserveScroll: true,
+                                                                })
+                                                            }
+                                                        >
+                                                            Retry
+                                                        </Button>
+                                                    )}
+                                                    <Button variant="ghost" size="icon" onClick={() => setPayloadOrder(order)}>
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}

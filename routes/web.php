@@ -96,6 +96,7 @@ Route::get('/transfer', [TransferController::class, 'index'])->name('transfers.i
 
 Route::post('/transfers', [TransferController::class, 'store'])->name('transfers.store');
 
+Route::get('/transfers/agent/{agentId}', [TransferController::class, 'showByAgent'])->name('transfers.agent.show');
 Route::get('/transfers/{productId}/{agentId}', [TransferController::class, 'show'])->name('transfers.show');
 Route::post('/transfers/{productId}/{agentId}/deductions', [TransferController::class, 'storeDeduction'])->name('transfers.deductions.store');
 Route::delete('/deductions/{id}', [TransferController::class, 'destroyDeduction'])->name('deductions.destroy');
@@ -197,6 +198,7 @@ Route::resource('whatsapp',ChatController::class);
 Route::resource('import',ImportController::class);
 Route::post('/orders/import', [ImportController::class, 'store'])->name('orders.import.store');
 Route::get('/incoming-sheet-orders', [IncomingSheetOrderController::class, 'index'])->name('incoming-sheet-orders.index');
+Route::post('/incoming-sheet-orders/{id}/retry', [IncomingSheetOrderController::class, 'retry'])->name('incoming-sheet-orders.retry');
 
 //Ai
 Route::resource('ai',AiController::class);

@@ -1930,3 +1930,243 @@ Stack trace:
 Stack trace:
 #0 {main}
   thrown in /home/realdea1/public_html/config/mail.php on line 17
+[18-Jun-2026 17:00:26 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[19-Jun-2026 17:09:39 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[20-Jun-2026 09:35:50 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[22-Jun-2026 05:56:51 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[22-Jun-2026 05:56:52 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[22-Jun-2026 05:56:52 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[22-Jun-2026 05:56:53 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[22-Jun-2026 05:56:53 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[22-Jun-2026 05:56:53 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[22-Jun-2026 05:56:53 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[22-Jun-2026 05:56:54 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[22-Jun-2026 05:56:54 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/filesystems.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/filesystems.php on line 16
+[22-Jun-2026 05:56:54 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/filesystems.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/filesystems.php on line 16
+[23-Jun-2026 06:01:55 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/session.php:21
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/session.php on line 21
+[23-Jun-2026 12:52:08 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/session.php:21
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/session.php on line 21
+[30-Jun-2026 04:39:20 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 04:39:21 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 04:39:22 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 04:39:24 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 04:39:25 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 04:39:26 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 04:39:28 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 04:39:28 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 04:39:30 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 04:39:32 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 04:39:33 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 04:39:34 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 04:39:36 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 04:39:36 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 04:39:38 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 04:39:38 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 04:39:39 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 04:39:40 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 04:39:41 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 04:39:42 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 04:39:43 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 04:39:45 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 04:39:46 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 04:39:47 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 04:39:48 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 04:39:49 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 04:39:51 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 04:39:52 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 04:39:53 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 04:39:55 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 12:46:24 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 12:46:24 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 12:46:26 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/app.php on line 16
+[30-Jun-2026 12:46:31 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 12:46:33 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 12:46:34 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/database.php:19
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/database.php on line 19
+[30-Jun-2026 12:46:39 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 12:46:40 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 12:46:41 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/mail.php:17
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/mail.php on line 17
+[30-Jun-2026 12:46:45 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 12:46:46 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 12:46:50 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/services.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/services.php on line 18
+[30-Jun-2026 12:46:56 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 12:46:57 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16
+[30-Jun-2026 12:46:59 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/realdea1/public_html/config/queue.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/realdea1/public_html/config/queue.php on line 16

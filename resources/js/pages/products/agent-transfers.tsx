@@ -2,8 +2,16 @@
 
 import AppLayout from "@/layouts/app-layout";
 import { Head, usePage, router } from "@inertiajs/react";
-import { useState, useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
 import {
   Drawer,
   DrawerContent,
@@ -13,31 +21,11 @@ import {
   DrawerFooter,
   DrawerClose,
 } from "@/components/ui/drawer";
-import { Button } from "@/components/ui/button";
+import { ArrowLeftIcon, EyeIcon, UsersIcon, LoaderCircle, SearchIcon, PlusCircleIcon, TrashIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Attachment,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from "@/components/ui/attachment"
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  PlusCircleIcon,
-  TrashIcon,
-  LoaderCircle,
-  CheckIcon,
-  ChevronsUpDownIcon,
-  UsersIcon,
-  PackageIcon,
-  PhoneIcon,
-  MapPinIcon,
-  ClockIcon,
-  SearchIcon,
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { useState, useMemo, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Popover,
   PopoverContent,
@@ -50,29 +38,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-function timeAgo(date: string | null) {
-  if (!date) return null;
-  const now = Date.now();
-  const then = new Date(date).getTime();
-  const diff = now - then;
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
 
 interface SearchableOption {
   value: string;
@@ -178,28 +145,28 @@ function SearchableSelect({
   );
 }
 
-export default function TransferIndex() {
-  const { auth, products, agents, flash } =
-    usePage().props as any;
-
-  const [agentSearch, setAgentSearch] = useState("");
-
-  const filteredAgents = useMemo(() => {
-    if (!agentSearch.trim()) return agents || [];
-    const q = agentSearch.toLowerCase();
-    return agents.filter((a: any) =>
-      a.name?.toLowerCase().includes(q)
-    );
-  }, [agents, agentSearch]);
+export default function AgentTransfers() {
+  const { agent, transfers, products, auth, flash } = usePage().props as any;
+  const [viewingKey, setViewingKey] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const [openTransferModal, setOpenTransferModal] = useState(false);
   const [drawerDirection, setDrawerDirection] = useState<"right" | "bottom">("bottom");
   const [region, setRegion] = useState("");
-  const [from, setFrom] = useState("");
+  const [fromField, setFromField] = useState("");
   const [rows, setRows] = useState([
-    { product_id: "", quantity: "", agent_id: "", merchant: "" },
+    { product_id: "", quantity: "", merchant: "" },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!transfers?.data) return [];
+    if (!search.trim()) return transfers.data;
+    const q = search.toLowerCase();
+    return transfers.data.filter((t: any) =>
+      t.product?.name?.toLowerCase().includes(q)
+    );
+  }, [transfers, search]);
 
   const productOptions: SearchableOption[] = (products || []).map(
     (product: any) => ({
@@ -210,11 +177,6 @@ export default function TransferIndex() {
       keywords: [product.merchant].filter(Boolean).join(" "),
     })
   );
-
-  const agentOptions: SearchableOption[] = (agents || []).map((agent: any) => ({
-    value: String(agent.id),
-    label: agent.name,
-  }));
 
   useEffect(() => {
     const handleResize = () => {
@@ -235,7 +197,7 @@ export default function TransferIndex() {
   }, [flash]);
 
   const addRow = () =>
-    setRows([...rows, { product_id: "", quantity: "", agent_id: "", merchant: "" }]);
+    setRows([...rows, { product_id: "", quantity: "", merchant: "" }]);
 
   const removeRow = (index: number) =>
     setRows(rows.filter((_, i) => i !== index));
@@ -259,119 +221,221 @@ export default function TransferIndex() {
   const handleSubmit = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    router.post(
-      "/transfers",
-      { region, from, transfers: rows },
+    const payload = {
+      region,
+      from: fromField,
+      transfers: rows.map((r) => ({
+        product_id: r.product_id,
+        quantity: r.quantity,
+        agent_id: String(agent.id),
+      })),
+    };
+    router.post("/transfers", payload, {
+      preserveScroll: true,
+      onSuccess: () => {
+        toast.success("Transfer created successfully!");
+        setOpenTransferModal(false);
+        setRegion("");
+        setFromField("");
+        setRows([{ product_id: "", quantity: "", merchant: "" }]);
+      },
+      onError: (errors) => {
+        const firstError = Object.values(errors)[0];
+        toast.error(
+          typeof firstError === "string" ? firstError : "Failed to create transfer"
+        );
+      },
+      onFinish: () => setIsSubmitting(false),
+    });
+  };
+
+  const viewDetails = (productId: number, agentId: number) => {
+    const key = `${productId}-${agentId}`;
+    if (viewingKey !== null) return;
+    setViewingKey(key);
+    router.get(
+      `/transfers/${productId}/${agentId}`,
+      {},
       {
-        preserveScroll: true,
-        onSuccess: () => {
-          setOpenTransferModal(false);
-          setRegion("");
-          setFrom("");
-          setRows([{ product_id: "", quantity: "", agent_id: "", merchant: "" }]);
-        },
-        onError: (errors) => {
-          const firstError = Object.values(errors)[0];
-          toast.error(
-            typeof firstError === "string" ? firstError : "Failed to create transfer"
-          );
-        },
-        onFinish: () => setIsSubmitting(false),
+        onError: () => toast.error("Failed to open transfer details"),
+        onFinish: () => setViewingKey(null),
       }
     );
   };
 
   const breadcrumbs = [
     { title: "Transfers", href: "/transfer" },
-    { title: "Agents", href: "#" },
+    { title: agent?.name || "Agent", href: "#" },
   ];
+
+  const totalUnits = transfers?.data?.reduce?.((sum: number, t: any) => sum + (Number(t.total_quantity) || 0), 0) || 0;
+  const productCount = transfers?.data?.length || 0;
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Transfers" />
+      <Head title={agent?.name ? `${agent.name} - Transfers` : "Agent Transfers"} />
 
-      {/* Top bar */}
-      <div className="p-4 sm:p-6 pb-0">
-        <div className="relative w-full sm:w-72">
-          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search agents..."
-            value={agentSearch}
-            onChange={(e) => setAgentSearch(e.target.value)}
-            className="pl-8 h-9"
-          />
-        </div>
-      </div>
-
-      {/* Agent Cards */}
       <div className="p-4 sm:p-6">
-        <AttachmentGroup className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {filteredAgents?.length > 0 ? (
-            filteredAgents.map((agent: any) => {
-              const initials = getInitials(agent.name);
-              const lastTransfer = timeAgo(agent.transfers_max_created_at);
-              return (
-                <Attachment
-                  key={agent.id}
-                  orientation="vertical"
-                  role="button"
-                  tabIndex={0}
-                  className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
-                  onClick={() => router.get(`/transfers/agent/${agent.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      router.get(`/transfers/agent/${agent.id}`);
-                    }
-                  }}
-                >
-                  <div className="flex items-start gap-3 p-3 pb-0">
-                    <AttachmentMedia variant="avatar" className="bg-muted w-9 h-9 flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
-                      {initials}
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle className="text-sm group-hover:text-primary transition-colors">
-                        {agent.name}
-                      </AttachmentTitle>
-                      {agent.store_name && (
-                        <AttachmentDescription className="text-[11px] mt-0.5 flex items-center gap-1">
-                          <MapPinIcon className="w-2.5 h-2.5 inline shrink-0" />
-                          {agent.store_name}
-                        </AttachmentDescription>
-                      )}
-                      {agent.store_phone && (
-                        <AttachmentDescription className="text-[11px] flex items-center gap-1">
-                          <PhoneIcon className="w-2.5 h-2.5 inline shrink-0" />
-                          {agent.store_phone}
-                        </AttachmentDescription>
-                      )}
-                    </AttachmentContent>
-                  </div>
-                  <div className="flex items-center justify-between px-3 pb-3 pt-2 border-t mt-2 text-[11px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="font-semibold text-foreground tabular-nums">{agent.transfers_count || 0}</span>
-                      <span>tx</span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="font-semibold text-foreground tabular-nums">{agent.transfers_sum_quantity || 0}</span>
-                      <span>units</span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="font-semibold text-foreground tabular-nums">{Number(agent.transfers_sum_quantity || 0) - Number(agent.deductions_sum_quantity || 0)}</span>
-                      <span>stock</span>
-                    </span>
-                  </div>
-                </Attachment>
-              );
-            })
-          ) : (
-            <div className="col-span-full text-center text-muted-foreground py-16">
-              <UsersIcon className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-              <p className="text-lg font-medium">No agents found</p>
-              <p className="text-sm">No agents are available with transfers in your region.</p>
+        <div className="flex items-center justify-between mb-4">
+          <Button
+            variant="outline"
+            onClick={() => router.get("/transfer")}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeftIcon className="w-4 h-4" />
+            Back
+          </Button>
+          <Button
+            onClick={() => setOpenTransferModal(true)}
+            className="flex items-center gap-2 text-white"
+          >
+            <PlusCircleIcon className="w-4 h-4" />
+            New Transfer
+          </Button>
+        </div>
+
+        {agent && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground mb-5 pb-4 border-b">
+            <div className="flex items-center gap-2">
+              <UsersIcon className="w-4 h-4" />
+              <span className="font-semibold text-foreground">{agent.name}</span>
+              {agent.store_phone && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>{agent.store_phone}</span>
+                </>
+              )}
             </div>
-          )}
-        </AttachmentGroup>
+            <div className="flex items-center gap-4">
+              <span>
+                <span className="font-bold text-foreground tabular-nums">{productCount}</span>
+                {" "}products
+              </span>
+              <span>
+                <span className="font-bold text-foreground tabular-nums">{totalUnits}</span>
+                {" "}units
+              </span>
+            </div>
+          </div>
+        )}
+
+        <Card className="shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">Transfers by Product</CardTitle>
+            <div className="relative w-64">
+              <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search product..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-9"
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Total Transfers</TableHead>
+                    <TableHead>Total Quantity</TableHead>
+                    <TableHead>Deducted</TableHead>
+                    <TableHead>Remaining</TableHead>
+                    <TableHead>First Transfer</TableHead>
+                    <TableHead>Last Transfer</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.length > 0 ? (
+                    filtered.map((item: any, index: number) => (
+                      <TableRow
+                        key={`${item.product_id}-${item.agent_id}`}
+                        className="hover:bg-gray-50"
+                      >
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell className="font-medium">
+                          {item.product?.name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="font-semibold">
+                            {item.transfer_count} transfers
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="default" className="font-semibold">
+                            {item.total_quantity} units
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="destructive" className="font-semibold">
+                            {Number(item.total_deducted || 0)} units
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="font-semibold">
+                            {Number(item.total_quantity) - Number(item.total_deducted || 0)} units
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          {item.first_transfer_date
+                            ? new Date(item.first_transfer_date).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          {item.last_transfer_date
+                            ? new Date(item.last_transfer_date).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => viewDetails(item.product_id, item.agent_id)}
+                            disabled={viewingKey === `${item.product_id}-${item.agent_id}`}
+                            className="flex items-center gap-1"
+                          >
+                            {viewingKey === `${item.product_id}-${item.agent_id}` ? (
+                              <LoaderCircle className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <EyeIcon className="w-4 h-4" />
+                            )}
+                            {viewingKey === `${item.product_id}-${item.agent_id}`
+                              ? "Opening..."
+                              : "View Details"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                        {search ? "No products match your search." : "No transfers found for this agent."}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {transfers?.links && (
+          <div className="flex justify-center gap-2 mt-4">
+            {transfers.links.map((link: any, index: number) => (
+              <Button
+                key={index}
+                variant={link.active ? "default" : "outline"}
+                size="sm"
+                disabled={!link.url}
+                onClick={() => link.url && router.get(link.url)}
+                dangerouslySetInnerHTML={{ __html: link.label }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Create New Transfer Drawer ── */}
@@ -389,10 +453,10 @@ export default function TransferIndex() {
         >
           <DrawerHeader className="border-b bg-white sticky top-0 z-10 px-6 py-4">
             <DrawerTitle className="text-xl font-bold text-gray-800">
-              Create New Transfer
+              New Transfer — {agent?.name}
             </DrawerTitle>
             <DrawerDescription className="text-sm text-muted-foreground">
-              Fill in the details below to distribute products to agents.
+              Transfer products to this agent.
             </DrawerDescription>
           </DrawerHeader>
 
@@ -418,8 +482,8 @@ export default function TransferIndex() {
                       From <span className="text-red-500">*</span>
                     </label>
                     <Input
-                      value={from}
-                      onChange={(e) => setFrom(e.target.value)}
+                      value={fromField}
+                      onChange={(e) => setFromField(e.target.value)}
                       placeholder="e.g. Main Warehouse"
                     />
                   </div>
@@ -512,22 +576,6 @@ export default function TransferIndex() {
                                 handleChange(i, "quantity", e.target.value)
                               }
                               placeholder="Enter quantity"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
-                              Agent <span className="text-red-500">*</span>
-                            </label>
-                            <SearchableSelect
-                              value={row.agent_id}
-                              onChange={(val) =>
-                                handleChange(i, "agent_id", val)
-                              }
-                              placeholder="Select agent"
-                              searchPlaceholder="Search agents..."
-                              emptyLabel="No agents found."
-                              options={agentOptions}
                             />
                           </div>
                         </div>

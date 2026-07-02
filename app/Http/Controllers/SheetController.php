@@ -72,7 +72,7 @@ class SheetController extends Controller
         )->firstOrFail();
 
         $client = new \Google_Client();
-        $client->setAuthConfig(storage_path('rdl-478707-2c066429878f.json'));
+        $client->setAuthConfig(storage_path('rdl-478707-7e105ca93b29.json'));
         $client->addScope(\Google_Service_Sheets::SPREADSHEETS);
         $service = new \Google_Service_Sheets($client);
 

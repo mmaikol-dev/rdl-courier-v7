@@ -43,18 +43,19 @@ class AppScriptController extends Controller
                     'payload' => $payload,
                 ];
 
-                if ($incoming->status === 'failed') {
-                    $updates = [
-                        ...$updates,
-                        'status' => 'pending',
-                        'error_message' => null,
-                        'available_at' => now(),
-                    ];
-
+                // Re-process if the payload changed, regardless of current status
+                $oldPayload = $incoming->payload ?? [];
+                if ($payload !== $oldPayload) {
+                    $updates['status'] = 'pending';
+                    $updates['error_message'] = null;
+                    $updates['available_at'] = now();
                     $shouldDispatch = true;
-                }
-
-                if ($incoming->status === 'pending' && (
+                } elseif ($incoming->status === 'failed') {
+                    $updates['status'] = 'pending';
+                    $updates['error_message'] = null;
+                    $updates['available_at'] = now();
+                    $shouldDispatch = true;
+                } elseif ($incoming->status === 'pending' && (
                     $incoming->available_at === null || $incoming->available_at->lte(now())
                 )) {
                     $shouldDispatch = true;

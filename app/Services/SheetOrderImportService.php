@@ -146,10 +146,26 @@ class SheetOrderImportService
             return null;
         }
 
-        $orderNo = (string) ($validatedData['order_no'] ?? '');
-        $agentIndex = abs(crc32($orderNo)) % count($agents);
+        $agents = array_values(array_filter(array_map('trim', $agents)));
 
-        return $agents[$agentIndex] ?? null;
+        if (empty($agents)) {
+            return null;
+        }
+
+        $lastAssigned = SheetOrder::whereNotNull('cc_email')
+            ->whereIn('cc_email', $agents)
+            ->where('sheet_id', $validatedData['sheet_id'] ?? $sheet->sheet_id)
+            ->where('sheet_name', $validatedData['sheet_name'])
+            ->latest('id')
+            ->value('cc_email');
+
+        if ($lastAssigned && in_array($lastAssigned, $agents, true)) {
+            $lastIndex = array_search($lastAssigned, $agents, true);
+            $nextIndex = ($lastIndex + 1 < count($agents)) ? $lastIndex + 1 : 0;
+            return $agents[$nextIndex];
+        }
+
+        return $agents[0];
     }
 
     private function findExistingOrderForAppScript(array $validatedData): ?SheetOrder

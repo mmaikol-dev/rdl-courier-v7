@@ -66,6 +66,17 @@ class ProcessIncomingSheetOrder implements ShouldQueue, ShouldBeUnique
 
             $importer->import($incoming->payload ?? []);
 
+            // Verify the SheetOrder was actually persisted
+            $orderNo = $this->nullIfBlank($incoming->payload['order_no'] ?? null);
+            if ($orderNo !== null) {
+                $exists = \App\Models\SheetOrder::where('order_no', $orderNo)->exists();
+                if (! $exists) {
+                    throw new \RuntimeException(
+                        "Import completed but SheetOrder [{$orderNo}] was not found after processing."
+                    );
+                }
+            }
+
             $incoming->forceFill([
                 'status' => 'processed',
                 'processed_at' => now(),
@@ -82,5 +93,16 @@ class ProcessIncomingSheetOrder implements ShouldQueue, ShouldBeUnique
         } finally {
             $lock->release();
         }
+    }
+
+    private function nullIfBlank(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 }
