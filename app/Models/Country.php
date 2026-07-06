@@ -10,6 +10,7 @@ class Country extends Model
     protected $fillable = [
         'name',
         'code',
+        'currency',
     ];
 
     public function users(): HasMany

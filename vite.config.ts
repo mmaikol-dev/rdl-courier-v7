@@ -18,7 +18,6 @@ export default defineConfig({
             async closeBundle() {
                 const sourceDir = resolve(__dirname, 'public/icons');
                 const targetDir = resolve(__dirname, 'public/build/icons');
-
                 await mkdir(targetDir, { recursive: true });
                 await cp(sourceDir, targetDir, { recursive: true });
             },

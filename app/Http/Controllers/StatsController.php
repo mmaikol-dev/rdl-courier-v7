@@ -10,6 +10,7 @@ class StatsController extends Controller
     public function index(Request $request, StatsReportService $reportService)
     {
         $user = $request->user()->loadMissing('country');
+
         return inertia('stats/index', $reportService->build($user, $request->only([
             'date_range',
             'date_field',
@@ -17,6 +18,7 @@ class StatsController extends Controller
             'merchant',
             'status',
             'country',
+            'product',
         ])));
     }
 }

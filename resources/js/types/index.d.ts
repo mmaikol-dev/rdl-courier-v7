@@ -23,6 +23,13 @@ export interface NavItem {
     isActive?: boolean;
 }
 
+export interface CountryData {
+    id: number;
+    name: string;
+    code?: string | null;
+    currency?: string | null;
+}
+
 export interface SharedData {
     name: string;
     quote: { message: string; author: string };
@@ -34,6 +41,10 @@ export interface SharedData {
     };
     ziggy: Config & { location: string };
     sidebarOpen: boolean;
+    countries?: CountryData[];
+    selectedCountry?: string | null;
+    selectedCurrency?: string;
+    productOptions?: string[];
     [key: string]: unknown;
 }
 

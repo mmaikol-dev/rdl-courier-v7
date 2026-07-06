@@ -34,6 +34,7 @@ class StatsReportService
         $merchant = $filters['merchant'];
         $status = $filters['status'];
         $country = $filters['country'];
+        $product = $filters['product'];
 
         $totalOrders = (clone $query)->count();
         $totalRevenue = (clone $query)->sum('amount') ?? 0;
@@ -299,9 +300,12 @@ class StatsReportService
                 'city' => $order->city,
             ]);
 
+        $statusRates = $this->computeStatusRates($ordersByStatus, $totalOrders);
+
         return [
             'summary' => $summary,
             'ordersByStatus' => $ordersByStatus,
+            'rates' => $statusRates,
             'agentPerformance' => $agentPerformance,
             'overdueScheduled' => $overdueScheduled,
             'overdueScheduledSummary' => $overdueScheduledSummary,
@@ -320,6 +324,7 @@ class StatsReportService
                 'merchant' => $merchant,
                 'status' => $status,
                 'country' => $country,
+                'product' => $product,
             ],
         ];
     }
@@ -349,6 +354,10 @@ class StatsReportService
             $query->where('country', $filters['country']);
         }
 
+        if ($filters['product']) {
+            $query->whereRaw('LOWER(TRIM(product_name)) = ?', [strtolower(trim($filters['product']))]);
+        }
+
         return $query;
     }
 
@@ -363,6 +372,7 @@ class StatsReportService
             'merchant' => $filters['merchant'] ?? null,
             'status' => $filters['status'] ?? null,
             'country' => $filters['country'] ?? null,
+            'product' => $filters['product'] ?? null,
         ];
     }
 
@@ -370,10 +380,11 @@ class StatsReportService
     {
         return Cache::remember(
             sprintf(
-                'stats-filter-options:v1:user:%s:role:%s:country:%s:name:%s',
+                'stats-filter-options:v2:user:%s:role:%s:user-country:%s:session-country:%s:name:%s',
                 $user->getKey(),
                 strtolower(trim((string) $user->roles)),
                 strtolower(trim((string) CountryAccess::userCountryName($user))),
+                strtolower(trim((string) session('selected_country', ''))),
                 strtolower(trim((string) $user->name))
             ),
             now()->addMinutes(5),
@@ -412,10 +423,11 @@ class StatsReportService
         ksort($filters);
 
         return sprintf(
-            'stats-report:v1:user:%s:role:%s:country:%s:name:%s:%s',
+            'stats-report:v2:user:%s:role:%s:user-country:%s:session-country:%s:name:%s:%s',
             $user->getKey(),
             strtolower(trim((string) $user->roles)),
             strtolower(trim((string) CountryAccess::userCountryName($user))),
+            strtolower(trim((string) session('selected_country', ''))),
             strtolower(trim((string) $user->name)),
             sha1(json_encode($filters))
         );
@@ -448,6 +460,58 @@ class StatsReportService
             ->whereNotNull('username')
             ->orderBy('username')
             ->pluck('username');
+    }
+
+    private function computeStatusRates($ordersByStatus, int $totalOrders): array
+    {
+        $statusCounts = [];
+
+        foreach ($ordersByStatus as $item) {
+            $key = strtolower(trim((string) $item['status']));
+            $statusCounts[$key] = $item['total'];
+        }
+
+        $groups = [
+            'delivered' => ['delivered', 'completed'],
+            'cancelled' => ['cancel', 'cancelled', 'cancelled.'],
+            'scheduled' => ['schedule', 'scheduled'],
+            'pending' => ['pending', 'new orders', 'pending, followup', 'follow up', 'followup'],
+            'dispatched' => ['dispatc', 'dispatched'],
+            'returned' => ['return', 'returned'],
+            'expired' => ['expired', 'out of stock', 'outofstock'],
+            'duplicate' => ['dublicate', 'duplicate'],
+            'incomplete' => ['incomplete contact', 'incomplete number', 'wrong contact', 'wrong number', 'wrongcontact'],
+            'foreign' => ['foreign contact'],
+            'messages' => ['messages'],
+            'rescheduled' => ['rescheduled'],
+            'status' => ['status'],
+        ];
+
+        $groupedCounts = [];
+        foreach ($groups as $groupKey => $keywords) {
+            $groupedCounts[$groupKey] = 0;
+            foreach ($keywords as $keyword) {
+                if (isset($statusCounts[$keyword])) {
+                    $groupedCounts[$groupKey] += $statusCounts[$keyword];
+                }
+            }
+        }
+
+        $others = $totalOrders;
+        foreach ($groupedCounts as $count) {
+            $others -= $count;
+        }
+        $groupedCounts['others'] = max(0, $others);
+
+        $rates = ['totalOrders' => $totalOrders];
+        foreach ($groupedCounts as $key => $count) {
+            $rates["{$key}Count"] = $count;
+            $rates["{$key}Rate"] = $totalOrders > 0
+                ? round(($count / $totalOrders) * 100, 1)
+                : 0;
+        }
+
+        return $rates;
     }
 
     private function getDateRange(string $range): array

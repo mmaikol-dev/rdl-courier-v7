@@ -2,7 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Country;
+use App\Models\SheetOrder;
 use App\Models\SidebarRolePermission;
+use App\Support\CountryAccess;
 use App\Support\SidebarRegistry;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
@@ -51,6 +54,20 @@ class HandleInertiaRequests extends Middleware
             $visibleItems = SidebarRegistry::defaultVisibleKeysForRole($normalizedRole);
         }
 
+        $countries = Country::query()
+            ->whereIn('name', ['Kenya', 'Tanzania', 'Uganda', 'Zambia'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'code', 'currency']);
+
+        $selectedCountry = $request->session()->get('selected_country');
+        $canFilterCountry = $user && CountryAccess::hasGlobalAccess($user);
+
+        $selectedCurrency = 'KES';
+        if ($selectedCountry) {
+            $country = $countries->firstWhere('name', $selectedCountry);
+            $selectedCurrency = $country?->currency ?? 'KES';
+        }
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -59,6 +76,28 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'pendingLoginLocationCapture' => (bool) $request->session()->get('login_location_id'),
             ],
+            'countries' => $countries,
+            'selectedCountry' => $canFilterCountry ? $selectedCountry : null,
+            'selectedCurrency' => $selectedCurrency,
+            'productOptions' => SheetOrder::query()
+                ->when($canFilterCountry && $selectedCountry, function ($q) use ($selectedCountry) {
+                    $q->whereRaw('LOWER(TRIM(country)) = ?', [strtolower(trim($selectedCountry))]);
+                })
+                ->when($user && ! $canFilterCountry, function ($q) use ($user) {
+                    $country = CountryAccess::userCountryName($user);
+                    if ($country) {
+                        $q->whereRaw('LOWER(TRIM(country)) = ?', [strtolower(trim($country))]);
+                    }
+                })
+                ->when($user && strtolower(trim((string) $user->roles)) === 'merchant', function ($q) use ($user) {
+                    $q->where('merchant', $user->name);
+                })
+                ->whereNotNull('product_name')
+                ->where('product_name', '!=', '')
+                ->select('product_name')
+                ->distinct()
+                ->orderBy('product_name')
+                ->pluck('product_name'),
             'sidebar' => [
                 'role' => $role,
                 'visibleItems' => $visibleItems,

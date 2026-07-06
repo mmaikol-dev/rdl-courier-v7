@@ -2,7 +2,7 @@
 
 import AppLayout from '@/layouts/app-layout'
 import { type BreadcrumbItem } from '@/types'
-import { Head, usePage } from '@inertiajs/react'
+import { Head, usePage, router } from '@inertiajs/react'
 import {
     TrendingUp,
     TrendingDown,
@@ -42,14 +42,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { useState, useMemo } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ProductFilter } from "@/components/product-filter"
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
 ]
 
-type FilterPeriod = 'today' | 'last7Days' | 'last30Days' | 'thisMonth' | 'allTime'
+type FilterPeriod = 'today' | 'last7Days' | 'last30Days' | 'thisMonth'
 
 interface PageProps {
+    period?: FilterPeriod | null
+    product?: string | null
     chartData: { month: string, total: number, revenue: number }[]
     statusSummary: { status: string, totalOrders: number, totalAmount: number }[]
     userName: string
@@ -69,11 +72,6 @@ interface PageProps {
         revenue: number
         currentMonth: { orders: number, revenue: number }
         previousMonth: { orders: number, revenue: number }
-    }
-    timeStats: {
-        today: { orders: number, revenue: number }
-        last7Days: { orders: number, revenue: number }
-        last30Days: { orders: number, revenue: number }
     }
     topProducts?: Array<{
         product_name: string
@@ -121,14 +119,16 @@ interface PageProps {
 }
 
 export default function Dashboard() {
+    const page = usePage<PageProps & { selectedCurrency?: string }>()
     const {
+        period,
+        product,
         chartData,
-        statusSummary,
+        statusSummary = [],
         userName,
         userRole,
-        metrics,
-        growth,
-        timeStats,
+        metrics = {} as PageProps['metrics'],
+        growth = {} as PageProps['growth'],
         topProducts = [],
         topAgents = [],
         recentOrders = [],
@@ -136,39 +136,19 @@ export default function Dashboard() {
         cityDistribution = [],
         orderTypeDistribution = [],
         deliveryStats
-    } = usePage<PageProps>().props
+    } = page.props
 
-    const [selectedFilter, setSelectedFilter] = useState<FilterPeriod>('last30Days')
     const [chartType, setChartType] = useState<'orders' | 'revenue'>('orders')
     const [chartView, setChartView] = useState<'bar' | 'area'>('bar')
     const [currentPage, setCurrentPage] = useState(1)
     const itemsPerPage = 6
 
-    // Get filtered data based on selected period
-    const filteredMetrics = useMemo(() => {
-        switch (selectedFilter) {
-            case 'today':
-                return timeStats.today
-            case 'last7Days':
-                return timeStats.last7Days
-            case 'last30Days':
-                return timeStats.last30Days
-            case 'thisMonth':
-                return growth.currentMonth
-            case 'allTime':
-            default:
-                return {
-                    orders: metrics.totalOrders,
-                    revenue: metrics.totalRevenue
-                }
-        }
-    }, [selectedFilter, timeStats, growth, metrics])
-
     // Format currency
+    const currencyCode = page.props.selectedCurrency || 'KES'
     const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-KE', {
+        return new Intl.NumberFormat('en-' + (currencyCode === 'KES' ? 'KE' : currencyCode === 'TZS' ? 'TZ' : currencyCode === 'UGX' ? 'UG' : currencyCode === 'ZMW' ? 'ZM' : 'KE'), {
             style: 'currency',
-            currency: 'KES',
+            currency: currencyCode,
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
         }).format(amount)
@@ -277,7 +257,7 @@ export default function Dashboard() {
 
             <div className="flex h-full flex-1 flex-col gap-6 p-6 bg-slate-50/50">
                 {/* Header Section */}
-                <div className="flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-bold text-slate-900 mb-1">
                             Welcome back, {userName}! 👋
@@ -289,6 +269,7 @@ export default function Dashboard() {
                             </span>
                         </p>
                     </div>
+                    <ProductFilter value={product} />
                 </div>
 
                 {/* Filter Section */}
@@ -306,17 +287,25 @@ export default function Dashboard() {
                                         { key: 'last7Days', label: 'Last 7 Days' },
                                         { key: 'last30Days', label: 'Last 30 Days' },
                                         { key: 'thisMonth', label: 'This Month' },
-                                        { key: 'allTime', label: 'All Time' },
-                                    ] as { key: FilterPeriod, label: string }[]).map(period => (
-                                        <Button
-                                            key={period.key}
-                                            size="sm"
-                                            variant={selectedFilter === period.key ? "default" : "outline"}
-                                            onClick={() => setSelectedFilter(period.key)}
-                                        >
-                                            {period.label}
-                                        </Button>
-                                    ))}
+                                        { key: null, label: 'All Time' },
+                                    ] as { key: FilterPeriod | null, label: string }[]).map(p => {
+                                        const params = new URLSearchParams()
+                                        if (p.key) params.set('period', p.key)
+                                        if (product) params.set('product', product)
+                                        const qs = params.toString()
+                                        const href = qs ? `/dashboard?${qs}` : '/dashboard'
+                                        const isActive = p.key === period || (!p.key && !period)
+                                        return (
+                                            <Button
+                                                key={p.key ?? 'allTime'}
+                                                size="sm"
+                                                variant={isActive ? "default" : "outline"}
+                                                onClick={() => router.get(href)}
+                                            >
+                                                {p.label}
+                                            </Button>
+                                        )
+                                    })}
                                 </div>
                                 <p className="text-sm text-muted-foreground">
                                     Stay focused on momentum. Choose a window and track performance trends with intent.
@@ -327,13 +316,13 @@ export default function Dashboard() {
                                 <div className="rounded-xl border bg-muted/30 p-4">
                                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Orders</p>
                                     <p className="mt-2 text-2xl font-extrabold text-foreground">
-                                        {filteredMetrics.orders.toLocaleString()}
+                                        {metrics.totalOrders.toLocaleString()}
                                     </p>
                                 </div>
                                 <div className="rounded-xl border bg-muted/30 p-4">
                                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Revenue</p>
                                     <p className="mt-2 text-2xl font-extrabold text-foreground">
-                                        {formatCurrency(filteredMetrics.revenue)}
+                                        {formatCurrency(metrics.totalRevenue)}
                                     </p>
                                 </div>
                             </div>
@@ -343,33 +332,6 @@ export default function Dashboard() {
 
                 {/* Key Metrics Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Total Revenue Card */}
-                    <Card className="fade-in metric-card border-l-4 border-l-blue-500">
-                        <CardHeader className="pb-2">
-                            <CardDescription className="flex items-center justify-between">
-                                <span className="text-xs font-medium text-slate-600">Total Revenue</span>
-                                <div className="p-2 rounded-lg bg-blue-100">
-                                    <DollarSign className="h-4 w-4 text-blue-600" />
-                                </div>
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-baseline gap-2">
-                                <p className="text-2xl font-bold text-slate-900">
-                                    {formatCurrency(metrics.totalRevenue)}
-                                </p>
-                                <Badge
-                                    variant="secondary"
-                                    className={`gap-1 ${growth.revenue >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} hover:bg-transparent`}
-                                >
-                                    {growth.revenue >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                                    {Math.abs(growth.revenue).toFixed(1)}%
-                                </Badge>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-2">From {metrics.totalOrders.toLocaleString()} orders</p>
-                        </CardContent>
-                    </Card>
-
                     {/* Total Orders Card */}
                     <Card className="fade-in metric-card border-l-4 border-l-green-500">
                         <CardHeader className="pb-2">
@@ -399,43 +361,69 @@ export default function Dashboard() {
                         </CardContent>
                     </Card>
 
-                    {/* Average Order Value Card */}
-                    <Card className="fade-in metric-card border-l-4 border-l-purple-500">
+                    {/* Confirmation Rate Card */}
+                    <Card className="fade-in metric-card border-l-4 border-l-blue-500">
                         <CardHeader className="pb-2">
                             <CardDescription className="flex items-center justify-between">
-                                <span className="text-xs font-medium text-slate-600">Avg Order Value</span>
-                                <div className="p-2 rounded-lg bg-purple-100">
-                                    <Wallet className="h-4 w-4 text-purple-600" />
+                                <span className="text-xs font-medium text-slate-600">Confirmation Rate</span>
+                                <div className="p-2 rounded-lg bg-blue-100">
+                                    <CheckCircle className="h-4 w-4 text-blue-600" />
                                 </div>
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="flex items-baseline gap-2">
                                 <p className="text-2xl font-bold text-slate-900">
-                                    {formatCurrency(metrics.avgOrderValue)}
+                                    {metrics.completionRate}%
                                 </p>
                             </div>
-                            <p className="text-xs text-slate-500 mt-2">Per order average</p>
+                            <p className="text-xs text-slate-500 mt-2">
+                                {metrics.completedOrders.toLocaleString()} of {metrics.totalOrders.toLocaleString()} completed
+                            </p>
                         </CardContent>
                     </Card>
 
-                    {/* Total Customers Card */}
-                    <Card className="fade-in metric-card border-l-4 border-l-orange-500">
+                    {/* Delivery Rate Card */}
+                    <Card className="fade-in metric-card border-l-4 border-l-purple-500">
                         <CardHeader className="pb-2">
                             <CardDescription className="flex items-center justify-between">
-                                <span className="text-xs font-medium text-slate-600">Total Customers</span>
-                                <div className="p-2 rounded-lg bg-orange-100">
-                                    <Users className="h-4 w-4 text-orange-600" />
+                                <span className="text-xs font-medium text-slate-600">Delivery Rate</span>
+                                <div className="p-2 rounded-lg bg-purple-100">
+                                    <Truck className="h-4 w-4 text-purple-600" />
                                 </div>
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="flex items-baseline gap-2">
                                 <p className="text-2xl font-bold text-slate-900">
-                                    {metrics.totalCustomers.toLocaleString()}
+                                    {metrics.deliveryRate}%
                                 </p>
                             </div>
-                            <p className="text-xs text-slate-500 mt-2">Unique customers</p>
+                            <p className="text-xs text-slate-500 mt-2">
+                                {metrics.deliveredOrScheduledCount.toLocaleString()} of {metrics.totalOrders.toLocaleString()} delivered
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Rate From Lead Card */}
+                    <Card className="fade-in metric-card border-l-4 border-l-orange-500">
+                        <CardHeader className="pb-2">
+                            <CardDescription className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-slate-600">Rate From Lead</span>
+                                <div className="p-2 rounded-lg bg-orange-100">
+                                    <Target className="h-4 w-4 text-orange-600" />
+                                </div>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-baseline gap-2">
+                                <p className="text-2xl font-bold text-slate-900">
+                                    {(100 - metrics.cancellationRate).toFixed(1)}%
+                                </p>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-2">
+                                {metrics.cancelledOrders.toLocaleString()} cancelled
+                            </p>
                         </CardContent>
                     </Card>
                 </div>

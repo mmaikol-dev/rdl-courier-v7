@@ -1,6 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
+import { CountryFilter } from '@/components/country-filter';
 import { type SharedData } from '@/types';
 import {
   Sidebar,
@@ -34,6 +35,9 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
+      {/* COUNTRY FILTER */}
+      <CountryFilter />
 
       {/* NAVIGATION */}
       <SidebarContent className="scrollbar-custom overflow-y-auto">

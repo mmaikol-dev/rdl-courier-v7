@@ -13,6 +13,12 @@ class DashboardController extends Controller
     {
         $user = $request->user()->loadMissing('country');
 
-        return Inertia::render('dashboard', $reportService->build($user));
+        $period = $request->query('period');
+        $allowed = ['today', 'last7Days', 'last30Days', 'thisMonth'];
+        $period = in_array($period, $allowed, true) ? $period : null;
+
+        $product = $request->query('product');
+
+        return Inertia::render('dashboard', $reportService->build($user, $period, $product));
     }
 }

@@ -12,20 +12,23 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardReportService
 {
-    public function build(User $user): array
+    public function build(User $user, ?string $period = null, ?string $product = null): array
     {
         $user->loadMissing('country');
 
         return Cache::remember(
-            $this->cacheKey($user),
+            $this->cacheKey($user, $period, $product),
             now()->addSeconds(60),
-            fn (): array => $this->buildPayload($user)
+            fn (): array => $this->buildPayload($user, $period, $product)
         );
     }
 
-    private function buildPayload(User $user): array
+    private function buildPayload(User $user, ?string $period = null, ?string $product = null): array
     {
-        $baseQuery = $this->baseQuery($user);
+        $baseQuery = $this->applyProductFilter(
+            $this->applyPeriodFilter($this->baseQuery($user), $period),
+            $product
+        );
         $userName = $user->name;
         $userRole = $user->roles;
 
@@ -44,7 +47,7 @@ class DashboardReportService
             ->values();
 
         $chartData = $monthlyData->map(function ($item) {
-            $dateObj = Carbon::parse($item->month . '-01');
+            $dateObj = Carbon::parse($item->month.'-01');
 
             return [
                 'month' => $dateObj->format('F Y'),
@@ -70,12 +73,12 @@ class DashboardReportService
             ]);
 
         $overallMetrics = (clone $baseQuery)
-            ->selectRaw("
+            ->selectRaw('
                 COUNT(*) as total_orders,
                 SUM(COALESCE(amount, 0)) as total_revenue,
                 AVG(COALESCE(amount, 0)) as avg_order_value,
                 COUNT(DISTINCT client_name) as total_customers
-            ")
+            ')
             ->first();
 
         $currentMonthStart = Carbon::now()->startOfMonth();
@@ -84,18 +87,12 @@ class DashboardReportService
 
         $currentMonth = (clone $baseQuery)
             ->where('order_date', '>=', $currentMonthStart)
-            ->selectRaw("
-                COUNT(*) as orders,
-                SUM(COALESCE(amount, 0)) as revenue
-            ")
+            ->selectRaw('COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue')
             ->first();
 
         $previousMonth = (clone $baseQuery)
             ->whereBetween('order_date', [$lastMonthStart, $lastMonthEnd])
-            ->selectRaw("
-                COUNT(*) as orders,
-                SUM(COALESCE(amount, 0)) as revenue
-            ")
+            ->selectRaw('COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue')
             ->first();
 
         $orderGrowth = $previousMonth->orders > 0
@@ -107,7 +104,7 @@ class DashboardReportService
             : 0;
 
         $pendingOrders = (clone $baseQuery)->where('status', 'Pending')->count();
-        $completedOrders = (clone $baseQuery)->where('status', 'Completed')->count();
+        $completedOrders = (clone $baseQuery)->where('status', 'Delivered')->count();
         $cancelledOrders = (clone $baseQuery)->where('status', 'Cancelled')->count();
 
         $completionRate = $overallMetrics->total_orders > 0
@@ -117,25 +114,6 @@ class DashboardReportService
         $cancellationRate = $overallMetrics->total_orders > 0
             ? ($cancelledOrders / $overallMetrics->total_orders) * 100
             : 0;
-
-        $today = Carbon::today();
-        $last7Days = Carbon::now()->subDays(7);
-        $last30Days = Carbon::now()->subDays(30);
-
-        $todayStats = (clone $baseQuery)
-            ->whereDate('order_date', $today)
-            ->selectRaw('COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue')
-            ->first();
-
-        $last7DaysStats = (clone $baseQuery)
-            ->where('order_date', '>=', $last7Days)
-            ->selectRaw('COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue')
-            ->first();
-
-        $last30DaysStats = (clone $baseQuery)
-            ->where('order_date', '>=', $last30Days)
-            ->selectRaw('COUNT(*) as orders, SUM(COALESCE(amount, 0)) as revenue')
-            ->first();
 
         $topProducts = (clone $baseQuery)
             ->select(
@@ -255,19 +233,26 @@ class DashboardReportService
                 'total_revenue' => (float) $item->total_revenue,
             ]);
 
-        $deliveryStats = (clone $baseQuery)
-            ->selectRaw("
-                COUNT(*) as total_orders_with_delivery,
-                COUNT(CASE WHEN delivery_date IS NOT NULL AND delivery_date <= NOW() THEN 1 END) as delivered_orders,
-                COUNT(CASE WHEN delivery_date IS NOT NULL AND delivery_date > NOW() THEN 1 END) as pending_delivery
-            ")
-            ->first();
+        $totalOrders = $overallMetrics->total_orders;
 
-        $deliveryRate = $deliveryStats->total_orders_with_delivery > 0
-            ? ($deliveryStats->delivered_orders / $deliveryStats->total_orders_with_delivery) * 100
+        $deliveredOrScheduledCount = (clone $baseQuery)
+            ->where(function ($q) {
+                $q->where('status', 'Delivered')
+                  ->orWhere(function ($q) {
+                      $q->where('status', 'Scheduled')
+                        ->whereNotNull('code')
+                        ->where('code', '!=', '');
+                  });
+            })
+            ->count();
+
+        $deliveryRate = $totalOrders > 0
+            ? ($deliveredOrScheduledCount / $totalOrders) * 100
             : 0;
 
         return [
+            'period' => $period,
+            'product' => $product,
             'userName' => $userName,
             'userRole' => $userRole,
             'chartData' => $chartData,
@@ -278,6 +263,9 @@ class DashboardReportService
                 'avgOrderValue' => (float) $overallMetrics->avg_order_value,
                 'totalCustomers' => (int) $overallMetrics->total_customers,
                 'pendingOrders' => $pendingOrders,
+                'completedOrders' => $completedOrders,
+                'cancelledOrders' => $cancelledOrders,
+                'deliveredOrScheduledCount' => $deliveredOrScheduledCount,
                 'completionRate' => round($completionRate, 1),
                 'cancellationRate' => round($cancellationRate, 1),
                 'deliveryRate' => round($deliveryRate, 1),
@@ -294,20 +282,6 @@ class DashboardReportService
                     'revenue' => (float) $previousMonth->revenue,
                 ],
             ],
-            'timeStats' => [
-                'today' => [
-                    'orders' => (int) $todayStats->orders,
-                    'revenue' => (float) $todayStats->revenue,
-                ],
-                'last7Days' => [
-                    'orders' => (int) $last7DaysStats->orders,
-                    'revenue' => (float) $last7DaysStats->revenue,
-                ],
-                'last30Days' => [
-                    'orders' => (int) $last30DaysStats->orders,
-                    'revenue' => (float) $last30DaysStats->revenue,
-                ],
-            ],
             'topProducts' => $topProducts,
             'topAgents' => $topAgents,
             'recentOrders' => $recentOrders,
@@ -315,9 +289,9 @@ class DashboardReportService
             'cityDistribution' => $cityDistribution,
             'orderTypeDistribution' => $orderTypeDistribution,
             'deliveryStats' => [
-                'totalWithDelivery' => (int) $deliveryStats->total_orders_with_delivery,
-                'delivered' => (int) $deliveryStats->delivered_orders,
-                'pendingDelivery' => (int) $deliveryStats->pending_delivery,
+                'totalWithDelivery' => (int) $totalOrders,
+                'delivered' => (int) $deliveredOrScheduledCount,
+                'pendingDelivery' => (int) ($totalOrders - $deliveredOrScheduledCount),
                 'deliveryRate' => round($deliveryRate, 1),
             ],
         ];
@@ -334,13 +308,39 @@ class DashboardReportService
         return $query;
     }
 
-    private function cacheKey(User $user): string
+    private function applyPeriodFilter(Builder $query, ?string $period): Builder
     {
+        return match ($period) {
+            'today' => $query->whereDate('order_date', Carbon::today()),
+            'last7Days' => $query->where('order_date', '>=', Carbon::today()->subDays(7)),
+            'last30Days' => $query->where('order_date', '>=', Carbon::today()->subDays(30)),
+            'thisMonth' => $query->where('order_date', '>=', Carbon::now()->startOfMonth()),
+            default => $query,
+        };
+    }
+
+    private function applyProductFilter(Builder $query, ?string $product): Builder
+    {
+        if (! $product) {
+            return $query;
+        }
+
+        return $query->whereRaw('LOWER(TRIM(product_name)) = ?', [strtolower(trim($product))]);
+    }
+
+    private function cacheKey(User $user, ?string $period = null, ?string $product = null): string
+    {
+        $role = strtolower(trim((string) $user->roles));
+        $selectedCountry = strtolower(trim((string) session('selected_country', '')));
+        $fallback = strtolower(trim((string) CountryAccess::userCountryName($user)));
+
         return sprintf(
-            'dashboard-report:v1:user:%s:role:%s:country:%s',
+            'dashboard-report:v4:user:%s:role:%s:country:%s:period:%s:product:%s',
             $user->getKey(),
-            strtolower(trim((string) $user->roles)),
-            strtolower(trim((string) CountryAccess::userCountryName($user)))
+            $role,
+            $selectedCountry ?: $fallback,
+            $period ?? 'allTime',
+            strtolower(trim((string) $product)) ?: 'all'
         );
     }
 }

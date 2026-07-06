@@ -23,6 +23,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ProductFilter } from '@/components/product-filter';
 import {
   Bar,
   BarChart,
@@ -110,6 +112,11 @@ type ProductItem = {
   revenue: number;
 };
 
+type Rates = {
+  totalOrders: number;
+  [key: string]: number;
+};
+
 type CountryItem = {
   country: string;
   total: number;
@@ -145,11 +152,13 @@ type Filters = {
   merchant?: string;
   status?: string;
   country?: string;
+  product?: string;
 };
 
 type StatsPageProps = {
   summary: Summary;
   ordersByStatus: StatusItem[];
+  rates: Rates;
   agentPerformance: AgentItem[];
   overdueScheduled: OverdueOrder[];
   overdueScheduledSummary: OverdueSummaryItem[];
@@ -205,6 +214,7 @@ const compactDate = (value?: string) => {
 export default function StatsDashboard({
   summary,
   ordersByStatus,
+  rates,
   agentPerformance,
   overdueScheduled,
   overdueScheduledSummary,
@@ -273,6 +283,7 @@ export default function StatsDashboard({
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <ProductFilter value={filters.product} preserveState preserveScroll />
               <Button variant="outline" className="bg-white/80" onClick={() => setShowFilters((value) => !value)}>
                 <Filter className="mr-2 h-4 w-4" />
                 Filters
@@ -292,14 +303,14 @@ export default function StatsDashboard({
           </div>
         </section>
 
-        {showFilters && (
-          <Card className="overflow-hidden border-slate-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Filter the dashboard</CardTitle>
-              <CardDescription>Reduce the dataset before charts and tables render.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 lg:grid-cols-6">
+        <Dialog open={showFilters} onOpenChange={setShowFilters}>
+          <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Filter the dashboard</DialogTitle>
+              <DialogDescription>Reduce the dataset before charts and tables render.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 lg:grid-cols-3">
                 <FilterSelect
                   icon={<Calendar className="h-4 w-4" />}
                   label="Date column"
@@ -363,11 +374,12 @@ export default function StatsDashboard({
                   {filters.merchant && <FilterChip label="Merchant" value={filters.merchant} />}
                   {filters.status && <FilterChip label="Status" value={filters.status} />}
                   {filters.country && <FilterChip label="Country" value={filters.country} />}
+                  {filters.product && <FilterChip label="Product" value={filters.product} />}
                 </div>
               )}
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -394,6 +406,25 @@ export default function StatsDashboard({
             subtitle="Combined quantity"
             icon={<Package className="h-5 w-5" />}
           />
+        </section>
+
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {Object.entries(rates)
+            .filter(([key]) => key.endsWith('Rate') && key !== 'totalOrders')
+            .sort((a, b) => b[1] - a[1])
+            .map(([key, value]) => {
+              const countKey = key.replace('Rate', 'Count');
+              const count = rates[countKey] as number | undefined;
+              return (
+                <RateMeter
+                  key={key}
+                  label={key.replace('Rate', '')}
+                  value={value}
+                  count={count}
+                  tone={key.startsWith('delivered') && value >= 70 ? 'green' : key.startsWith('cancelled') && value <= 10 ? 'green' : 'blue'}
+                />
+              );
+            })}
         </section>
 
         <section className="grid grid-cols-1 gap-3 lg:grid-cols-4">
@@ -886,10 +917,12 @@ function StatPill({
 function RateMeter({
   label,
   value,
+  count,
   tone = 'green',
 }: {
   label: string;
   value: number;
+  count?: number;
   tone?: 'green' | 'blue';
 }) {
   const barClass = tone === 'blue' ? 'bg-blue-500' : value >= 80 ? 'bg-emerald-500' : value >= 60 ? 'bg-amber-500' : 'bg-red-500';
@@ -900,6 +933,9 @@ function RateMeter({
         <span className="text-slate-500">{label}</span>
         <span className="font-semibold">{value}%</span>
       </div>
+      {count !== undefined && (
+        <p className="mb-1 text-xs text-slate-400">{count.toLocaleString()} orders</p>
+      )}
       <div className="h-2 rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${barClass}`} style={{ width: `${Math.min(value, 100)}%` }} />
       </div>

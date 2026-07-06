@@ -1,0 +1,1 @@
+const a=["Burundi","Comoros","Democratic Republic of the Congo","Djibouti","Eritrea","Ethiopia","Kenya","Rwanda","Seychelles","Somalia","South Sudan","Sudan","Tanzania","Uganda","Zambia"];export{a as E};
