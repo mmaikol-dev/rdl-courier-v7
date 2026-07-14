@@ -26,10 +26,6 @@ import {
     AlertCircle,
     CheckCircle,
     RefreshCw,
-    MapPin,
-    Globe,
-    UserCheck,
-    TrendingUpIcon,
     Award,
     Truck
 } from "lucide-react"
@@ -39,7 +35,6 @@ import { CartesianGrid, XAxis, YAxis, Area, AreaChart, Bar, BarChart, Responsive
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
 import { useState, useMemo } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ProductFilter } from "@/components/product-filter"
@@ -63,6 +58,10 @@ interface PageProps {
         avgOrderValue: number
         totalCustomers: number
         pendingOrders: number
+        completedOrders: number
+        scheduledOrders: number
+        deliveredOrScheduledCount: number
+        rateFromLead: number
         completionRate: number
         cancellationRate: number
         deliveryRate: number
@@ -79,10 +78,23 @@ interface PageProps {
         total_quantity: number
         total_revenue: number
     }>
-    topAgents?: Array<{
-        agent: string
-        order_count: number
+    productPerformance?: Array<{
+        product_name: string
+        total_leads: number
+        delivered_count: number
+        scheduled_count: number
+        pending_count: number
+        cancelled_count: number
+        returned_count: number
         total_revenue: number
+        pending_rate: number
+        delivered_rate: number
+        in_delivery_rate: number
+        confirmed_rate: number
+        cancelled_rate: number
+        returned_rate: number
+        global_rate: number
+        aov: number
     }>
     recentOrders?: Array<{
         id: number
@@ -94,16 +106,6 @@ interface PageProps {
         status: string
         amount: number
         agent: string
-    }>
-    countryDistribution?: Array<{
-        country: string
-        order_count: number
-        total_revenue: number
-    }>
-    cityDistribution?: Array<{
-        city: string
-        order_count: number
-        total_revenue: number
     }>
     orderTypeDistribution?: Array<{
         order_type: string
@@ -130,10 +132,8 @@ export default function Dashboard() {
         metrics = {} as PageProps['metrics'],
         growth = {} as PageProps['growth'],
         topProducts = [],
-        topAgents = [],
+        productPerformance = [],
         recentOrders = [],
-        countryDistribution = [],
-        cityDistribution = [],
         orderTypeDistribution = [],
         deliveryStats
     } = page.props
@@ -141,7 +141,9 @@ export default function Dashboard() {
     const [chartType, setChartType] = useState<'orders' | 'revenue'>('orders')
     const [chartView, setChartView] = useState<'bar' | 'area'>('bar')
     const [currentPage, setCurrentPage] = useState(1)
+    const [productPage, setProductPage] = useState(1)
     const itemsPerPage = 6
+    const productsPerPage = 10
 
     // Format currency
     const currencyCode = page.props.selectedCurrency || 'KES'
@@ -162,6 +164,15 @@ export default function Dashboard() {
     }, [statusSummary, currentPage])
 
     const totalPages = Math.ceil(statusSummary.length / itemsPerPage)
+
+    // Calculate pagination for product performance
+    const paginatedProductPerformance = useMemo(() => {
+        const startIndex = (productPage - 1) * productsPerPage
+        const endIndex = startIndex + productsPerPage
+        return productPerformance.slice(startIndex, endIndex)
+    }, [productPerformance, productPage])
+
+    const totalProductPages = Math.ceil(productPerformance.length / productsPerPage)
 
     // Prepare chart data
     const dataForChart = useMemo(() => {
@@ -378,7 +389,7 @@ export default function Dashboard() {
                                 </p>
                             </div>
                             <p className="text-xs text-slate-500 mt-2">
-                                {metrics.completedOrders.toLocaleString()} of {metrics.totalOrders.toLocaleString()} completed
+                                {(metrics.completedOrders + metrics.scheduledOrders).toLocaleString()} of {metrics.totalOrders.toLocaleString()} completed or scheduled
                             </p>
                         </CardContent>
                     </Card>
@@ -400,7 +411,7 @@ export default function Dashboard() {
                                 </p>
                             </div>
                             <p className="text-xs text-slate-500 mt-2">
-                                {metrics.deliveredOrScheduledCount.toLocaleString()} of {metrics.totalOrders.toLocaleString()} delivered
+                                {metrics.completedOrders.toLocaleString()} of {(metrics.completedOrders + metrics.scheduledOrders).toLocaleString()} delivered (excl. pending)
                             </p>
                         </CardContent>
                     </Card>
@@ -418,11 +429,11 @@ export default function Dashboard() {
                         <CardContent>
                             <div className="flex items-baseline gap-2">
                                 <p className="text-2xl font-bold text-slate-900">
-                                    {(100 - metrics.cancellationRate).toFixed(1)}%
+                                    {metrics.rateFromLead.toFixed(1)}%
                                 </p>
                             </div>
                             <p className="text-xs text-slate-500 mt-2">
-                                {metrics.cancelledOrders.toLocaleString()} cancelled
+                                {metrics.completedOrders.toLocaleString()} of {metrics.totalOrders.toLocaleString()} delivered
                             </p>
                         </CardContent>
                     </Card>
@@ -643,146 +654,228 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
 
-                {/* Top Products and Agents Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Top Products */}
-                    {topProducts.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-xl flex items-center gap-2">
-                                    <Award className="h-5 w-5 text-blue-600" />
-                                    Top Products
-                                </CardTitle>
-                                <CardDescription>Best selling products by quantity</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {topProducts.slice(0, 5).map((product, index) => (
-                                        <div key={product.product_name} className="flex items-center gap-3">
-                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                                <span className="text-sm font-bold text-blue-600">#{index + 1}</span>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-slate-900 truncate">
-                                                    {product.product_name}
-                                                </p>
-                                                <p className="text-xs text-slate-500">
-                                                    {product.total_quantity} units • {product.order_count} orders
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-slate-900">
-                                                    {formatCurrency(product.total_revenue)}
-                                                </p>
-                                            </div>
+                {/* Top Products */}
+                {topProducts.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Award className="h-5 w-5 text-blue-600" />
+                                Top Products
+                            </CardTitle>
+                            <CardDescription>Best selling products by quantity</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {topProducts.slice(0, 5).map((product, index) => (
+                                    <div key={product.product_name} className="flex items-center gap-3">
+                                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                            <span className="text-sm font-bold text-blue-600">#{index + 1}</span>
                                         </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Top Agents */}
-                    {topAgents.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-xl flex items-center gap-2">
-                                    <UserCheck className="h-5 w-5 text-green-600" />
-                                    Top Agents
-                                </CardTitle>
-                                <CardDescription>Best performing sales agents</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {topAgents.slice(0, 5).map((agent, index) => (
-                                        <div key={agent.agent} className="flex items-center gap-3">
-                                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                                                <span className="text-sm font-bold text-green-600">#{index + 1}</span>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-slate-900 truncate">
-                                                    {agent.agent}
-                                                </p>
-                                                <p className="text-xs text-slate-500">
-                                                    {agent.order_count} orders completed
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-slate-900">
-                                                    {formatCurrency(agent.total_revenue)}
-                                                </p>
-                                            </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-slate-900 truncate">
+                                                {product.product_name}
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                {product.total_quantity} units • {product.order_count} orders
+                                            </p>
                                         </div>
-                                    ))}
+                                        <div className="text-right">
+                                            <p className="text-sm font-bold text-slate-900">
+                                                {formatCurrency(product.total_revenue)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Product Performance Table */}
+                {productPerformance.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Package className="h-5 w-5 text-indigo-600" />
+                                Product Performance
+                            </CardTitle>
+                            <CardDescription>
+                                Detailed metrics per product — leads, conversion, revenue, and averages
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead className="font-semibold">Product Name</TableHead>
+                                            <TableHead className="text-right font-semibold">Leads</TableHead>
+                                            <TableHead className="text-right font-semibold">Confirmed</TableHead>
+                                            <TableHead className="text-right font-semibold">Cancelled</TableHead>
+                                            <TableHead className="text-right font-semibold">Pending</TableHead>
+                                            <TableHead className="text-right font-semibold">In Delivery</TableHead>
+                                            <TableHead className="text-right font-semibold">Returned</TableHead>
+                                            <TableHead className="text-right font-semibold">Delivered</TableHead>
+                                            <TableHead className="text-right font-semibold">Global Rate</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {paginatedProductPerformance.map((item) => (
+                                            <TableRow key={item.product_name}>
+                                                <TableCell className="font-medium max-w-[200px]">
+                                                    <div className="truncate" title={item.product_name}>
+                                                        {item.product_name}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {item.total_leads.toLocaleString()}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.confirmed_rate >= 70
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : item.confirmed_rate >= 40
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-red-100 text-red-700'
+                                                        }`}>
+                                                            {item.confirmed_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {(item.delivered_count + item.scheduled_count).toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.cancelled_rate >= 50
+                                                                ? 'bg-red-100 text-red-700'
+                                                                : item.cancelled_rate >= 20
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-slate-100 text-slate-700'
+                                                        }`}>
+                                                            {item.cancelled_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {item.cancelled_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.pending_rate >= 50
+                                                                ? 'bg-orange-100 text-orange-700'
+                                                                : item.pending_rate >= 20
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-slate-100 text-slate-700'
+                                                        }`}>
+                                                            {item.pending_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {item.pending_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.in_delivery_rate >= 50
+                                                                ? 'bg-blue-100 text-blue-700'
+                                                                : item.in_delivery_rate >= 20
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-slate-100 text-slate-700'
+                                                        }`}>
+                                                            {item.in_delivery_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {item.scheduled_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.returned_rate >= 50
+                                                                ? 'bg-amber-100 text-amber-700'
+                                                                : item.returned_rate >= 20
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-slate-100 text-slate-700'
+                                                        }`}>
+                                                            {item.returned_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {item.returned_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.delivered_rate >= 50
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : item.delivered_rate >= 20
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-red-100 text-red-700'
+                                                        }`}>
+                                                            {item.delivered_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {item.delivered_count.toLocaleString()}/{(item.delivered_count + item.scheduled_count).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                            item.global_rate >= 50
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : item.global_rate >= 20
+                                                                    ? 'bg-yellow-100 text-yellow-700'
+                                                                    : 'bg-red-100 text-red-700'
+                                                        }`}>
+                                                            {item.global_rate}%
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 tabular-nums">
+                                                            {item.delivered_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                        {totalProductPages > 1 && (
+                            <CardFooter className="border-t pt-4">
+                                <div className="flex items-center justify-between w-full">
+                                    <div className="text-sm text-slate-600">
+                                        Page {productPage} of {totalProductPages}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setProductPage(prev => Math.max(prev - 1, 1))}
+                                            disabled={productPage === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setProductPage(prev => Math.min(prev + 1, totalProductPages))}
+                                            disabled={productPage === totalProductPages}
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
-
-                {/* Geographic Distribution Section */}
-                {(countryDistribution.length > 0 || cityDistribution.length > 0) && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Country Distribution */}
-                        {countryDistribution.length > 0 && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-xl flex items-center gap-2">
-                                        <Globe className="h-5 w-5 text-purple-600" />
-                                        Orders by Country
-                                    </CardTitle>
-                                    <CardDescription>Geographic distribution</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-3">
-                                        {countryDistribution.slice(0, 5).map((country) => {
-                                            const percentage = metrics.totalOrders > 0 ?
-                                                (country.order_count / metrics.totalOrders * 100).toFixed(1) : '0.0'
-                                            return (
-                                                <div key={country.country}>
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <span className="text-sm font-medium text-slate-700">{country.country}</span>
-                                                        <span className="text-xs text-slate-500">{country.order_count} orders ({percentage}%)</span>
-                                                    </div>
-                                                    <Progress value={Number(percentage)} className="h-2" />
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </CardContent>
-                            </Card>
+                            </CardFooter>
                         )}
-
-                        {/* City Distribution */}
-                        {cityDistribution.length > 0 && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-xl flex items-center gap-2">
-                                        <MapPin className="h-5 w-5 text-orange-600" />
-                                        Orders by City
-                                    </CardTitle>
-                                    <CardDescription>Top cities</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-3">
-                                        {cityDistribution.slice(0, 5).map((city) => {
-                                            const percentage = metrics.totalOrders > 0 ?
-                                                (city.order_count / metrics.totalOrders * 100).toFixed(1) : '0.0'
-                                            return (
-                                                <div key={city.city}>
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <span className="text-sm font-medium text-slate-700">{city.city}</span>
-                                                        <span className="text-xs text-slate-500">{city.order_count} orders ({percentage}%)</span>
-                                                    </div>
-                                                    <Progress value={Number(percentage)} className="h-2" />
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
-                    </div>
+                    </Card>
                 )}
 
                 {/* Bottom Section: Status Distribution and Quick Stats */}

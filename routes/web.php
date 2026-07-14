@@ -34,6 +34,7 @@ use App\Http\Controllers\UserLocationController;
 use App\Http\Controllers\WaredashController;
 use App\Http\Controllers\WaybillController;
 use App\Http\Controllers\WhatsappController;
+use App\Http\Controllers\OrderScanController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -90,6 +91,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('products', ProductController::class);
     Route::get('/inventory-deductions', [InventoryDeductionController::class, 'index'])->name('inventory-deductions.index');
     Route::post('/inventory-deductions', [InventoryDeductionController::class, 'store'])->name('inventory-deductions.store');
+
+    // QR order scanning (warehouse outbound/inbound)
+    Route::get('/order-scans', [OrderScanController::class, 'index'])->name('order-scans.index');
+    Route::post('/order-scans', [OrderScanController::class, 'store'])->name('order-scans.store');
 
     Route::get('/transfer', [TransferController::class, 'index'])->name('transfers.index');
 

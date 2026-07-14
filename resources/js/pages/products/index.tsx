@@ -203,6 +203,7 @@ export default function ProductsPage() {
         merchantUsers: MerchantUser[];
         filters?: {
             country?: string;
+            search?: string;
         };
         auth?: {
             user?: {
@@ -215,7 +216,7 @@ export default function ProductsPage() {
 
     const userStoreAddress = auth?.user?.store_address || '';
 
-    const [filter, setFilter] = React.useState('');
+    const [filter, setFilter] = React.useState(filters?.search || '');
     const [selectedCountry, setSelectedCountry] = React.useState(filters?.country || 'all');
     const [editingProduct, setEditingProduct] = React.useState<Product | null>(null);
     const [creatingProduct, setCreatingProduct] = React.useState(false);
@@ -249,14 +250,15 @@ export default function ProductsPage() {
 
     const filteredProducts = React.useMemo(() => {
         if (!products?.data) return [];
-        return products.data.filter(
-            (p) =>
-                (p.name?.toLowerCase() || '').includes(filter.toLowerCase()) ||
-                (p.store_name?.toLowerCase() || '').includes(filter.toLowerCase()) ||
-                (p.merchant?.toLowerCase() || '').includes(filter.toLowerCase()) ||
-                (p.code?.toLowerCase() || '').includes(filter.toLowerCase()),
-        );
-    }, [products, filter]);
+        return products.data;
+    }, [products]);
+
+    const handleSearch = () => {
+        const params: Record<string, string> = {};
+        if (filter) params.search = filter;
+        if (selectedCountry && selectedCountry !== 'all') params.country = selectedCountry;
+        router.get('/products', params, { preserveState: true, preserveScroll: true });
+    };
 
     // Auto-focus barcode input when scanning modal opens
     React.useEffect(() => {
@@ -366,7 +368,10 @@ export default function ProductsPage() {
 
     const handlePageChange = (url: string | null) => {
         if (!url) return;
-        router.get(url, selectedCountry === 'all' ? {} : { country: selectedCountry }, { preserveState: true, preserveScroll: true });
+        const params: Record<string, string> = {};
+        if (selectedCountry && selectedCountry !== 'all') params.country = selectedCountry;
+        if (filter) params.search = filter;
+        router.get(url, params, { preserveState: true, preserveScroll: true });
     };
 
     // Barcode scanning functions
@@ -462,16 +467,25 @@ export default function ProductsPage() {
                 <div className="mb-4 flex flex-col items-center justify-between gap-4 sm:flex-row">
                     <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
                         <Input
-                            placeholder="Filter products by name, merchant, store, or code"
+                            placeholder="Search products by name, merchant, store, or code"
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSearch();
+                            }}
                             className="flex-1"
                         />
+                        <Button variant="default" onClick={handleSearch} className="shrink-0">
+                            Search
+                        </Button>
                         <Select
                             value={selectedCountry}
                             onValueChange={(value) => {
                                 setSelectedCountry(value);
-                                router.get('/products', value === 'all' ? {} : { country: value }, {
+                                const params: Record<string, string> = {};
+                                if (value !== 'all') params.country = value;
+                                if (filter) params.search = filter;
+                                router.get('/products', params, {
                                     preserveState: true,
                                     preserveScroll: true,
                                     replace: true,

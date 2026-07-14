@@ -359,9 +359,20 @@ class TransferController extends Controller
             )
             ->selectRaw($deductionSubquery . ' as total_deducted', $bindings)
             ->with(['product:id,name,merchant,code', 'agent:id,name'])
-            ->groupBy('product_id', 'agent_id')
-            ->latest('last_transfer_date')
-            ->paginate(20);
+            ->groupBy('product_id', 'agent_id');
+
+        if ($request->filled('search')) {
+            $search = $request->string('search')->toString();
+            $transfers->whereHas('product', function ($q) use ($search) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+                  ->orWhereRaw('LOWER(merchant) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+                  ->orWhereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%']);
+            });
+        }
+
+        $transfers = $transfers->latest('last_transfer_date')
+            ->paginate(20)
+            ->withQueryString();
 
         $products = CountryAccess::scopeProducts(Product::query(), $user)
             ->select('id', 'name', 'merchant', 'code')

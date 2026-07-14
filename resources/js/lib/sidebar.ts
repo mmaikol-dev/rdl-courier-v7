@@ -19,6 +19,7 @@ import {
     PrinterIcon,
     RefreshCcwIcon,
     ReplaceAllIcon,
+    ScanLine,
     Settings2Icon,
     Smartphone,
     SquareArrowDownLeftIcon,
@@ -45,6 +46,7 @@ export type SidebarItemKey =
     | 'whatsapp'
     | 'products'
     | 'inventory-deductions'
+    | 'order-scans'
     | 'transfer'
     | 'units'
     | 'categories'
@@ -93,6 +95,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         items: [
             { key: 'products', title: 'Products', href: '/products', icon: BoxesIcon, group: 'Inventory' },
             { key: 'inventory-deductions', title: 'Inventory Deductions', href: '/inventory-deductions', icon: PackageSearch, group: 'Inventory' },
+            { key: 'order-scans', title: 'QR Scan Out', href: '/order-scans', icon: ScanLine, group: 'Inventory' },
             { key: 'transfer', title: 'Transfer', href: '/transfer', icon: SendToBackIcon, group: 'Inventory' },
             { key: 'units', title: 'Merchants', href: '/units', icon: UserRoundIcon, group: 'Inventory' },
             { key: 'categories', title: 'Categories', href: '/categories', icon: SquareArrowDownLeftIcon, group: 'Inventory' },

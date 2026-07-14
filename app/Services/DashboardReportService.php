@@ -105,10 +105,13 @@ class DashboardReportService
 
         $pendingOrders = (clone $baseQuery)->where('status', 'Pending')->count();
         $completedOrders = (clone $baseQuery)->where('status', 'Delivered')->count();
+        $scheduledOrders = (clone $baseQuery)->where('status', 'Scheduled')->count();
         $cancelledOrders = (clone $baseQuery)->where('status', 'Cancelled')->count();
 
-        $completionRate = $overallMetrics->total_orders > 0
-            ? ($completedOrders / $overallMetrics->total_orders) * 100
+        $completedOrScheduled = $completedOrders + $scheduledOrders;
+
+        $confirmationRate = $overallMetrics->total_orders > 0
+            ? ($completedOrScheduled / $overallMetrics->total_orders) * 100
             : 0;
 
         $cancellationRate = $overallMetrics->total_orders > 0
@@ -216,6 +219,68 @@ class DashboardReportService
                 'total_revenue' => (float) $item->total_revenue,
             ]);
 
+        $productPerformance = (clone $baseQuery)
+            ->select(
+                'product_name',
+                DB::raw('COUNT(*) as total_leads'),
+                DB::raw("SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) as delivered_count"),
+                DB::raw("SUM(CASE WHEN status = 'Scheduled' THEN 1 ELSE 0 END) as scheduled_count"),
+                DB::raw("SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END) as cancelled_count"),
+                DB::raw("SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending_count"),
+                DB::raw("SUM(CASE WHEN status = 'Returned' THEN 1 ELSE 0 END) as returned_count"),
+                DB::raw("SUM(CASE WHEN status = 'Delivered' THEN COALESCE(amount, 0) ELSE 0 END) as delivered_revenue")
+            )
+            ->whereNotNull('product_name')
+            ->where('product_name', '!=', '')
+            ->groupBy('product_name')
+            ->orderByDesc('delivered_revenue')
+            ->get()
+            ->map(function ($item) {
+                $totalLeads = (int) $item->total_leads;
+                $delivered = (int) $item->delivered_count;
+                $scheduled = (int) $item->scheduled_count;
+                $pending = (int) $item->pending_count;
+                $cancelled = (int) $item->cancelled_count;
+                $returned = (int) $item->returned_count;
+                $confirmed = $delivered + $scheduled;
+                $deliveredRevenue = (float) $item->delivered_revenue;
+                $aov = $delivered > 0 ? round($deliveredRevenue / $delivered, 2) : 0;
+                $totalRevenue = $delivered * $aov;
+
+                return [
+                    'product_name' => $item->product_name,
+                    'total_leads' => $totalLeads,
+                    'delivered_count' => $delivered,
+                    'scheduled_count' => $scheduled,
+                    'pending_count' => $pending,
+                    'cancelled_count' => $cancelled,
+                    'returned_count' => $returned,
+                    'total_revenue' => $totalRevenue,
+                    'pending_rate' => $totalLeads > 0
+                        ? round(($pending / $totalLeads) * 100, 1)
+                        : 0,
+                    'delivered_rate' => $confirmed > 0
+                        ? round(($delivered / $confirmed) * 100, 1)
+                        : 0,
+                    'in_delivery_rate' => $totalLeads > 0
+                        ? round(($scheduled / $totalLeads) * 100, 1)
+                        : 0,
+                    'confirmed_rate' => $totalLeads > 0
+                        ? round(($confirmed / $totalLeads) * 100, 1)
+                        : 0,
+                    'cancelled_rate' => $totalLeads > 0
+                        ? round(($cancelled / $totalLeads) * 100, 1)
+                        : 0,
+                    'returned_rate' => $totalLeads > 0
+                        ? round(($returned / $totalLeads) * 100, 1)
+                        : 0,
+                    'global_rate' => $totalLeads > 0
+                        ? round(($delivered / $totalLeads) * 100, 1)
+                        : 0,
+                    'aov' => $aov,
+                ];
+            });
+
         $orderTypeDistribution = (clone $baseQuery)
             ->select(
                 'order_type',
@@ -246,8 +311,12 @@ class DashboardReportService
             })
             ->count();
 
-        $deliveryRate = $totalOrders > 0
-            ? ($deliveredOrScheduledCount / $totalOrders) * 100
+        $deliveryRate = $completedOrScheduled > 0
+            ? ($completedOrders / $completedOrScheduled) * 100
+            : 0;
+
+        $rateFromLead = $totalOrders > 0
+            ? ($completedOrders / $totalOrders) * 100
             : 0;
 
         return [
@@ -266,7 +335,10 @@ class DashboardReportService
                 'completedOrders' => $completedOrders,
                 'cancelledOrders' => $cancelledOrders,
                 'deliveredOrScheduledCount' => $deliveredOrScheduledCount,
-                'completionRate' => round($completionRate, 1),
+                'rateFromLead' => round($rateFromLead, 1),
+                'completionRate' => round($confirmationRate, 1),
+                'completedOrders' => $completedOrders,
+                'scheduledOrders' => $scheduledOrders,
                 'cancellationRate' => round($cancellationRate, 1),
                 'deliveryRate' => round($deliveryRate, 1),
             ],
@@ -282,6 +354,7 @@ class DashboardReportService
                     'revenue' => (float) $previousMonth->revenue,
                 ],
             ],
+            'productPerformance' => $productPerformance,
             'topProducts' => $topProducts,
             'topAgents' => $topAgents,
             'recentOrders' => $recentOrders,

@@ -148,7 +148,7 @@ function SearchableSelect({
 export default function AgentTransfers() {
   const { agent, transfers, products, auth, flash } = usePage().props as any;
   const [viewingKey, setViewingKey] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(transfers?.search || "");
 
   const [openTransferModal, setOpenTransferModal] = useState(false);
   const [drawerDirection, setDrawerDirection] = useState<"right" | "bottom">("bottom");
@@ -161,12 +161,14 @@ export default function AgentTransfers() {
 
   const filtered = useMemo(() => {
     if (!transfers?.data) return [];
-    if (!search.trim()) return transfers.data;
-    const q = search.toLowerCase();
-    return transfers.data.filter((t: any) =>
-      t.product?.name?.toLowerCase().includes(q)
-    );
-  }, [transfers, search]);
+    return transfers.data;
+  }, [transfers]);
+
+  const handleSearch = () => {
+    const params: Record<string, string> = {};
+    if (search.trim()) params.search = search.trim();
+    router.get(`/transfers/agent/${agent.id}`, params, { preserveState: true, preserveScroll: true });
+  };
 
   const productOptions: SearchableOption[] = (products || []).map(
     (product: any) => ({
@@ -322,14 +324,22 @@ export default function AgentTransfers() {
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Transfers by Product</CardTitle>
-            <div className="relative w-64">
-              <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search product..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-9"
-              />
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search product..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearch();
+                  }}
+                  className="pl-8 h-9"
+                />
+              </div>
+              <Button size="sm" onClick={handleSearch} className="shrink-0">
+                Search
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -430,7 +440,12 @@ export default function AgentTransfers() {
                 variant={link.active ? "default" : "outline"}
                 size="sm"
                 disabled={!link.url}
-                onClick={() => link.url && router.get(link.url)}
+                onClick={() => {
+                  if (!link.url) return;
+                  const url = new URL(link.url, window.location.origin);
+                  if (search.trim()) url.searchParams.set("search", search.trim());
+                  router.get(url.toString(), {}, { preserveState: true, preserveScroll: true });
+                }}
                 dangerouslySetInnerHTML={{ __html: link.label }}
               />
             ))}

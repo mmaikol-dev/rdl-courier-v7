@@ -56,6 +56,17 @@ class ProductController extends Controller
         $productsQuery->whereRaw('LOWER(country) = ?', [$country]);
     }
 
+    // Search filter across all pages
+    if ($request->filled('search')) {
+        $search = $request->string('search')->toString();
+        $productsQuery->where(function ($q) use ($search) {
+            $q->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+              ->orWhereRaw('LOWER(merchant) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+              ->orWhereRaw('LOWER(store_name) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+              ->orWhereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%']);
+        });
+    }
+
     $products = $productsQuery->orderBy('created_at', 'desc')->paginate(50)->withQueryString();
 
     return Inertia::render('products/index', [
@@ -63,7 +74,7 @@ class ProductController extends Controller
         'categories' => $categories,
         'units' => $units,
         'merchantUsers' => $merchantUsers,
-        'filters' => $request->only(['country']),
+        'filters' => $request->only(['country', 'search']),
     ]);
 }
     public function inventoryLogs($productCode)
@@ -260,6 +271,10 @@ class ProductController extends Controller
             CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($product->country, $user),
             403
         );
+
+        if ($product->transfers()->exists()) {
+            return back()->withErrors(['product' => 'Cannot delete this product because it is linked to one or more transfers.']);
+        }
 
         $product->delete();
 
