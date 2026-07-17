@@ -19,7 +19,7 @@ RealDeal is a logistics operations platform that centralises everything from ord
 | **Dispatch Agent** | View assigned orders, generate waybills, mark deliveries |
 | **Warehouse** | Product management, barcode scanning, stock transfers |
 | **Merchant** | View and confirm their own orders via the finance workflow |
-| **Call Center** | WhatsApp/chat conversations, STK push, customer communication,orders  |
+| **Call Center** | WhatsApp/chat conversations, STK push, customer communication |
 
 ---
 
@@ -45,7 +45,7 @@ RealDeal is a logistics operations platform that centralises everything from ord
 graph TD
     Browser["Browser\n(React + TypeScript)"]
     Inertia["Inertia.js Bridge"]
-    Laravel["Laravel 12 Backend\n(Controllers + Models)"]
+    Laravel["Laravel 12 Backend\n(Controllers + Models + Services)"]
     DB[("MySQL Database")]
     Queue["Queue Worker\n(Scheduled Jobs)"]
     Integrations["External APIs\n(M-Pesa · WhatsApp · Shopify · Google · AfricasTalking)"]
@@ -56,6 +56,46 @@ graph TD
     Laravel -->|"Dispatch jobs"| Queue
     Queue -->|"Sync / notify / process"| Integrations
     Laravel -->|"Direct API calls"| Integrations
+```
+
+---
+
+## Project Structure
+
+```
+├── app/
+│   ├── Console/
+│   │   └── Commands/          # Scheduled & CLI commands
+│   ├── Exports/               # Excel/CSV export classes
+│   ├── Http/
+│   │   ├── Controllers/       # 40+ controllers (web + API)
+│   │   ├── Middleware/         # Custom middleware
+│   │   └── Requests/          # Form request validation
+│   ├── Jobs/                  # Queueable jobs
+│   ├── Models/                # 35 Eloquent models
+│   ├── Providers/             # Service providers
+│   ├── Services/              # Business logic services
+│   └── Support/               # Helpers (CountryAccess, etc.)
+├── config/                    # Laravel config files
+├── database/
+│   ├── migrations/            # 23 schema migrations
+│   ├── factories/             # Model factories
+│   └── seeders/               # Database seeders
+├── resources/
+│   ├── js/                    # React frontend
+│   │   ├── components/        # Reusable UI components
+│   │   ├── hooks/             # Custom React hooks
+│   │   ├── layouts/           # Layout components
+│   │   ├── lib/               # Utility functions
+│   │   ├── pages/             # Inertia page components
+│   │   └── types/             # TypeScript type definitions
+│   └── views/                 # Blade templates
+├── routes/
+│   ├── web.php                # Web routes (Inertia pages)
+│   ├── api.php                # API routes (webhooks, integrations)
+│   ├── auth.php               # Auth routes
+│   └── settings.php           # Settings routes
+└── tests/                     # PHPUnit tests
 ```
 
 ---
@@ -82,6 +122,8 @@ flowchart LR
 
 **Key pages:** `import`, `sheetorders`, `dispatch`, `undelivered`, `unremitted`
 
+**Controllers:** `ImportController`, `SheetOrderController`, `DispatchController`, `UndeliveredController`, `UnremittedController`
+
 ---
 
 ### 2. Finance Workflow
@@ -107,6 +149,8 @@ Each stage is gated — you cannot skip steps. Finance staff mark delivery and g
 
 **Key pages:** `finance-workflow`
 
+**Controller:** `FinanceWorkflowController`
+
 ---
 
 ### 3. Payment Collection (STK Push / M-Pesa)
@@ -130,6 +174,10 @@ sequenceDiagram
 
 **Key pages:** `stk`
 
+**Controllers:** `StkController`, `C2BTransactionController`
+
+**Console Commands:** `ProcessC2BTransactions`
+
 ---
 
 ### 4. Inventory & Warehouse
@@ -142,20 +190,47 @@ flowchart TD
     Barcode["🏷️ Barcode Assigned"]
     Scan["📷 Barcode Scanned\n(BarcodeHistory logged)"]
     Qty["📦 Quantity Updated\n(InventoryLog entry)"]
+    Alert["🔔 Low Stock Alert"]
     Transfer["🔄 Transfer to Agent"]
     Deduction["➖ Deduction Recorded"]
-    Alert["🔔 Low Stock Alert"]
 
     Create --> Barcode --> Scan --> Qty
     Qty --> Transfer --> Deduction
     Qty --> Alert
 ```
 
-**Key pages:** `products`, `transfer`, `waredash`
+**Key pages:** `products`, `transfer`, `waredash`, `inventory-deductions`
+
+**Controllers:** `ProductController`, `TransferController`, `InventoryDeductionController`, `WaredashController`
+
+**Services:** `ProductStockAlertService`
 
 ---
 
-### 5. Requisition & Budget Approval
+### 5. Inventory Deduction Workflow
+
+When delivered orders need inventory deducted from merchant stock:
+
+```mermaid
+flowchart TD
+    Delivered["📦 Delivered Orders\n(inventory_deducted_at IS NULL)"]
+    SelectMerchant["Select Merchant\nFilter orders & products"]
+    Deduct["Deduct Stock\nPer product, per order"]
+    Update["Product.quantity -= total\nInventoryLog created"]
+    Notify["📤 WhatsApp Group Notification\nvia OpenwaService"]
+    Mark["Order.inventory_deducted_at = now()"]
+
+    Delivered --> SelectMerchant --> Deduct --> Update --> Mark
+    Update --> Notify
+```
+
+**Key pages:** `inventory-deductions`
+
+**Controller:** `InventoryDeductionController`
+
+---
+
+### 6. Requisition & Budget Approval
 
 Finance teams create requisitions that go through an approval chain before being paid out from a daily budget.
 
@@ -176,29 +251,127 @@ Budgets have daily limits and can receive top-ups. Requisitions link to a `Requi
 
 **Key pages:** `requisitions`, `budgets`
 
+**Controllers:** `RequisitionController`, `RequisitionCategoryController`, `DailyBudgetController`
+
 ---
 
-### 6. Communication (WhatsApp & Voice)
+### 7. Communication (WhatsApp & Voice)
 
-Inbound messages arrive via webhook, are stored as `Chat` records, and agents respond from the chat UI. Voice calls are handled via WebRTC endpoints.
+RealDeal has a **layered WhatsApp messaging system** with multiple providers:
 
 ```mermaid
 flowchart TD
-    Inbound["📱 Inbound WhatsApp Message"]
-    Webhook["🔗 Webhook Received\n(WASender / AfricasTalking)"]
-    Store["💾 Stored as Chat Record"]
-    Agent["👤 Agent Views in Chat UI"]
-    Reply["💬 Agent Sends Reply"]
-    Outbound["📤 Outbound Message\nvia WASender API"]
+    subgraph Inbound
+        W_In["📱 Inbound WhatsApp"]
+        Webhook["🔗 Webhook\n(WASender / AfricasTalking)"]
+        Store["💾 Chat Record"]
+    end
 
-    Inbound --> Webhook --> Store --> Agent --> Reply --> Outbound
+    subgraph Chat UI
+        Agent["👤 Agent Views\nChat Interface"]
+        Reply["💬 AgentSends Reply"]
+    end
+
+    subgraph Outbound
+        WS["Wasender API\n(primary)"]
+        WAWP["WAWP API\n(fallback)"]
+        OWA["OpenWA\n(self-hosted)"]
+    end
+
+    subgraph Group Notifications
+        LSA["Low Stock Alert"]
+        IDN["Inventory Deduction"]
+        STN["Stock Transfer"]
+        SDN["Stock Deduction"]
+    end
+
+    W_In --> Webhook --> Store --> Agent --> Reply
+
+    Reply --> WS -->|"fails"| WAWP
+    Reply --> OWA
+
+    LSA --> OWA
+    IDN --> OWA
+    STN --> OWA
+    SDN --> OWA
 ```
+
+**Providers:**
+
+| Provider | Role | Used By |
+|----------|------|---------|
+| **Wasender** | Primary outbound (chat replies) | `WhatsAppFallbackService`, `WhatsappController` |
+| **WAWP** | Fallback (if Wasender fails) | `WhatsAppFallbackService` |
+| **OpenWA** | Group notifications, fallback chat | `OpenwaService`, `WhatsappController` |
 
 **Key pages:** `whatsapp`
 
+**Controllers:** `WhatsappController`, `ChatController`
+
+**Services:** `OpenwaService`, `WhatsAppFallbackService`
+
+**Console Commands:** `SendWhatsAppMessage`
+
+#### WhatsApp Group Notifications
+
+Automated notifications are sent to country-specific WhatsApp groups instead of individual numbers:
+
+```mermaid
+flowchart LR
+    subgraph Triggers
+        LS["Stock below\nalert threshold"]
+        ID["Inventory\ndeducted from orders"]
+        ST["Stock transferred\nto agent"]
+        SD["Stock deducted\nfrom agent"]
+    end
+
+    subgraph Service
+        OWA["OpenwaService\nsendToGroup()"]
+    end
+
+    subgraph Groups
+        KE["Kenya Group\n120363430968913090@g.us"]
+        TZ["Tanzania Group\n120363411453438004@g.us"]
+        UG["Uganda Group\n120363426385787478@g.us"]
+        ZM["Zambia Group\n120363409224310826@g.us"]
+    end
+
+    LS --> OWA
+    ID --> OWA
+    ST --> OWA
+    SD --> OWA
+
+    OWA -->|"country = Kenya"| KE
+    OWA -->|"country = Tanzania"| TZ
+    OWA -->|"country = Uganda"| UG
+    OWA -->|"country = Zambia"| ZM
+```
+
+```mermaid
+sequenceDiagram
+    participant System
+    participant OWA as OpenwaService
+    participant API as OpenWA API\n(api.sitebase.co.ke)
+    participant Group as WhatsApp Group
+
+    System->>OWA: sendToGroup(country, message)
+    OWA->>OWA: country → country code\n(e.g. Kenya → 254)
+    OWA->>OWA: country code → group chat ID\n(e.g. 254 → 120363...@g.us)
+    OWA->>OWA: country code → session ID\n(from config/services.php)
+    OWA->>API: POST /sessions/{id}/messages/send-text
+    API-->>OWA: { messageId: "..." }
+    OWA-->>System: { provider, to, message_id }
+    System->>System: Log to Whatsapp table
+```
+
+**Services involved:**
+- `OpenwaService` — shared service used by `ProductStockAlertService`, `InventoryDeductionController`, and `TransferController`
+- `ProductStockAlertService` — low stock threshold alerts
+- `WhatsAppFallbackService` — Wasender → WAWP fallback for chat replies
+
 ---
 
-### 7. Reports & Monitoring
+### 8. Reports & Monitoring
 
 ```mermaid
 flowchart LR
@@ -214,6 +387,57 @@ flowchart LR
 ```
 
 **Key pages:** `report`, `undelivered`, `unremitted`, `stats`
+
+**Controllers:** `ReportController`, `StatsController`
+
+**Services:** `DashboardReportService`, `StatsReportService`
+
+---
+
+### 9. Order Scanning (Warehouse Outbound/Inbound)
+
+Warehouse staff scan product barcodes to process inbound and outbound operations:
+
+```mermaid
+flowchart TD
+    Product["Product Page\nSelect product"]
+    Scan["Scan Barcodes\n(bulk QR codes)"]
+    Decision{"Operation Type?"}
+    Inbound["Inbound: quantity +="]
+    Outbound["Outbound: quantity -="]
+    Alert["Low Stock Alert\n(if threshold reached)"]
+    BarcodeHist["BarcodeHistory logged"]
+
+    Product --> Scan --> Decision
+    Decision -->|inbound| Inbound
+    Decision -->|outbound| Outbound
+    Outbound --> Alert
+    Inbound --> BarcodeHist
+    Outbound --> BarcodeHist
+```
+
+**Controllers:** `ProductController` (scanBarcodes method), `OrderScanController`
+
+---
+
+### 10. Dispatch & Waybills
+
+Orders are assigned to dispatch agents who generate waybills and manage deliveries:
+
+```mermaid
+flowchart LR
+    Orders["Sheet Orders\n(undispatched)"]
+    Assign["Assign to\nDispatch Agent"]
+    Waybill["Generate Waybill\n(PDF via dompdf)"]
+    Bulk["Bulk Download\nWaybills"]
+    Print["Print Agent\nOrders"]
+
+    Orders --> Assign --> Waybill
+    Waybill --> Bulk
+    Waybill --> Print
+```
+
+**Controllers:** `DispatchController`, `WaybillController`
 
 ---
 
@@ -235,6 +459,15 @@ flowchart TD
     Check -->|No| Scoped
 ```
 
+**Supported countries:**
+
+| Country | Code | OpenWA Session Env Var |
+|---------|------|------------------------|
+| Kenya | 254 | `OPENWA_SESSION_KENYA` |
+| Tanzania | 255 | `OPENWA_SESSION_TANZANIA` |
+| Uganda | 256 | `OPENWA_SESSION_UGANDA` |
+| Zambia | 260 | `OPENWA_SESSION_ZAMBIA` |
+
 ---
 
 ## Role-Based Sidebar
@@ -243,15 +476,58 @@ The navigation menu is dynamically controlled per role. Admins configure which m
 
 ---
 
+## Services Layer
+
+| Service | Purpose |
+|---------|---------|
+| `OpenwaService` | Shared OpenWA messaging — sends to country groups or individual numbers |
+| `WhatsAppFallbackService` | Wasender primary → WAWP fallback for chat replies |
+| `ProductStockAlertService` | Low stock alerts via OpenWA groups |
+| `DashboardReportService` | Dashboard statistics and charts |
+| `StatsReportService` | Reporting and analytics |
+| `SheetOrderImportService` | CSV/Excel import processing |
+| `ShopifyService` | Shopify order sync |
+
+---
+
 ## Key Integrations
 
 | Integration | Purpose |
 |-------------|---------|
 | **M-Pesa (Daraja)** | STK push payment collection, C2B callbacks |
-| **WASender** | WhatsApp messaging (inbound + outbound) |
+| **WASender** | WhatsApp messaging (inbound + outbound, primary) |
+| **OpenWA (WaZuri)** | WhatsApp group notifications + fallback messaging |
+| **WAWP** | WhatsApp fallback provider |
 | **AfricasTalking** | SMS / voice / telecom integrations |
 | **Shopify** | Order sync from merchant stores |
 | **Google API** | Google Sheets / Drive integrations |
+
+---
+
+## Data Model (Key Tables)
+
+| Table | Purpose |
+|-------|---------|
+| `countries` | Supported countries |
+| `users` | All users with role and country assignment |
+| `products` | Inventory products with quantity tracking |
+| `sheet_orders` | Core order table with finance workflow columns |
+| `incoming_sheet_orders` | Pre-processed imported orders |
+| `sheets` | Merchant sheet groupings |
+| `transfers` | Stock transfers to agents |
+| `deductions` | Stock deductions from agents |
+| `barcodes` | Scanned barcode history |
+| `inventory_logs` | Quantity change audit trail |
+| `stk` | STK push payment records |
+| `mpesa_transactions` | M-Pesa C2B callback records |
+| `c2b_transactions` | C2B transaction records |
+| `requisitions` | Finance requisitions |
+| `daily_budgets` | Daily budget tracking |
+| `chats` / `whatsapp` | WhatsApp conversation records |
+| `sidebare_role_permissions` | Dynamic sidebar visibility config |
+| `dispatch` | Dispatch agent assignments |
+| `voice_calls` | Voice call records |
+| `user_locations` | Agent location tracking |
 
 ---
 
@@ -259,27 +535,48 @@ The navigation menu is dynamically controlled per role. Admins configure which m
 
 The system runs automated tasks via Laravel's scheduler and queue workers:
 
-- Order reminder and overdue alerts
-- Shopify order sync
-- WhatsApp message queue processing
-- C2B transaction callback handling
-- Merchant sheet update synchronisation
-- Location tracking heartbeat processing
+| Command | Schedule | Purpose |
+|---------|----------|---------|
+| `NotifyOverdueOrders` | Daily | Overdue order alerts |
+| `SendOverdueOrdersAlert` | Daily | Overdue summary to groups |
+| `SendUpcomingOrdersReminder` | Daily | Upcoming delivery reminders |
+| `SendScheduledOrders` | Varies | Scheduled order notifications |
+| `ProcessC2BTransactions` | Every minute | Handle M-Pesa callback data |
+| `ProcessSyncedOrders` | Varies | Process shopify-synced orders |
+| `ImportShopifyOrders` | Hourly | Sync orders from Shopify |
+| `SendWhatsAppMessage` | Varies | Queue-based WhatsApp delivery |
+| `UpdateSheetOrders` | Varies | Merchant sheet sync |
 
 ---
 
 ## Development Setup
 
 ```bash
+# Install dependencies
 composer install
 npm install
+
+# Environment setup
 cp .env.example .env
 php artisan key:generate
+
+# Database
 php artisan migrate
+
+# Start development servers (Laravel + Queue + Vite concurrently)
 composer run dev
 ```
 
 > `composer run dev` starts the Laravel server, queue worker, and Vite dev server concurrently.
+
+### Linting & Type Checking
+
+```bash
+npm run lint        # ESLint
+npm run types       # TypeScript type check
+npm run format      # Prettier
+composer run test   # PHPUnit
+```
 
 ---
 
@@ -289,3 +586,5 @@ composer run dev
 - The app supports both web routes (Inertia pages) and API endpoints (for webhooks and external integrations)
 - Role-based access covers not just UI visibility but also controller-level guards
 - All finance workflow steps are immutable audit trails — timestamps and user IDs are recorded and never overwritten
+- WhatsApp notifications are routed through `OpenwaService` which maps country names → country codes → group chat IDs → OpenWA session IDs
+- The `ProductStockAlertService` uses constructor injection for `OpenwaService` — Laravel's service container auto-resolves it

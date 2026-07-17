@@ -7,15 +7,19 @@ use App\Models\Product;
 use App\Models\User;
 use App\Models\Deduction;
 use App\Models\Whatsapp;
+use App\Services\OpenwaService;
 use App\Support\CountryAccess;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class TransferController extends Controller
 {
+    public function __construct(
+        private readonly OpenwaService $openwa,
+    ) {}
+
     private function resolveCountryOrFail(?\App\Models\User $user): string
     {
         $country = CountryAccess::resolveCountryNameForWrite($user, null);
@@ -26,141 +30,10 @@ class TransferController extends Controller
     }
 
     /**
-     * Clean phone number - only remove non-digits.
-     */
-    private function cleanPhoneNumber(?string $phoneNumber): ?string
-    {
-        if (!$phoneNumber) return null;
-        
-        $phone = preg_replace('/\D/', '', $phoneNumber);
-        
-        return (strlen($phone) >= 9) ? $phone : null;
-    }
-
-    /**
-     * OpenWA headers that mimic official WhatsApp Web traffic.
-     */
-    private function openwaHeaders(string $apiKey): array
-    {
-        return [
-            'X-API-Key'      => $apiKey,
-            'Content-Type'   => 'application/json',
-            'User-Agent'     => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept'         => 'application/json, text/plain, */*',
-            'Accept-Language'=> 'en-US,en;q=0.9',
-            'Origin'         => 'https://web.whatsapp.com',
-            'Referer'        => 'https://web.whatsapp.com/',
-            'Sec-Fetch-Dest' => 'empty',
-            'Sec-Fetch-Mode' => 'cors',
-            'Sec-Fetch-Site' => 'same-origin',
-        ];
-    }
-
-    /**
-     * Send WhatsApp message via OpenWA Kenya session.
-     */
-    private function sendViaOpenWAKenya(string $phoneNumber, string $message): array
-    {
-        $sessionId = env('OPENWA_SESSION_KENYA');
-        $baseUrl = env('OPENWA_BASE_URL', 'https://api.sitebase.co.ke');
-        $apiKey = env('OPENWA_API_KEY', '');
-
-        if (empty($sessionId)) {
-            throw new \Exception("OPENWA_SESSION_KENYA is not configured in .env");
-        }
-
-        if (empty($apiKey)) {
-            throw new \Exception("OPENWA_API_KEY is not configured in .env");
-        }
-
-        $cleanPhone = $this->cleanPhoneNumber($phoneNumber);
-        if (!$cleanPhone) {
-            throw new \Exception("Invalid phone number: {$phoneNumber}");
-        }
-
-        $chatId = $cleanPhone . '@c.us';
-        $url = rtrim($baseUrl, '/') . "/api/sessions/{$sessionId}/messages/send-text";
-
-        Log::info('Sending WhatsApp via OpenWA Kenya', [
-            'original_phone' => $phoneNumber,
-            'clean_phone' => $cleanPhone,
-            'chatId' => $chatId,
-        ]);
-
-        $response = Http::withHeaders($this->openwaHeaders($apiKey))
-            ->timeout(30)
-            ->post($url, [
-                'chatId' => $chatId,
-                'text' => $message,
-            ]);
-
-        Log::info('OpenWA response', [
-            'status' => $response->status(),
-            'body' => $response->body(),
-        ]);
-
-        if (!$response->successful()) {
-            throw new \Exception('OpenWA request failed (HTTP ' . $response->status() . '): ' . $response->body());
-        }
-
-        $data = $response->json();
-        if (empty($data['messageId'])) {
-            throw new \Exception('OpenWA did not return a valid messageId. Response: ' . json_encode($data));
-        }
-
-        return [
-            'provider' => 'openwa_kenya',
-            'to' => $chatId,
-            'message_id' => $data['messageId'],
-        ];
-    }
-
-    /**
-     * Get operations users to notify.
-     */
-    private function getOperationsUsers(string $country): \Illuminate\Database\Eloquent\Collection
-    {
-        $countryName = strtolower(trim($country));
-        
-        // Try country-specific first
-        $users = User::whereNotNull('store_phone')
-            ->where('store_phone', '!=', '')
-            ->where(function($query) {
-                $query->whereRaw('LOWER(TRIM(roles)) = ?', ['operations'])
-                    ->orWhereRaw('LOWER(TRIM(roles)) LIKE ?', ['%operations%']);
-            })
-            ->where(function($query) use ($countryName) {
-                $query->whereRaw('LOWER(store_address) LIKE ?', ['%' . $countryName . '%'])
-                    ->orWhereRaw('(JSON_VALID(store_address) AND JSON_EXTRACT(store_address, "$.country") LIKE ?)', ['%' . $countryName . '%']);
-            })
-            ->get();
-        
-        // Fallback to all operations users
-        if ($users->isEmpty()) {
-            $users = User::whereNotNull('store_phone')
-                ->where('store_phone', '!=', '')
-                ->where(function($query) {
-                    $query->whereRaw('LOWER(TRIM(roles)) = ?', ['operations'])
-                        ->orWhereRaw('LOWER(TRIM(roles)) LIKE ?', ['%operations%']);
-                })
-                ->get();
-        }
-        
-        return $users;
-    }
-
-    /**
-     * Send transfer notification to operations users.
+     * Send transfer notification to the country group.
      */
     private function sendTransferNotification(array $transfers, string $region, string $from, string $country): void
     {
-        $operationsUsers = $this->getOperationsUsers($country);
-        
-        if ($operationsUsers->isEmpty()) {
-            Log::warning('No operations users found for transfer notification');
-            return;
-        }
-        
         $message = "*STOCK TRANSFER NOTIFICATION* 📦\n\n";
         $message .= "*Country:* {$country}\n";
         $message .= "*Region:* {$region}\n";
@@ -184,49 +57,39 @@ class TransferController extends Controller
         $message .= "*Total Products Transferred:* " . count($transfers) . "\n\n";
         $message .= "_Automated notification from Inventory System_";
         
-        foreach ($operationsUsers as $user) {
-            try {
-                $result = $this->sendViaOpenWAKenya($user->store_phone, $message);
-                
-                Whatsapp::create([
-                    'to' => $result['to'],
-                    'client_name' => $user->name ?? 'Operations User',
-                    'store_name' => $country,
-                    'cc_agents' => null,
-                    'message' => $message,
-                    'status' => 'sent',
-                    'sid' => $result['message_id'],
-                ]);
-                
-                Log::info('Transfer notification sent', [
-                    'user' => $user->name,
-                    'phone' => $user->store_phone,
-                ]);
-            } catch (\Exception $e) {
-                Log::error('Failed to send transfer notification', [
-                    'user' => $user->name,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        try {
+            $result = $this->openwa->sendToGroup($country, $message);
+
+            Whatsapp::create([
+                'to' => $result['to'],
+                'client_name' => 'Stock Transfer',
+                'store_name' => $country,
+                'cc_agents' => null,
+                'message' => $message,
+                'status' => 'sent',
+                'sid' => $result['message_id'],
+            ]);
+
+            Log::info('Transfer notification sent to group.', [
+                'country' => $country,
+                'message_id' => $result['message_id'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send transfer notification to group.', [
+                'country' => $country,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
     /**
-     * Send deduction notification to operations users.
+     * Send deduction notification to the country group.
      */
     private function sendDeductionNotification(int $productId, int $agentId, int $quantity, string $reason, string $code, string $country): void
     {
-        $operationsUsers = $this->getOperationsUsers($country);
-        
-        if ($operationsUsers->isEmpty()) {
-            Log::warning('No operations users found for deduction notification');
-            return;
-        }
-        
         $product = Product::find($productId);
         $agent = User::find($agentId);
         
-        // Calculate remaining
         $totalTransferred = Transfer::where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
@@ -258,30 +121,28 @@ class TransferController extends Controller
         
         $message .= "\n_Automated notification from Inventory System_";
         
-        foreach ($operationsUsers as $user) {
-            try {
-                $result = $this->sendViaOpenWAKenya($user->store_phone, $message);
-                
-                Whatsapp::create([
-                    'to' => $result['to'],
-                    'client_name' => $user->name ?? 'Operations User',
-                    'store_name' => $country,
-                    'cc_agents' => null,
-                    'message' => $message,
-                    'status' => 'sent',
-                    'sid' => $result['message_id'],
-                ]);
-                
-                Log::info('Deduction notification sent', [
-                    'user' => $user->name,
-                    'phone' => $user->store_phone,
-                ]);
-            } catch (\Exception $e) {
-                Log::error('Failed to send deduction notification', [
-                    'user' => $user->name,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        try {
+            $result = $this->openwa->sendToGroup($country, $message);
+
+            Whatsapp::create([
+                'to' => $result['to'],
+                'client_name' => 'Stock Deduction',
+                'store_name' => $country,
+                'cc_agents' => null,
+                'message' => $message,
+                'status' => 'sent',
+                'sid' => $result['message_id'],
+            ]);
+
+            Log::info('Deduction notification sent to group.', [
+                'country' => $country,
+                'message_id' => $result['message_id'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send deduction notification to group.', [
+                'country' => $country,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
