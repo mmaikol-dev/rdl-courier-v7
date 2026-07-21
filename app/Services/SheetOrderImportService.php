@@ -11,6 +11,10 @@ use Illuminate\Validation\ValidationException;
 
 class SheetOrderImportService
 {
+    public function __construct(
+        private readonly ProductAutoMatchService $autoMatch = new ProductAutoMatchService,
+    ) {}
+
     /**
      * Normalize, validate, and upsert one order payload from Google Apps Script.
      *
@@ -70,6 +74,8 @@ class SheetOrderImportService
                     $existingOrder->save();
                 });
 
+                $this->autoMatch->applyMatches($existingOrder, $this->autoMatch->match($existingOrder));
+
                 Log::info('Existing order updated from queued sheet import', [
                     'order_no' => $validatedData['order_no'],
                 ]);
@@ -87,6 +93,8 @@ class SheetOrderImportService
                     'updated_at' => null,
                 ]);
             });
+
+            $this->autoMatch->applyMatches($sheetOrder, $this->autoMatch->match($sheetOrder));
 
             Log::info('New order created from queued sheet import', [
                 'order_no' => $validatedData['order_no'],
@@ -162,6 +170,7 @@ class SheetOrderImportService
         if ($lastAssigned && in_array($lastAssigned, $agents, true)) {
             $lastIndex = array_search($lastAssigned, $agents, true);
             $nextIndex = ($lastIndex + 1 < count($agents)) ? $lastIndex + 1 : 0;
+
             return $agents[$nextIndex];
         }
 

@@ -25,6 +25,7 @@ class SidebarRegistry
             ['key' => 'products', 'title' => 'Products', 'href' => '/products', 'group' => 'Inventory'],
             ['key' => 'order-scans', 'title' => 'QR Scan Out', 'href' => '/order-scans', 'group' => 'Inventory'],
             ['key' => 'inventory-deductions', 'title' => 'Inventory Deductions', 'href' => '/inventory-deductions', 'group' => 'Inventory'],
+            ['key' => 'deducted-orders', 'title' => 'Deducted Orders', 'href' => '/deducted-orders', 'group' => 'Inventory'],
             ['key' => 'transfer', 'title' => 'Transfer', 'href' => '/transfer', 'group' => 'Inventory'],
             ['key' => 'units', 'title' => 'Merchants', 'href' => '/units', 'group' => 'Inventory'],
             ['key' => 'categories', 'title' => 'Categories', 'href' => '/categories', 'group' => 'Inventory'],

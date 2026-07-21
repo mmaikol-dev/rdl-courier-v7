@@ -46,6 +46,7 @@ export type SidebarItemKey =
     | 'whatsapp'
     | 'products'
     | 'inventory-deductions'
+    | 'deducted-orders'
     | 'order-scans'
     | 'transfer'
     | 'units'
@@ -95,6 +96,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         items: [
             { key: 'products', title: 'Products', href: '/products', icon: BoxesIcon, group: 'Inventory' },
             { key: 'inventory-deductions', title: 'Inventory Deductions', href: '/inventory-deductions', icon: PackageSearch, group: 'Inventory' },
+            { key: 'deducted-orders', title: 'Deducted Orders', href: '/deducted-orders', icon: FileX, group: 'Inventory' },
             { key: 'order-scans', title: 'QR Scan Out', href: '/order-scans', icon: ScanLine, group: 'Inventory' },
             { key: 'transfer', title: 'Transfer', href: '/transfer', icon: SendToBackIcon, group: 'Inventory' },
             { key: 'units', title: 'Merchants', href: '/units', icon: UserRoundIcon, group: 'Inventory' },

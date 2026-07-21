@@ -262,8 +262,8 @@ class DashboardReportService
                     'delivered_rate' => $confirmed > 0
                         ? round(($delivered / $confirmed) * 100, 1)
                         : 0,
-                    'in_delivery_rate' => $totalLeads > 0
-                        ? round(($scheduled / $totalLeads) * 100, 1)
+                    'in_delivery_rate' => $confirmed > 0
+                        ? round(($scheduled / $confirmed) * 100, 1)
                         : 0,
                     'confirmed_rate' => $totalLeads > 0
                         ? round(($confirmed / $totalLeads) * 100, 1)
@@ -271,8 +271,8 @@ class DashboardReportService
                     'cancelled_rate' => $totalLeads > 0
                         ? round(($cancelled / $totalLeads) * 100, 1)
                         : 0,
-                    'returned_rate' => $totalLeads > 0
-                        ? round(($returned / $totalLeads) * 100, 1)
+                    'returned_rate' => $confirmed > 0
+                        ? round(($returned / $confirmed) * 100, 1)
                         : 0,
                     'global_rate' => $totalLeads > 0
                         ? round(($delivered / $totalLeads) * 100, 1)

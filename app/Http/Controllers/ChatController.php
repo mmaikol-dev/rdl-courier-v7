@@ -4,8 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Chat;
 use App\Models\Whatsapp;
-use Illuminate\Container\Attributes\DB;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 
@@ -15,16 +16,14 @@ class ChatController extends Controller
     /**
      * Display a listing of the resource.
      */
-    private function normalizePhoneNumber($phone)
+    private function normalizePhoneNumber($phone): string
     {
-        $phone = preg_replace('/\D/', '', $phone); // keep digits only
+        $phone = preg_replace('/\D/', '', $phone);
 
-        // Remove leading zero
         if (substr($phone, 0, 1) === '0') {
             $phone = substr($phone, 1);
         }
 
-        // If starts with 254 keep it, else prefix
         if (substr($phone, 0, 3) !== '254') {
             $phone = '254' . $phone;
         }
@@ -32,127 +31,133 @@ class ChatController extends Controller
         return '+' . $phone;
     }
 
-   public function index(Request $request)
-{
-    $perPage = $request->get('per_page', 50);
-    $currentPage = $request->get('page', 1);
+    private function countryFilter($query): void
+    {
+        /** @var User|null $user */
+        $user = Auth::user();
 
-    // Get all chats to maintain grouping functionality
-    $rawChats = Chat::orderBy('created_at', 'asc')->get();
-
-    $groupedChats = [];
-
-    foreach ($rawChats as $chat) {
-        $normalized = $this->normalizePhoneNumber($chat->to);
-
-        if (!isset($groupedChats[$normalized])) {
-            $groupedChats[$normalized] = [
-                'phone' => $normalized,
-                'client_name' => $chat->client_name,
-                'store_name' => $chat->store_name,
-                'cc_agents' => $chat->cc_agents, // 👈 Add cc_agents here
-                'messages' => [],
-                'latest_at' => null,
-            ];
+        if (! $user || $user->hasGlobalCountryAccess()) {
+            return;
         }
 
-        $groupedChats[$normalized]['messages'][] = $chat;
-        $groupedChats[$normalized]['latest_at'] = $chat->created_at;
-        
-        // 👇 Update cc_agents if it's not set yet
-        if (empty($groupedChats[$normalized]['cc_agents']) && !empty($chat->cc_agents)) {
-            $groupedChats[$normalized]['cc_agents'] = $chat->cc_agents;
+        $storeAddress = $user->store_address;
+
+        if ($storeAddress) {
+            $query->where(function ($q) use ($storeAddress) {
+                $q->whereRaw('LOWER(store_name) = ?', [strtolower(trim($storeAddress))])
+                  ->orWhereNull('store_name')
+                  ->orWhere('store_name', '');
+            });
         }
     }
 
-    // Sort conversations by latest_at (newest first)
-    $sortedConversations = collect($groupedChats)
-        ->sortByDesc('latest_at')
-        ->values();
+    private function groupAndSortChats($rawChats): array
+    {
+        $grouped = [];
 
-    // Manual pagination for the conversations
-    $total = $sortedConversations->count();
-    $offset = ($currentPage - 1) * $perPage;
-    
-    $paginatedConversations = $sortedConversations->slice($offset, $perPage)->values();
+        foreach ($rawChats as $chat) {
+            $normalized = $this->normalizePhoneNumber($chat->to);
 
-    // Create pagination metadata
-    $pagination = [
-        'current_page' => (int) $currentPage,
-        'per_page' => (int) $perPage,
-        'total' => $total,
-        'last_page' => ceil($total / $perPage),
-        'from' => $total > 0 ? $offset + 1 : 0,
-        'to' => min($offset + $perPage, $total),
-        'has_more_pages' => $currentPage < ceil($total / $perPage),
-        'prev_page_url' => $currentPage > 1 ? request()->fullUrlWithQuery(['page' => $currentPage - 1]) : null,
-        'next_page_url' => $currentPage < ceil($total / $perPage) ? request()->fullUrlWithQuery(['page' => $currentPage + 1]) : null,
-    ];
+            if (!isset($grouped[$normalized])) {
+                $grouped[$normalized] = [
+                    'phone' => $normalized,
+                    'client_name' => $chat->client_name,
+                    'store_name' => $chat->store_name,
+                    'cc_agents' => $chat->cc_agents,
+                    'messages' => [],
+                    'latest_at' => $chat->created_at,
+                ];
+            }
 
-    return Inertia::render('whatsapp/index', [
-        'conversations' => $paginatedConversations->toArray(),
-        'pagination' => $pagination,
-    ]);
-}
-    
+            $grouped[$normalized]['messages'][] = $chat;
+
+            if ($chat->created_at > $grouped[$normalized]['latest_at']) {
+                $grouped[$normalized]['latest_at'] = $chat->created_at;
+            }
+
+            if (empty($grouped[$normalized]['cc_agents']) && !empty($chat->cc_agents)) {
+                $grouped[$normalized]['cc_agents'] = $chat->cc_agents;
+            }
+        }
+
+        return collect($grouped)->sortByDesc('latest_at')->values()->toArray();
+    }
+
+    public function index(Request $request)
+    {
+        $perPage = $request->get('per_page', 50);
+        $currentPage = $request->get('page', 1);
+
+        $query = Chat::where('created_at', '>=', now()->subDays(90));
+        $this->countryFilter($query);
+        $rawChats = $query->orderBy('created_at', 'asc')->get();
+
+        $sortedConversations = $this->groupAndSortChats($rawChats);
+
+        $total = count($sortedConversations);
+        $offset = ($currentPage - 1) * $perPage;
+        $paginatedConversations = array_slice($sortedConversations, $offset, $perPage);
+
+        $pagination = [
+            'current_page' => (int) $currentPage,
+            'per_page' => (int) $perPage,
+            'total' => $total,
+            'last_page' => (int) ceil($total / $perPage),
+            'has_more_pages' => $currentPage < ceil($total / $perPage),
+        ];
+
+        return Inertia::render('whatsapp/index', [
+            'conversations' => $paginatedConversations,
+            'pagination' => $pagination,
+        ]);
+    }
+
+    /**
+     * Poll for new/updated messages since a given timestamp.
+     * GET /api/whatsapp/conversations?since=2026-07-20T10:00:00
+     */
     public function getConversations(Request $request)
-{
-    $perPage = $request->get('per_page', 15);
-    $currentPage = $request->get('page', 1);
+    {
+        $since = $request->get('since');
+        $search = $request->get('search');
+        $perPage = (int) $request->get('per_page', 15);
+        $currentPage = (int) $request->get('page', 1);
 
-    // Get all chats to maintain grouping functionality
-    $rawChats = Chat::orderBy('created_at', 'asc')->get();
+        $query = Chat::orderBy('created_at', 'asc');
 
-    $groupedChats = [];
-
-    foreach ($rawChats as $chat) {
-        $normalized = $this->normalizePhoneNumber($chat->to);
-
-        if (!isset($groupedChats[$normalized])) {
-            $groupedChats[$normalized] = [
-                'phone' => $normalized,
-                'client_name' => $chat->client_name,
-                'store_name' => $chat->store_name,
-                'messages' => [],
-                'latest_at' => null,
-            ];
+        if ($since) {
+            $query->where('updated_at', '>', $since);
         }
 
-        $groupedChats[$normalized]['messages'][] = $chat;
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('client_name', 'like', "%{$search}%")
+                  ->orWhere('message', 'like', "%{$search}%")
+                  ->orWhere('to', 'like', "%{$search}%");
+            });
+        }
 
-        // Track the latest timestamp for sorting
-        $groupedChats[$normalized]['latest_at'] = $chat->created_at;
+        $this->countryFilter($query);
+        $query->where('created_at', '>=', now()->subDays(90));
+        $rawChats = $query->get();
+
+        $sortedConversations = $this->groupAndSortChats($rawChats);
+
+        $total = count($sortedConversations);
+        $offset = ($currentPage - 1) * $perPage;
+        $paginatedConversations = array_slice($sortedConversations, $offset, $perPage);
+
+        return response()->json([
+            'conversations' => $paginatedConversations,
+            'pagination' => [
+                'current_page' => $currentPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil($total / $perPage),
+                'has_more_pages' => $currentPage < ceil($total / $perPage),
+            ],
+        ]);
     }
-
-    // Sort conversations by latest_at (newest first)
-    $sortedConversations = collect($groupedChats)
-        ->sortByDesc('latest_at')
-        ->values();
-
-    // Manual pagination for the conversations
-    $total = $sortedConversations->count();
-    $offset = ($currentPage - 1) * $perPage;
-    
-    $paginatedConversations = $sortedConversations->slice($offset, $perPage)->values();
-
-    // Create pagination metadata
-    $pagination = [
-        'current_page' => (int) $currentPage,
-        'per_page' => (int) $perPage,
-        'total' => $total,
-        'last_page' => ceil($total / $perPage),
-        'from' => $total > 0 ? $offset + 1 : 0,
-        'to' => min($offset + $perPage, $total),
-        'has_more_pages' => $currentPage < ceil($total / $perPage),
-        'prev_page_url' => $currentPage > 1 ? request()->fullUrlWithQuery(['page' => $currentPage - 1]) : null,
-        'next_page_url' => $currentPage < ceil($total / $perPage) ? request()->fullUrlWithQuery(['page' => $currentPage + 1]) : null,
-    ];
-
-    return response()->json([
-        'conversations' => $paginatedConversations->toArray(),
-        'pagination' => $pagination,
-    ]);
-}
 
     /**
      * Show the form for creating a new resource.
@@ -170,18 +175,16 @@ class ChatController extends Controller
         //
     }
 
-    /**
-     * Display the specified resource.
-     */public function show($phone)
-{
-    $messages = \DB::table('whatsapp')
-        ->where('to', $phone)
-        ->orWhere('from', $phone)
-        ->orderBy('created_at', 'asc')
-        ->get();
+    public function show($phone)
+    {
+        $normalized = $this->normalizePhoneNumber($phone);
 
-    return response()->json($messages);
-}
+        $query = Chat::where('to', $normalized);
+        $this->countryFilter($query);
+        $messages = $query->orderBy('created_at', 'asc')->get();
+
+        return response()->json($messages);
+    }
 
 
     /**

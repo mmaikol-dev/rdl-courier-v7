@@ -790,7 +790,7 @@ export default function Dashboard() {
                                                             {item.in_delivery_rate}%
                                                         </span>
                                                         <span className="text-[10px] text-slate-400 tabular-nums">
-                                                            {item.scheduled_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                            {item.scheduled_count.toLocaleString()}/{(item.delivered_count + item.scheduled_count).toLocaleString()}
                                                         </span>
                                                     </div>
                                                 </TableCell>
@@ -806,7 +806,7 @@ export default function Dashboard() {
                                                             {item.returned_rate}%
                                                         </span>
                                                         <span className="text-[10px] text-slate-400 tabular-nums">
-                                                            {item.returned_count.toLocaleString()}/{item.total_leads.toLocaleString()}
+                                                            {item.returned_count.toLocaleString()}/{(item.delivered_count + item.scheduled_count).toLocaleString()}
                                                         </span>
                                                     </div>
                                                 </TableCell>

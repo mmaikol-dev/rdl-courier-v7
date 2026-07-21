@@ -31,6 +31,7 @@ use App\Http\Controllers\UnremittedController;
 use App\Http\Controllers\UpdateController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLocationController;
+use App\Http\Controllers\DeductedOrdersController;
 use App\Http\Controllers\WaredashController;
 use App\Http\Controllers\WaybillController;
 use App\Http\Controllers\WhatsappController;
@@ -91,6 +92,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('products', ProductController::class);
     Route::get('/inventory-deductions', [InventoryDeductionController::class, 'index'])->name('inventory-deductions.index');
     Route::post('/inventory-deductions', [InventoryDeductionController::class, 'store'])->name('inventory-deductions.store');
+
+    // Deducted Orders — view orders already deducted with linked products
+    Route::get('/deducted-orders', [DeductedOrdersController::class, 'index'])->name('deducted-orders.index');
 
     // QR order scanning (warehouse outbound/inbound)
     Route::get('/order-scans', [OrderScanController::class, 'index'])->name('order-scans.index');
@@ -197,6 +201,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Ai
     Route::resource('ai', AiController::class);
+    Route::post('/ai/create-order', [AiController::class, 'createOrder'])->name('ai.create-order');
 
     // updates
     Route::post('/sheet-updates/run', [UpdateController::class, 'run'])

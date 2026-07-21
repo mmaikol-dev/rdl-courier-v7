@@ -7,6 +7,7 @@ use App\Http\Controllers\StkController;
 use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\CallcenterController;
 use App\Http\Controllers\WhatsappController;
+use App\Http\Controllers\MetaWebhookController;
 use App\Http\Controllers\AiController;
 
 
@@ -36,6 +37,13 @@ Route::get('/whatsapp/webhook', function() {
         'timestamp' => now()
     ]);
 });
+
+// ============================================
+// Meta WhatsApp Cloud API Webhook Routes
+// ============================================
+
+Route::get('/whatsapp/meta/webhook', [MetaWebhookController::class, 'verify']);
+Route::post('/whatsapp/meta/webhook', [MetaWebhookController::class, 'handleWebhook']);
 
 
 Route::post('/capability-token', [VoiceController::class, 'getCapabilityToken']);

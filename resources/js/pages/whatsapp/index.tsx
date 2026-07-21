@@ -15,12 +15,16 @@ import {
   Paperclip,
   Smile,
   Clock,
-  MessageSquare
+  MessageSquare,
+  Image,
+  File,
+  Music,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { Avatar, AvatarFallback, AvatarInitials } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -29,7 +33,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 interface Chat {
@@ -61,13 +64,46 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 ];
 
 export default function WhatsAppPage() {
-  const { conversations: initialConversations } = usePage<{ conversations: Conversation[] }>().props;
+  const { conversations: initialConversations, pagination: initialPagination } = usePage<{ conversations: Conversation[]; pagination: any }>().props;
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
+  const [pagination, setPagination] = useState(initialPagination);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [message, setMessage] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Conversation[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Merge incoming conversations from polling into existing state
+  const mergeConversations = (existing: Conversation[], incoming: Conversation[]): Conversation[] => {
+    const merged = new Map(existing.map(c => [c.phone, { ...c, messages: [...c.messages] }]));
+
+    for (const inc of incoming) {
+      const existing = merged.get(inc.phone);
+      if (existing) {
+        const seenIds = new Set(existing.messages.map(m => m.id));
+        for (const msg of inc.messages) {
+          const matchIdx = existing.messages.findIndex(m => m.id === msg.id);
+          if (matchIdx >= 0) {
+            existing.messages[matchIdx] = msg;
+          } else if (!seenIds.has(msg.id) && msg.id > 0) {
+            existing.messages.push(msg);
+            seenIds.add(msg.id);
+          }
+        }
+        existing.messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        existing.latest_at = existing.messages.length > 0 ? existing.messages[existing.messages.length - 1].created_at : existing.latest_at;
+        existing.client_name = inc.client_name || existing.client_name;
+        existing.cc_agents = inc.cc_agents || existing.cc_agents;
+      } else {
+        merged.set(inc.phone, inc);
+      }
+    }
+
+    return Array.from(merged.values()).sort((a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime());
+  };
 
   // Scroll to bottom when chat changes or messages update
   useEffect(() => {
@@ -84,12 +120,61 @@ export default function WhatsAppPage() {
     }
   }, [conversations, selected?.phone]);
 
-  // Filter conversations based on search
-  const filteredConversations = conversations.filter(conv =>
-    conv.client_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.phone.includes(searchQuery) ||
-    conv.messages.some(msg => msg.message.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Poll for new messages every 5 seconds (paused when searching)
+  useEffect(() => {
+    if (searchResults !== null) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/whatsapp/conversations?since=" + encodeURIComponent(new Date().toISOString()));
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.conversations?.length > 0) {
+          setConversations(prev => mergeConversations(prev, data.conversations));
+        }
+      } catch {
+        // silent
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [searchResults]);
+
+  // Apply sidebar country filter (for G.O.D users who see all countries)
+  const pageProps = usePage().props as Record<string, unknown>;
+  const selectedCountry = pageProps.selectedCountry as string | null | undefined;
+
+  const filterByCountry = (list: Conversation[]) => {
+    if (!selectedCountry || selectedCountry === '__all__') return list;
+    const target = selectedCountry.toLowerCase();
+    return list.filter(conv => conv.store_name?.toLowerCase() === target);
+  };
+
+  // Conversations to display: search results when searching, normal list otherwise
+  const displayConversations = filterByCountry(searchResults !== null ? searchResults : conversations);
+
+  const handleSearchEnter = async () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await fetch("/api/whatsapp/conversations?search=" + encodeURIComponent(q) + "&per_page=100");
+      const data = await res.json();
+      setSearchResults(data.conversations || []);
+    } catch {
+      // silent
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setSearchResults(null);
+    setIsSearching(false);
+  };
 
   const renderStatusIcon = (status: string) => {
     switch (status) {
@@ -179,15 +264,14 @@ export default function WhatsAppPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setShowModal(true);
-        // Update message status to sent
+        // Update optimistic message with real DB id and sent status
         setConversations(prevConversations =>
           prevConversations.map(conv =>
             conv.phone === selected.phone
               ? {
                 ...conv,
                 messages: conv.messages.map(msg =>
-                  msg.id === newMsg.id ? { ...msg, status: "sent", sid: data.sid || "" } : msg
+                  msg.id === newMsg.id ? { ...msg, id: data.id, status: "sent", sid: data.sid || "" } : msg
                 )
               }
               : conv
@@ -228,6 +312,72 @@ export default function WhatsAppPage() {
     return conversation.messages.filter(msg =>
       !["sent", "delivered", "read", "pending"].includes(msg.status)
     ).length;
+  };
+
+  const renderMessageContent = (text: string) => {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("[Image received")) {
+      const caption = trimmed.replace("[Image received]", "").replace(/^:?\s*/, "");
+      return (
+        <div className="flex items-center gap-2">
+          <Image className="w-5 h-5 shrink-0" />
+          {caption ? <span className="truncate text-sm">{caption}</span> : <span className="text-sm">Image</span>}
+        </div>
+      );
+    }
+    if (trimmed.startsWith("[Video received")) {
+      const caption = trimmed.replace("[Video received]", "").replace(/^:?\s*/, "");
+      return (
+        <div className="flex items-center gap-2">
+          <Video className="w-5 h-5 shrink-0" />
+          {caption ? <span className="truncate text-sm">{caption}</span> : <span className="text-sm">Video</span>}
+        </div>
+      );
+    }
+    if (trimmed.startsWith("[Audio received")) {
+      return (
+        <div className="flex items-center gap-2">
+          <Music className="w-5 h-5 shrink-0" />
+          <span className="text-sm">Audio</span>
+        </div>
+      );
+    }
+    if (trimmed.startsWith("[Document received")) {
+      const name = trimmed.replace("[Document received: ", "").replace("]", "");
+      return (
+        <div className="flex items-center gap-2">
+          <File className="w-5 h-5 shrink-0" />
+          <span className="truncate text-sm">{name}</span>
+        </div>
+      );
+    }
+    if (trimmed.startsWith("[Sticker received")) {
+      return (
+        <div className="flex items-center gap-2">
+          <File className="w-5 h-5 shrink-0" />
+          <span className="text-sm">Sticker</span>
+        </div>
+      );
+    }
+    return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{text}</p>;
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !pagination?.has_more_pages) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = (pagination.current_page || 1) + 1;
+      const res = await fetch(`/api/whatsapp/conversations?page=${nextPage}&per_page=15`);
+      const data = await res.json();
+      if (data.conversations) {
+        setConversations(prev => [...prev, ...data.conversations]);
+        setPagination(data.pagination);
+      }
+    } catch {
+      console.error("Failed to load more conversations");
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   return (
@@ -276,14 +426,28 @@ export default function WhatsAppPage() {
                 placeholder="Search chats..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-background"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSearchEnter();
+                  }
+                }}
+                className="pl-10 pr-8 bg-background"
               />
+              {searchResults !== null && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
           {/* Chat List */}
           <div className="flex-1 overflow-y-auto">
-            {filteredConversations.length === 0 ? (
+            {displayConversations.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No chats available</p>
@@ -293,7 +457,7 @@ export default function WhatsAppPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {filteredConversations.map((conv, idx) => {
+                {displayConversations.map((conv, idx) => {
                   const lastMsg = conv.messages[conv.messages.length - 1];
                   const unreadCount = getUnreadCount(conv);
                   const isSelected = selected?.phone === conv.phone;
@@ -337,9 +501,9 @@ export default function WhatsAppPage() {
                           </div>
 
                           <div className="flex items-center gap-1">
-                            <p className="text-sm text-muted-foreground truncate flex-1">
-                              {lastMsg?.message}
-                            </p>
+                            <div className="text-sm text-muted-foreground truncate flex-1">
+                              {lastMsg?.message.startsWith("[") ? renderMessageContent(lastMsg.message) : lastMsg?.message}
+                            </div>
                             {lastMsg && renderStatusIcon(lastMsg.status)}
                           </div>
 
@@ -352,6 +516,14 @@ export default function WhatsAppPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {pagination?.has_more_pages && searchResults === null && (
+              <div className="p-3 text-center">
+                <Button variant="ghost" size="sm" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Load more
+                </Button>
               </div>
             )}
           </div>
@@ -432,7 +604,7 @@ export default function WhatsAppPage() {
                                 : "bg-muted rounded-bl-md"
                             )}
                           >
-                            <p className="text-sm leading-relaxed">{msg.message}</p>
+                            {renderMessageContent(msg.message)}
                             <div className="flex items-center justify-end gap-1 mt-1">
                               <span className={cn(
                                 "text-xs",

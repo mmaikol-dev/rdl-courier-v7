@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Block .env, .git, and other sensitive dot-files
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

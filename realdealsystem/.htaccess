@@ -1,0 +1,6 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block all dot-files (.env, .git, etc.)
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+</IfModule>

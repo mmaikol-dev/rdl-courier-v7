@@ -2,21 +2,26 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use App\Services\ShopifyService;
-use App\Models\SheetOrder;
 use App\Models\Sheet;
-use Illuminate\Support\Facades\Log;
+use App\Models\SheetOrder;
+use App\Services\ProductAutoMatchService;
+use App\Services\ShopifyService;
 use Carbon\Carbon;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class ImportShopifyOrders extends Command
 {
     protected $signature = 'shopify:import-orders';
+
     protected $description = 'Fetch orders from Shopify stores and insert them into the sheet_orders table';
 
-    public function __construct()
+    private ProductAutoMatchService $autoMatch;
+
+    public function __construct(ProductAutoMatchService $autoMatch)
     {
         parent::__construct();
+        $this->autoMatch = $autoMatch;
     }
 
     public function handle()
@@ -26,6 +31,7 @@ class ImportShopifyOrders extends Command
         if ($stores->isEmpty()) {
             $this->error('No Shopify stores configured.');
             Log::error('No Shopify stores configured.');
+
             return;
         }
 
@@ -42,9 +48,10 @@ class ImportShopifyOrders extends Command
                 $shopifyService = new ShopifyService($shop, $accessToken);
                 $shopifyOrders = $shopifyService->fetchOrders();
 
-                if (!isset($shopifyOrders['orders']) || empty($shopifyOrders['orders'])) {
+                if (! isset($shopifyOrders['orders']) || empty($shopifyOrders['orders'])) {
                     $this->info("No orders found for store: $shop.");
                     Log::info("No orders found for store: $shop.");
+
                     continue;
                 }
 
@@ -55,32 +62,33 @@ class ImportShopifyOrders extends Command
 
                     // Use SKU if available, otherwise fallback to raw order number
                     $orderNumber = $store->sku
-                        ? $store->sku . ltrim($order['order_number'], '#')
-                        : '#' . ltrim($order['order_number'], '#');
+                        ? $store->sku.ltrim($order['order_number'], '#')
+                        : '#'.ltrim($order['order_number'], '#');
 
                     if (SheetOrder::where('order_no', $orderNumber)->exists()) {
                         $this->info("Skipping existing order: $orderNumber");
                         Log::info("Skipping existing order: $orderNumber");
+
                         continue;
                     }
 
                     $orderDate = Carbon::parse($order['created_at'])->format('Y-m-d H:i:s');
 
                     $noteAttributes = collect($order['note_attributes'] ?? [])
-                        ->mapWithKeys(fn($item) => [strtolower(trim($item['name'])) => $item['value']]);
+                        ->mapWithKeys(fn ($item) => [strtolower(trim($item['name'])) => $item['value']]);
 
-                    $customerName = $noteAttributes['full name'] 
+                    $customerName = $noteAttributes['full name']
                         ?? ($order['billing_address']['name'] ?? 'Unknown');
 
-                    $phone = $noteAttributes['phone number'] 
+                    $phone = $noteAttributes['phone number']
                         ?? ($order['customer']['phone'] ?? 'No Phone');
 
                     $altPhone = $order['shipping_address']['phone'] ?? 'No Alt No';
 
-                    $address = $noteAttributes['address'] 
+                    $address = $noteAttributes['address']
                         ?? ($order['shipping_address']['address1'] ?? 'No Address');
 
-                    $city = $noteAttributes['city'] 
+                    $city = $noteAttributes['city']
                         ?? ($order['shipping_address']['city'] ?? 'No City');
 
                     $country = 'Kenya'; // Static country
@@ -90,7 +98,7 @@ class ImportShopifyOrders extends Command
                     $ccAgents = explode(',', $store->cc_agents);
                     $ccAgents = array_filter(array_map('trim', $ccAgents)); // clean and remove empty
 
-                    if (!empty($ccAgents)) {
+                    if (! empty($ccAgents)) {
                         $lastAssigned = SheetOrder::whereNotNull('cc_email')
                             ->whereIn('cc_email', $ccAgents)
                             ->latest('id')
@@ -130,13 +138,18 @@ class ImportShopifyOrders extends Command
                         'code' => null,
                         'processed' => false,
                     ]);
+
+                    $createdOrder = SheetOrder::where('order_no', $orderNumber)->first();
+                    if ($createdOrder) {
+                        $this->autoMatch->applyMatches($createdOrder, $this->autoMatch->match($createdOrder));
+                    }
                 }
 
                 $this->info("Imported first 30 orders for store: $shop.");
                 Log::info("Imported first 30 orders for store: $shop.");
             } catch (\Exception $e) {
-                $this->error("Error importing orders for store: $shop. Error: " . $e->getMessage());
-                Log::error("Error importing orders for store: $shop. Error: " . $e->getMessage());
+                $this->error("Error importing orders for store: $shop. Error: ".$e->getMessage());
+                Log::error("Error importing orders for store: $shop. Error: ".$e->getMessage());
             }
         }
     }

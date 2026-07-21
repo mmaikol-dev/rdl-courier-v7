@@ -64,6 +64,11 @@ class SheetOrder extends Model
     {
         return $this->hasMany(OrderHistory::class, 'order_id');
     }
+
+    public function linkedProduct()
+    {
+        return $this->belongsTo(Product::class, 'inventory_product_id');
+    }
     
 
   

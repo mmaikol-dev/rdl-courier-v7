@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\SheetOrder;
 use App\Models\Sheet;
+use App\Models\SheetOrder;
+use App\Services\ProductAutoMatchService;
 use App\Support\CountryAccess;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class ImportController extends Controller
 {
+    public function __construct(
+        private readonly ProductAutoMatchService $autoMatch = new ProductAutoMatchService,
+    ) {}
+
     public function index(Request $request)
     {
         $sheets = CountryAccess::scopeByCountryName(
@@ -39,7 +44,7 @@ class ImportController extends Controller
         if (! $countryName) {
             return response()->json(['message' => 'No country assigned to the current user.'], 422);
         }
-    
+
         $file = $request->file('file');
         $path = $file->getRealPath();
 
@@ -65,14 +70,16 @@ class ImportController extends Controller
             $col = function (string $name, int $positionalFallback, $default = null) use (&$row, $headerMap, $isNamedCsv) {
                 if ($isNamedCsv) {
                     $idx = $headerMap[strtolower($name)] ?? null;
+
                     return $idx !== null ? ($row[$idx] ?? $default) : $default;
                 }
+
                 return $row[$positionalFallback] ?? $default;
             };
 
             // Helper: convert empty string to null date
             $cleanDate = function ($value) {
-                return !empty($value) ? date('Y-m-d', strtotime($value)) : null;
+                return ! empty($value) ? date('Y-m-d', strtotime($value)) : null;
             };
 
             while (($row = fgetcsv($handle, 0, ',')) !== false) {
@@ -84,28 +91,28 @@ class ImportController extends Controller
                     ->first();
 
                 $data = [
-                    'order_date'    => $cleanDate($col('order_date', 0)),
-                    'order_no'      => $col('order_no', 1, 'error'),
-                    'amount'        => !empty($col('amount', 2)) ? (float)$col('amount', 2) : null,
-                    'client_name'   => $col('client_name', 3),
-                    'address'       => $col('address', 4),
-                    'phone'         => $col('phone', 5),
-                    'alt_no'        => $col('alt_no', 6),
-                    'country'       => $countryName,
-                    'city'          => $col('city', 8),
-                    'product_name'  => $col('product_name', 9),
-                    'quantity'      => !empty($col('quantity', 10)) ? (int)$col('quantity', 10) : null,
-                    'status'        => $col('status', 11),
+                    'order_date' => $cleanDate($col('order_date', 0)),
+                    'order_no' => $col('order_no', 1, 'error'),
+                    'amount' => ! empty($col('amount', 2)) ? (float) $col('amount', 2) : null,
+                    'client_name' => $col('client_name', 3),
+                    'address' => $col('address', 4),
+                    'phone' => $col('phone', 5),
+                    'alt_no' => $col('alt_no', 6),
+                    'country' => $countryName,
+                    'city' => $col('city', 8),
+                    'product_name' => $col('product_name', 9),
+                    'quantity' => ! empty($col('quantity', 10)) ? (int) $col('quantity', 10) : null,
+                    'status' => $col('status', 11),
                     'delivery_date' => $cleanDate($col('delivery_date', 12)),
-                    'agent'         => $col('agent', 13),
-                    'instructions'  => $col('instructions', 14),
-                    'cc_email'      => $col('cc_email', 15),
-                    'merchant'      => $request->merchant,
-                    'code'          => $col('code', 17),
-                    'order_type'    => 'imported',
-                    'sheet_id'      => $request->sheet_id,
-                    'sheet_name'    => $request->sheet_name,
-                    'updated_at'    => null, // force NULL always
+                    'agent' => $col('agent', 13),
+                    'instructions' => $col('instructions', 14),
+                    'cc_email' => $col('cc_email', 15),
+                    'merchant' => $request->merchant,
+                    'code' => $col('code', 17),
+                    'order_type' => 'imported',
+                    'sheet_id' => $request->sheet_id,
+                    'sheet_name' => $request->sheet_name,
+                    'updated_at' => null, // force NULL always
                 ];
 
                 if ($existingOrder) {
@@ -113,6 +120,7 @@ class ImportController extends Controller
                     SheetOrder::withoutTimestamps(function () use ($existingOrder, $data): void {
                         $existingOrder->forceFill($data)->save();
                     });
+                    $this->autoMatch->applyMatches($existingOrder, $this->autoMatch->match($existingOrder));
                     $updated++;
                 } else {
                     // New imported rows keep created_at but always leave updated_at null.
@@ -123,6 +131,12 @@ class ImportController extends Controller
                             'updated_at' => null,
                         ]);
                     });
+                    $sheetOrder = SheetOrder::where('order_no', $data['order_no'])
+                        ->where('sheet_id', $request->sheet_id)
+                        ->first();
+                    if ($sheetOrder) {
+                        $this->autoMatch->applyMatches($sheetOrder, $this->autoMatch->match($sheetOrder));
+                    }
                     $created++;
                 }
             }

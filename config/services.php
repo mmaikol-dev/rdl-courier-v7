@@ -52,18 +52,24 @@ return [
         'overdue_alert_api_key' => env('WASENDER_OVERDUE_ALERT_API_KEY'),
         'call_center_agents' => array_values(array_filter(array_map('trim', explode(',', (string) env('WASENDER_CALL_CENTER_AGENTS', ''))))),
     ],
-  
-   'openwa' => [
-    'base_url' => env('OPENWA_BASE_URL', 'https://api.sitebase.co.ke'),
-    'api_key'  => env('OPENWA_API_KEY'),
-    'sessions' => [
-        '254' => env('OPENWA_SESSION_KENYA'),
-        '255' => env('OPENWA_SESSION_TANZANIA'),
-        '256' => env('OPENWA_SESSION_UGANDA'),
-        '260' => env('OPENWA_SESSION_ZAMBIA'),
-    ],
-],
 
+    'whatsapp_cloud' => [
+        'phone_number_id' => env('WHATSAPP_CLOUD_PHONE_ID'),
+        'access_token' => env('WHATSAPP_CLOUD_ACCESS_TOKEN'),
+        'api_version' => env('WHATSAPP_CLOUD_API_VERSION', 'v22.0'),
+        'verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
+    ],
+
+    'openwa' => [
+        'base_url' => env('OPENWA_BASE_URL', 'https://api.sitebase.co.ke'),
+        'api_key' => env('OPENWA_API_KEY'),
+        'sessions' => [
+            '254' => env('OPENWA_SESSION_KENYA'),
+            '255' => env('OPENWA_SESSION_TANZANIA'),
+            '256' => env('OPENWA_SESSION_UGANDA'),
+            '260' => env('OPENWA_SESSION_ZAMBIA'),
+        ],
+    ],
 
     'wawp' => [
         'base_url' => env('WAWP_BASE_URL', 'https://api.wawp.net'),
@@ -75,7 +81,7 @@ return [
     'product_alert' => [
         'phones' => env('PRODUCT_ALERT_PHONES', ''),
     ],
-    
+
     'africastalking' => [
         'api_key' => env('AFRICASTALKING_API_KEY'),
         'username' => env('AFRICASTALKING_USERNAME'),

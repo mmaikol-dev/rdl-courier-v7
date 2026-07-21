@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
-import { Head, usePage } from "@inertiajs/react";
+import { Head, router, usePage } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   Store,
   BarChart,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -22,7 +23,9 @@ interface ChatMessage {
   type: "user" | "ai";
   content: string;
   created_at: string;
-  loading?: boolean; // NEW: mark as thinking
+  loading?: boolean;
+  order_data?: Record<string, unknown> | null;
+  order_created?: boolean;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -87,6 +90,7 @@ export default function RdlAi() {
                 ...msg,
                 content: data.reply || "AI did not respond.",
                 loading: false,
+                order_data: data.order_data || null,
               }
             : msg
         )
@@ -99,6 +103,56 @@ export default function RdlAi() {
         prev.map((msg) =>
           msg.id === thinkingId
             ? { ...msg, content: "⚠️ Failed to respond", loading: false }
+            : msg
+        )
+      );
+    }
+  };
+
+  const createOrder = async (msgId: number, orderData: Record<string, unknown>) => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === msgId ? { ...msg, loading: true } : msg
+      )
+    );
+
+    try {
+      const response = await fetch("/ai/create-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(orderData),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(data.message);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === msgId
+              ? { ...msg, content: data.message, loading: false, order_created: true, order_data: null }
+              : msg
+          )
+        );
+      } else {
+        toast.error(data.message || "Failed to create order");
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === msgId
+              ? { ...msg, content: "⚠️ " + (data.message || "Failed to create order"), loading: false }
+              : msg
+          )
+        );
+      }
+    } catch (error) {
+      toast.error("Failed to create order");
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === msgId
+            ? { ...msg, content: "⚠️ Failed to create order", loading: false }
             : msg
         )
       );
@@ -165,7 +219,19 @@ export default function RdlAi() {
                     <span>Thinking...</span>
                   </div>
                 ) : (
-                  <p>{msg.content}</p>
+                  <>
+                    <p>{msg.content}</p>
+                    {msg.order_data && !msg.order_created && (
+                      <Button
+                        size="sm"
+                        className="mt-2 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => createOrder(msg.id, msg.order_data!)}
+                      >
+                        <CheckCircle2 className="mr-1 h-4 w-4" />
+                        Create Order
+                      </Button>
+                    )}
+                  </>
                 )}
                 <span className="text-xs text-gray-500 mt-1 block">
                   {new Date(msg.created_at).toLocaleTimeString()}
