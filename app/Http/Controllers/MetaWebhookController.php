@@ -133,6 +133,7 @@ class MetaWebhookController extends Controller
                 'message' => $messageBody,
                 'status' => 'received',
                 'sid' => $messageId,
+                'type' => '1',
             ]);
 
             Log::info('✅ Meta incoming message saved', [

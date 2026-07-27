@@ -39,6 +39,7 @@ class SidebarRegistry
             ['key' => 'undelivered', 'title' => 'Undelivered Orders', 'href' => '/undelivered', 'group' => 'Finance'],
             ['key' => 'unremitted', 'title' => 'Unremitted Orders', 'href' => '/unremitted', 'group' => 'Finance'],
             ['key' => 'stk', 'title' => 'STK push', 'href' => '/stk', 'group' => 'Finance'],
+            ['key' => 'users', 'title' => 'Users', 'href' => '/users', 'group' => 'Administration'],
         ];
     }
 
@@ -69,11 +70,18 @@ class SidebarRegistry
 
     public static function canManage(?string $role): bool
     {
-        return ! in_array(
-            self::normalizeRole($role),
-            ['operations', 'finance', 'callcenter1', 'merchant', 'agent', ''],
-            true
-        );
+        return self::normalizeRole($role) === 'g.o.d';
+    }
+
+    public static function titleForKey(string $key): ?string
+    {
+        foreach (self::items() as $item) {
+            if ($item['key'] === $key) {
+                return $item['title'];
+            }
+        }
+
+        return null;
     }
 
     public static function normalizeRole(?string $role): string

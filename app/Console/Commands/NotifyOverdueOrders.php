@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Models\SheetOrder;
 use App\Models\User;
 use App\Models\Whatsapp;
-use App\Services\WhatsAppFallbackService;
+use App\Services\OpenwaService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Console\Command;
@@ -51,7 +51,7 @@ class NotifyOverdueOrders extends Command
 
         $this->info('👥 Found '.$agentGroups->count().' agent(s) to notify.');
 
-        $sender = app(WhatsAppFallbackService::class);
+        $sender = app(OpenwaService::class);
 
         foreach ($agentGroups as $agentName => $ordersForAgent) {
             try {
@@ -80,20 +80,20 @@ class NotifyOverdueOrders extends Command
                     continue;
                 }
 
-                $countryCode = $this->getCountryCodeFromPhone($phone);
+                $country = 'kenya';
 
                 $message = $this->buildAgentMessage($ordersForAgent, $agentName);
 
-                $result = $sender->sendText($phone, $message, ['country_code' => $countryCode]);
+                $result = $sender->sendToNumber($country, $phone, $message);
 
                 Log::info("✅ Alert sent to agent '{$agentName}'", [
-                    'to' => $result['to'],
+                    'to' => $phone,
                     'message_id' => $result['message_id'] ?? 'N/A',
                     'order_count' => $ordersForAgent->count(),
                 ]);
 
                 Whatsapp::create([
-                    'to' => $result['to'],
+                    'to' => $phone,
                     'client_name' => $agentName,
                     'store_name' => 'System',
                     'cc_agents' => $agentName,
@@ -141,15 +141,5 @@ class NotifyOverdueOrders extends Command
         return implode("\n", $lines);
     }
 
-    private function getCountryCodeFromPhone(string $phone): string
-    {
-        $prefixes = ['254', '255', '256', '260'];
-        foreach ($prefixes as $code) {
-            if (strpos($phone, $code) === 0) {
-                return $code;
-            }
-        }
 
-        return '254';
-    }
 }

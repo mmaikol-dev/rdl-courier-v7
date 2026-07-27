@@ -16,16 +16,54 @@ class UserController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $currentUser = request()->user();
-        $users = CountryAccess::scopeUsers(
+        $currentUser = $request->user();
+        $search = trim((string) $request->string('search'));
+
+        $query = CountryAccess::scopeUsers(
             User::query()->with('country'),
             $currentUser
-        )->orderBy('created_at', 'desc')->get();
+        );
+
+        if ($search !== '') {
+            $like = "%{$search}%";
+            $query->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)
+                    ->orWhere('username', 'like', $like)
+                    ->orWhere('email', 'like', $like)
+                    ->orWhere('roles', 'like', $like);
+            });
+        }
+
+        $users = $query->orderBy('created_at', 'desc')
+            ->paginate(20)
+            ->withQueryString()
+            ->through(function (User $user) {
+                return [
+                    'id' => $user->id,
+                    'username' => $user->username,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'email_verified_at' => $user->email_verified_at instanceof \Carbon\Carbon
+                        ? $user->email_verified_at->format('Y-m-d H:i:s')
+                        : $user->email_verified_at,
+                    'store_name' => $user->store_name,
+                    'store_address' => $user->store_address,
+                    'store_phone' => $user->store_phone,
+                    'store_email' => $user->store_email,
+                    'roles' => $user->roles,
+                    'country_id' => $user->country_id,
+                    'country' => $user->country ? ['id' => $user->country->id, 'name' => $user->country->name] : null,
+                    'photo' => $user->photo,
+                    'created_at' => $user->created_at->format('Y-m-d H:i:s'),
+                    'updated_at' => $user->updated_at->format('Y-m-d H:i:s'),
+                ];
+            });
 
         return Inertia::render('users/index', [
             'users' => $users,
+            'search' => $search,
             'countries' => CountryAccess::hasGlobalAccess($currentUser)
                 ? Country::query()->orderBy('name')->get(['id', 'name'])
                 : Country::query()
@@ -52,7 +90,7 @@ class UserController extends Controller
         'store_address' => 'nullable|string|max:255',
         'store_phone' => 'nullable|string|max:50',
         'store_email' => 'nullable|string|email|max:255',
-        'roles' => 'nullable|string', // store as string
+        'roles' => ['nullable', 'string', 'in:admin,g.o.d,superadmin,operations,finance,callcenter1,merchant,agent,warehouse'],
         'country_id' => 'nullable|integer|exists:countries,id',
         'photo' => 'nullable|string|max:255',
         'email_verified_at' => 'nullable|date',
@@ -72,7 +110,7 @@ class UserController extends Controller
         'store_address' => $request->store_address,
         'store_phone' => $request->store_phone,
         'store_email' => $request->store_email,
-        'roles' => $request->roles ?? 'user',
+        'roles' => $request->roles ?? 'admin',
         'country_id' => $countryId,
         'photo' => $request->photo,
         'email_verified_at' => $request->email_verified_at,
@@ -104,9 +142,10 @@ class UserController extends Controller
             'store_address' => 'nullable|string|max:255',
             'store_phone' => 'nullable|string|max:50',
             'store_email' => 'nullable|string|email|max:255',
-            'roles' => 'nullable|string',
+            'roles' => 'nullable|string|in:admin,g.o.d,superadmin,operations,finance,callcenter1,merchant,agent,warehouse',
             'country_id' => 'nullable|integer|exists:countries,id',
             'photo' => 'nullable|string|max:255',
+            'email_verified_at' => 'nullable|date',
         ]);
 
         $validator->after(function ($validator) use ($request): void {
@@ -135,6 +174,7 @@ class UserController extends Controller
             'roles' => $request->roles ?? $user->roles,
             'country_id' => $countryId,
             'photo' => $request->photo,
+            'email_verified_at' => $request->email_verified_at,
         ];
 
         if ($request->filled('password')) {

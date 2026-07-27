@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\Barcode;
+use App\Models\SheetOrder;
 use App\Models\Transfer;
+use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
@@ -16,12 +18,16 @@ class WaredashController extends Controller
     {
         $user = Auth::user();
         $isMerchant = strtolower(trim($user->roles ?? '')) === 'merchant';
-        $merchantProductIds = $isMerchant ? Product::where('merchant', $user->name)->pluck('id') : collect();
+
+        // Country-scoped product IDs (used to scope barcode & sheet-order queries)
+        $scopedProductIds = CountryAccess::scopeProducts(Product::query(), $user)
+            ->when($isMerchant, fn ($q) => $q->where('merchant', $user->name))
+            ->pluck('id');
 
         // Basic dashboard counts
-        $totalProductsQuery = Product::query();
-        $totalTransfersQuery = Transfer::query();
-        $totalStockQuery = Product::query();
+        $totalProductsQuery = CountryAccess::scopeProducts(Product::query(), $user);
+        $totalTransfersQuery = CountryAccess::scopeByCountryName(Transfer::query(), $user);
+        $totalStockQuery = CountryAccess::scopeProducts(Product::query(), $user);
 
         if ($isMerchant) {
             $totalProductsQuery->where('merchant', $user->name);
@@ -33,50 +39,73 @@ class WaredashController extends Controller
         $totalTransfers = $totalTransfersQuery->count();
         $totalStock = $totalStockQuery->sum('quantity');
 
-        // Barcode count — scope via product for merchants
-        $totalBarcodesQuery = Barcode::query();
-        if ($isMerchant) {
-            $totalBarcodesQuery->whereIn('product_id', $merchantProductIds);
-        }
-        $totalBarcodes = $totalBarcodesQuery->count();
+        // Barcode count
+        $totalBarcodes = Barcode::whereIn('product_id', $scopedProductIds)->count();
 
         // Depleted products (0 stock)
-        $depletedProductsQuery = Product::where('quantity', '<=', 0);
-        if ($isMerchant) {
-            $depletedProductsQuery->where('merchant', $user->name);
-        }
-        $depletedProducts = $depletedProductsQuery->get();
+        $depletedProducts = CountryAccess::scopeProducts(Product::where('quantity', '<=', 0), $user)
+            ->when($isMerchant, fn ($q) => $q->where('merchant', $user->name))
+            ->get();
 
         // Near depleted products (greater than 0 but at or below alert level)
-        $nearDepletedProductsQuery = Product::where('quantity', '>', 0)
-            ->whereColumn('quantity', '<=', 'quantity_alert');
-        if ($isMerchant) {
-            $nearDepletedProductsQuery->where('merchant', $user->name);
-        }
-        $nearDepletedProducts = $nearDepletedProductsQuery->get();
+        $nearDepletedProducts = CountryAccess::scopeProducts(
+            Product::where('quantity', '>', 0)->whereColumn('quantity', '<=', 'quantity_alert'),
+            $user
+        )
+            ->when($isMerchant, fn ($q) => $q->where('merchant', $user->name))
+            ->get();
 
         // Transfers grouped by region
-        $transfersByRegionQuery = Transfer::select('region', DB::raw('SUM(quantity) as total'))
-            ->groupBy('region');
-        if ($isMerchant) {
-            $transfersByRegionQuery->where('merchant', $user->name);
-        }
-        $transfersByRegion = $transfersByRegionQuery->get();
+        $transfersByRegion = CountryAccess::scopeByCountryName(
+            Transfer::select('region', DB::raw('SUM(quantity) as total'))->groupBy('region'),
+            $user
+        )
+            ->when($isMerchant, fn ($q) => $q->where('merchant', $user->name))
+            ->get();
 
         // Scans grouped by operation
-        $scansByOperationQuery = Barcode::select('operation_type', DB::raw('COUNT(*) as total'))
-            ->groupBy('operation_type');
-        if ($isMerchant) {
-            $scansByOperationQuery->whereIn('product_id', $merchantProductIds);
-        }
-        $scansByOperation = $scansByOperationQuery->get();
+        $scansByOperation = Barcode::select('operation_type', DB::raw('COUNT(*) as total'))
+            ->whereIn('product_id', $scopedProductIds)
+            ->groupBy('operation_type')
+            ->get();
 
         // Last 10 scans
-        $recentScansQuery = Barcode::latest();
-        if ($isMerchant) {
-            $recentScansQuery->whereIn('product_id', $merchantProductIds);
-        }
-        $recentScans = $recentScansQuery->take(10)->get();
+        $recentScans = Barcode::whereIn('product_id', $scopedProductIds)
+            ->latest()
+            ->take(10)
+            ->get();
+
+        // Products for stock status table
+        $products = CountryAccess::scopeProducts(Product::query(), $user)
+            ->when($isMerchant, fn ($q) => $q->where('merchant', $user->name))
+            ->select('id', 'name', 'quantity')
+            ->get();
+
+        $productIds = $products->pluck('id');
+
+        $inDeliveryQty = CountryAccess::scopeByCountryName(
+            SheetOrder::whereIn('inventory_product_id', $productIds)
+                ->whereIn('status', ['Scheduled', 'Dispatched'])
+                ->groupBy('inventory_product_id')
+                ->select('inventory_product_id', DB::raw('SUM(quantity) as total_qty')),
+            $user
+        )->pluck('total_qty', 'inventory_product_id');
+
+        $totalDeliveredQty = CountryAccess::scopeByCountryName(
+            SheetOrder::whereIn('inventory_product_id', $productIds)
+                ->where('status', 'Delivered')
+                ->groupBy('inventory_product_id')
+                ->select('inventory_product_id', DB::raw('SUM(quantity) as total_qty')),
+            $user
+        )->pluck('total_qty', 'inventory_product_id');
+
+        $products = $products->map(fn ($p) => [
+            'name'          => $p->name,
+            'current'       => (int) $p->quantity,
+            'inDelivery'    => (int) ($inDeliveryQty[$p->id] ?? 0),
+            'available'     => (int) max($p->quantity - ($inDeliveryQty[$p->id] ?? 0), 0),
+            'totalDelivered'=> (int) ($totalDeliveredQty[$p->id] ?? 0),
+        ]);
 
         return Inertia::render('waredash/index', [
             'userName'   => $user->name ?? 'User',
@@ -88,13 +117,13 @@ class WaredashController extends Controller
                 'totalStock' => $totalStock,
             ],
 
-            // NEW DATA
             'depletedProducts'     => $depletedProducts,
             'nearDepletedProducts' => $nearDepletedProducts,
 
             'transfersByRegion' => $transfersByRegion,
             'scansByOperation'  => $scansByOperation,
             'recentScans'       => $recentScans,
+            'products'          => $products,
         ]);
     }
 }

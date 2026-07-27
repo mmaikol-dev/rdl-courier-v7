@@ -14,6 +14,8 @@ class WhatsappController extends Controller
 
     private string $templateName = 'pending_order_notification';
 
+    private string $chatTemplateName = 'agent_message_notification';
+
     public function __construct(WhatsAppFallbackService $whatsAppService)
     {
         $this->whatsAppService = $whatsAppService;
@@ -64,7 +66,29 @@ class WhatsappController extends Controller
 
             $to = $validated['to'];
             $messageText = $validated['message'];
-            $country = $validated['country'] ?? 'kenya';
+
+            $country = $validated['country'] ?? null;
+
+            if (! $country) {
+                $existingChat = Whatsapp::where('to', $to)->first();
+                $storeName = $existingChat->store_name ?? null;
+
+                $country = match (strtolower((string) $storeName)) {
+                    'kenya', 'tanzania', 'uganda', 'zambia' => strtolower($storeName),
+                    default => null,
+                };
+            }
+
+            if (! $country) {
+                $digits = preg_replace('/\D/', '', $to);
+                $country = match (true) {
+                    str_starts_with($digits, '260') => 'zambia',
+                    str_starts_with($digits, '256') => 'uganda',
+                    str_starts_with($digits, '255') => 'tanzania',
+                    default => 'kenya',
+                };
+            }
+
             $countryCode = $this->getCountryCode($country);
 
             $formattedPhone = $this->whatsAppService->formatForStorage($to, $countryCode);
@@ -80,7 +104,11 @@ class WhatsappController extends Controller
 
             Log::info("📞 Formatted phone: {$formattedPhone}");
 
-            $result = $this->whatsAppService->sendText($formattedPhone, $messageText, [
+            $templateParams = [
+                ['type' => 'text', 'text' => $messageText],
+            ];
+
+            $result = $this->whatsAppService->sendTemplate($formattedPhone, $this->chatTemplateName, 'en_US', $templateParams, [
                 'country_code' => $countryCode,
             ]);
 
@@ -317,6 +345,7 @@ class WhatsappController extends Controller
                         'message' => $messageBody,
                         'status' => 'received',
                         'sid' => $messageId,
+                        'type' => '1',
                     ]);
 
                     Log::info('✅✅✅ MESSAGE SAVED SUCCESSFULLY!', [

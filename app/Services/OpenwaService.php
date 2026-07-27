@@ -26,7 +26,7 @@ class OpenwaService
         $countryCode = $this->countryNameToCode($countryName);
         $chatId = $this->resolveGroupChatId($countryCode);
 
-        return $this->send($countryCode, $chatId, $message);
+        return $this->send('254', $chatId, $message);
     }
 
     public function sendToNumber(string $countryName, string $phoneNumber, string $message): array

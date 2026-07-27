@@ -278,8 +278,8 @@ class SheetOrderController extends Controller
 
     public function destroy($id)
     {
-        // Check if the logged-in user has the 'G.O.D' role
-        if (auth()->user()->roles !== 'G.O.D') {
+        // Check if the logged-in user has the 'g.o.d' role
+        if (strtolower(trim((string) auth()->user()->roles)) !== 'g.o.d') {
             return redirect()->route('sheetorders.index')
                 ->with('error', 'Access denied. Only G.O.D can delete orders.');
         }

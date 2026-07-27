@@ -24,7 +24,7 @@ class ChatController extends Controller
             $phone = substr($phone, 1);
         }
 
-        if (substr($phone, 0, 3) !== '254') {
+        if (! preg_match('/^(254|255|256|260)/', $phone)) {
             $phone = '254' . $phone;
         }
 
@@ -85,8 +85,8 @@ class ChatController extends Controller
 
     public function index(Request $request)
     {
-        $perPage = $request->get('per_page', 50);
-        $currentPage = $request->get('page', 1);
+        $perPage = (int) $request->get('per_page', 50);
+        $currentPage = (int) $request->get('page', 1);
 
         $query = Chat::where('created_at', '>=', now()->subDays(90));
         $this->countryFilter($query);
@@ -99,8 +99,8 @@ class ChatController extends Controller
         $paginatedConversations = array_slice($sortedConversations, $offset, $perPage);
 
         $pagination = [
-            'current_page' => (int) $currentPage,
-            'per_page' => (int) $perPage,
+            'current_page' => $currentPage,
+            'per_page' => $perPage,
             'total' => $total,
             'last_page' => (int) ceil($total / $perPage),
             'has_more_pages' => $currentPage < ceil($total / $perPage),
@@ -120,7 +120,7 @@ class ChatController extends Controller
     {
         $since = $request->get('since');
         $search = $request->get('search');
-        $perPage = (int) $request->get('per_page', 15);
+        $perPage = (int) $request->get('per_page', 50);
         $currentPage = (int) $request->get('page', 1);
 
         $query = Chat::orderBy('created_at', 'asc');

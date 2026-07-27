@@ -19,12 +19,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink } from '@/components/ui/pagination';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Edit, Eye, EyeOff, Globe2, Loader2, Plus, Shield, Trash2, UserRound } from 'lucide-react';
+import { Check, ChevronsUpDown, Edit, Eye, EyeOff, Globe2, Loader2, Plus, Search, Shield, Trash2, UserRound } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -32,14 +36,28 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Users', href: '/users' },
 ];
 
+const eastAfricanCountries = [
+  'Kenya',
+  'Tanzania',
+  'Uganda',
+  'Rwanda',
+  'Burundi',
+  'South Sudan',
+  'Ethiopia',
+  'Somalia',
+  'DR Congo',
+];
+
 const roleOptions = [
-  'G.O.D',
-  'merchant',
-  'agent',
+  'admin',
+  'g.o.d',
+  'superadmin',
   'operations',
   'finance',
   'callcenter1',
-  'user',
+  'merchant',
+  'agent',
+  'warehouse',
 ];
 
 interface CountryOption {
@@ -65,8 +83,24 @@ interface UserRecord {
   updated_at: string;
 }
 
+interface PaginationLinkData {
+  url: string | null;
+  label: string;
+  active: boolean;
+}
+
+interface PaginatedUsers {
+  data: UserRecord[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+  links: PaginationLinkData[];
+}
+
 interface UsersPageProps {
-  users: UserRecord[];
+  users: PaginatedUsers;
+  search: string;
   countries: CountryOption[];
   auth: {
     user: {
@@ -89,6 +123,8 @@ type UserFormData = {
   roles: string;
   country_id: string;
   photo: string;
+  email_verified_at: string;
+  email_verified: boolean;
 };
 
 const emptyForm: UserFormData = {
@@ -101,12 +137,15 @@ const emptyForm: UserFormData = {
   store_address: '',
   store_phone: '',
   store_email: '',
-  roles: 'user',
+  roles: 'admin',
   country_id: '',
   photo: '',
+  email_verified_at: '',
+  email_verified: false,
 };
 
 function normalizeUserToForm(user: UserRecord): UserFormData {
+  const verified = !!user.email_verified_at;
   return {
     username: user.username ?? '',
     name: user.name ?? '',
@@ -117,9 +156,11 @@ function normalizeUserToForm(user: UserRecord): UserFormData {
     store_address: user.store_address ?? '',
     store_phone: user.store_phone ?? '',
     store_email: user.store_email ?? '',
-    roles: user.roles ?? 'user',
+    roles: user.roles ?? 'admin',
     country_id: user.country_id ? String(user.country_id) : '',
     photo: user.photo ?? '',
+    email_verified_at: user.email_verified_at ?? '',
+    email_verified: verified,
   };
 }
 
@@ -130,13 +171,13 @@ function FieldError({ message }: { message?: string }) {
 }
 
 export default function UsersPage() {
-  const { users, countries, auth } = usePage<UsersPageProps>().props;
+  const { users, search, countries, auth } = usePage<UsersPageProps>().props;
   const currentUserRole = auth?.user?.roles ?? '';
   const currentCountryName = auth?.user?.country?.name ?? 'No country assigned';
   const canManageUsers = !['operations', 'finance', 'callcenter1', ''].includes(currentUserRole);
-  const canChooseCountry = currentUserRole === 'G.O.D';
+  const canChooseCountry = currentUserRole?.toLowerCase() === 'g.o.d';
 
-  const [filter, setFilter] = React.useState('');
+  const [filter, setFilter] = React.useState(search ?? '');
   const [editingUser, setEditingUser] = React.useState<UserRecord | null>(null);
   const [creatingUser, setCreatingUser] = React.useState(false);
   const [deletingUser, setDeletingUser] = React.useState<UserRecord | null>(null);
@@ -146,14 +187,9 @@ export default function UsersPage() {
 
   const form = useForm<UserFormData>(emptyForm);
 
-  const filteredUsers = React.useMemo(() => {
-    return users.filter((user) =>
-      [user.name, user.username ?? '', user.email, user.roles ?? '', user.country?.name ?? '']
-        .join(' ')
-        .toLowerCase()
-        .includes(filter.toLowerCase()),
-    );
-  }, [filter, users]);
+  const doSearch = React.useCallback(() => {
+    router.get('/users', { search: filter }, { preserveState: true, replace: true });
+  }, [filter]);
 
   const openCreate = () => {
     setEditingUser(null);
@@ -186,10 +222,15 @@ export default function UsersPage() {
   };
 
   const submit = () => {
+    const resolveVerified = (data: UserFormData) => ({
+      ...data,
+      country_id: data.country_id || null,
+      email_verified_at: data.email_verified ? (data.email_verified_at || new Date().toISOString()) : null,
+    });
+
     if (editingUser) {
       form.transform((data) => ({
-        ...data,
-        country_id: data.country_id || null,
+        ...resolveVerified(data),
         password: data.password.trim() === '' ? null : data.password,
         password_confirmation: data.password.trim() === '' ? null : data.password_confirmation,
       }));
@@ -212,8 +253,7 @@ export default function UsersPage() {
     }
 
     form.transform((data) => ({
-      ...data,
-      country_id: data.country_id || null,
+      ...resolveVerified(data),
       password: data.password || 'password123',
       password_confirmation: data.password_confirmation || data.password || 'password123',
     }));
@@ -277,12 +317,19 @@ export default function UsersPage() {
             </div>
 
             <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
-              <Input
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Search by name, email, role, or country"
-                className="sm:w-80"
-              />
+              <div className="flex gap-2 sm:w-80">
+                <Input
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && doSearch()}
+                  placeholder="Search by name, email, role, or country"
+                  className="flex-1"
+                />
+                <Button onClick={doSearch} variant="secondary" className="gap-2 shrink-0">
+                  <Search className="size-4" />
+                  Search
+                </Button>
+              </div>
               {canManageUsers ? (
                 <Button onClick={openCreate} className="gap-2">
                   <Plus className="size-4" />
@@ -293,7 +340,7 @@ export default function UsersPage() {
           </CardHeader>
         </Card>
 
-        {filteredUsers.length === 0 ? (
+        {users.data.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex min-h-48 items-center justify-center text-muted-foreground">
               No users found for the current search.
@@ -301,7 +348,7 @@ export default function UsersPage() {
           </Card>
         ) : (
           <div className="grid gap-4 auto-rows-min grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-            {filteredUsers.map((user) => (
+            {users.data.map((user) => (
               <Card
                 key={user.id}
                 className="flex flex-col justify-between border-border/60 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md"
@@ -318,7 +365,7 @@ export default function UsersPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">{user.roles || 'user'}</Badge>
+                    <Badge variant="secondary">{user.roles || 'admin'}</Badge>
                     <Badge variant="outline">{user.country?.name || 'No country'}</Badge>
                   </div>
                 </CardHeader>
@@ -345,10 +392,40 @@ export default function UsersPage() {
             ))}
           </div>
         )}
+
+        {users.last_page > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {(users.current_page - 1) * users.per_page + 1}&ndash;{Math.min(users.current_page * users.per_page, users.total)} of {users.total}
+            </p>
+            <Pagination>
+              <PaginationContent>
+                {users.links.map((link, i) => {
+                  if (link.url === null) return null;
+                  const url = new URL(link.url);
+                  const page = url.searchParams.get('page');
+                  return (
+                    <PaginationItem key={i}>
+                      <PaginationLink
+                        href={link.url}
+                        isActive={link.active}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          router.get('/users', { search: filter, page: Number(page) }, { preserveState: true, replace: true });
+                        }}
+                        dangerouslySetInnerHTML={{ __html: link.label }}
+                      />
+                    </PaginationItem>
+                  );
+                })}
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </div>
 
       <Dialog open={creatingUser || !!editingUser} onOpenChange={(open) => (!open ? closeFormDialog() : undefined)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl overflow-y-auto max-h-[90vh] sm:max-h-auto">
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Edit User' : 'Create User'}</DialogTitle>
             <DialogDescription>
@@ -373,6 +450,32 @@ export default function UsersPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} />
               <FieldError message={form.errors.email} />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  id="email_verified"
+                  type="checkbox"
+                  className="size-4 rounded border-input accent-primary"
+                  checked={form.data.email_verified}
+                  onChange={(e) => {
+                    form.setData('email_verified', e.target.checked);
+                    if (e.target.checked && !form.data.email_verified_at) {
+                      form.setData('email_verified_at', new Date().toISOString().slice(0, 16));
+                    }
+                  }}
+                />
+                <Label htmlFor="email_verified">Email verified</Label>
+              </div>
+              {form.data.email_verified && (
+                <Input
+                  type="datetime-local"
+                  value={form.data.email_verified_at ? form.data.email_verified_at.slice(0, 16) : ''}
+                  onChange={(e) => form.setData('email_verified_at', e.target.value)}
+                />
+              )}
+              <FieldError message={form.errors.email_verified_at} />
             </div>
 
             <div className="space-y-2">
@@ -420,8 +523,43 @@ export default function UsersPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="store_address">Store Address</Label>
-              <Input id="store_address" value={form.data.store_address} onChange={(e) => form.setData('store_address', e.target.value)} />
+              <Label>Store Address (Country)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className={cn('w-full justify-between', !form.data.store_address && 'text-muted-foreground')}
+                  >
+                    {form.data.store_address || 'Select country'}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search country..." />
+                    <CommandList className="max-h-64">
+                      <CommandEmpty>No country found.</CommandEmpty>
+                      <CommandGroup>
+                        {eastAfricanCountries.map((country) => (
+                          <CommandItem
+                            key={country}
+                            value={country}
+                            onSelect={() => {
+                              form.setData('store_address', form.data.store_address === country ? '' : country);
+                            }}
+                          >
+                            <Check
+                              className={cn('mr-2 h-4 w-4', form.data.store_address === country ? 'opacity-100' : 'opacity-0')}
+                            />
+                            {country}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <FieldError message={form.errors.store_address} />
             </div>
 

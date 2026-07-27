@@ -374,7 +374,7 @@ class DashboardReportService
     {
         $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
 
-        if ($user->roles === 'merchant') {
+        if (strtolower(trim((string) $user->roles)) === 'merchant') {
             $query->where('merchant', $user->name);
         }
 

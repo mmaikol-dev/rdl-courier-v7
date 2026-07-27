@@ -24,6 +24,7 @@ import {
     Smartphone,
     SquareArrowDownLeftIcon,
     UserRoundIcon,
+    Users,
     WarehouseIcon,
     Waypoints,
     SendToBackIcon,
@@ -61,7 +62,8 @@ export type SidebarItemKey =
     | 'undelivered'
     | 'unremitted'
     | 'stk'
-    | 'sidebar-permissions';
+    | 'sidebar-permissions'
+    | 'users';
 
 export interface SidebarGroupDefinition {
     label: string;
@@ -116,6 +118,12 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
             { key: 'undelivered', title: 'Undelivered Orders', href: '/undelivered', icon: BookOpen, group: 'Finance' },
             { key: 'unremitted', title: 'Unremitted Orders', href: '/unremitted', icon: FileX, group: 'Finance' },
             { key: 'stk', title: 'STK push', href: '/stk', icon: Smartphone, group: 'Finance' },
+        ],
+    },
+    {
+        label: 'Administration',
+        items: [
+            { key: 'users', title: 'Users', href: '/users', icon: Users, group: 'Administration' },
         ],
     },
 ];

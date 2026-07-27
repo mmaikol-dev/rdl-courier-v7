@@ -176,6 +176,34 @@ export default function WhatsAppPage() {
     setIsSearching(false);
   };
 
+  const markAsRead = (conv: Conversation) => {
+    const phone = conv.phone.replace(/[^0-9]/g, '');
+    fetch(`/chats/${phone}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || "",
+      },
+      body: JSON.stringify({ type: "0" }),
+    }).catch(() => {});
+    setConversations(prev =>
+      prev.map(c =>
+        c.phone === conv.phone
+          ? { ...c, messages: c.messages.map(m => ({ ...m, type: "0" })) }
+          : c
+      )
+    );
+    setSelected(prev => prev?.phone === conv.phone
+      ? { ...prev, messages: prev.messages.map(m => ({ ...m, type: "0" })) }
+      : prev
+    );
+  };
+
+  const handleSelectConversation = (conv: Conversation) => {
+    setSelected(conv);
+    markAsRead(conv);
+  };
+
   const renderStatusIcon = (status: string) => {
     switch (status) {
       case "sent":
@@ -233,7 +261,7 @@ export default function WhatsAppPage() {
       message: message.trim(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      type: "1",
+      type: "0",
     };
 
     // Update conversations with the new message (optimistic update)
@@ -309,9 +337,7 @@ export default function WhatsAppPage() {
   };
 
   const getUnreadCount = (conversation: Conversation) => {
-    return conversation.messages.filter(msg =>
-      !["sent", "delivered", "read", "pending"].includes(msg.status)
-    ).length;
+    return conversation.messages.filter(msg => msg.type === "1").length;
   };
 
   const renderMessageContent = (text: string) => {
@@ -367,10 +393,15 @@ export default function WhatsAppPage() {
     setLoadingMore(true);
     try {
       const nextPage = (pagination.current_page || 1) + 1;
-      const res = await fetch(`/api/whatsapp/conversations?page=${nextPage}&per_page=15`);
+      const perPage = pagination.per_page || 50;
+      const res = await fetch(`/api/whatsapp/conversations?page=${nextPage}&per_page=${perPage}`);
       const data = await res.json();
       if (data.conversations) {
-        setConversations(prev => [...prev, ...data.conversations]);
+        setConversations(prev => {
+          const existingPhones = new Set(prev.map(c => c.phone));
+          const newOnes = data.conversations.filter(c => !existingPhones.has(c.phone));
+          return [...prev, ...newOnes];
+        });
         setPagination(data.pagination);
       }
     } catch {
@@ -465,7 +496,7 @@ export default function WhatsAppPage() {
                   return (
                     <div
                       key={idx}
-                      onClick={() => setSelected(conv)}
+                      onClick={() => handleSelectConversation(conv)}
                       className={cn(
                         "p-4 cursor-pointer transition-colors hover:bg-muted/50",
                         isSelected && "bg-muted border-r-2 border-r-primary"
