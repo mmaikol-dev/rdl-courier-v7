@@ -28,6 +28,7 @@ import {
     WarehouseIcon,
     Waypoints,
     SendToBackIcon,
+    Skull,
 } from 'lucide-react';
 
 import type { NavItem } from '@/types';
@@ -63,7 +64,8 @@ export type SidebarItemKey =
     | 'unremitted'
     | 'stk'
     | 'sidebar-permissions'
-    | 'users';
+    | 'users'
+    | 'bulk-expire';
 
 export interface SidebarGroupDefinition {
     label: string;
@@ -91,6 +93,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
             { key: 'import', title: 'Import Orders', href: '/import', icon: PlusIcon, group: 'Operations' },
             { key: 'incoming-sheet-orders', title: 'Incoming Orders', href: '/incoming-sheet-orders', icon: Download, group: 'Operations' },
             { key: 'whatsapp', title: 'Whatsapp Chats', href: '/whatsapp', icon: MessagesSquareIcon, group: 'Operations' },
+            { key: 'bulk-expire', title: 'Bulk Expire', href: '/orders/bulk-expire', icon: Skull, group: 'Operations' },
         ],
     },
     {

@@ -22,6 +22,7 @@ class SidebarRegistry
             ['key' => 'import', 'title' => 'Import Orders', 'href' => '/import', 'group' => 'Operations'],
             ['key' => 'incoming-sheet-orders', 'title' => 'Incoming Orders', 'href' => '/incoming-sheet-orders', 'group' => 'Operations'],
             ['key' => 'whatsapp', 'title' => 'Whatsapp Chats', 'href' => '/whatsapp', 'group' => 'Operations'],
+            ['key' => 'bulk-expire', 'title' => 'Bulk Expire', 'href' => '/orders/bulk-expire', 'group' => 'Operations'],
             ['key' => 'products', 'title' => 'Products', 'href' => '/products', 'group' => 'Inventory'],
             ['key' => 'order-scans', 'title' => 'QR Scan Out', 'href' => '/order-scans', 'group' => 'Inventory'],
             ['key' => 'inventory-deductions', 'title' => 'Inventory Deductions', 'href' => '/inventory-deductions', 'group' => 'Inventory'],

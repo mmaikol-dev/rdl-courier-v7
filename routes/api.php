@@ -8,7 +8,6 @@ use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\CallcenterController;
 use App\Http\Controllers\WhatsappController;
 use App\Http\Controllers\MetaWebhookController;
-use App\Http\Controllers\AiController;
 
 
 Route::post('/c2b/confirmation', [C2BTransactionController::class, 'confirmTransaction']);
@@ -17,7 +16,6 @@ Route::get('/transactions/{order_no}', [StkController::class, 'checkStatus'])->n
 Route::post('/stk/stk-push', [StkController::class, 'stkPush'])->name('stk.push');
 Route::post('/mpesa/callback', [StkController::class, 'handleCallback'])->name('stk.callback');
 Route::post('/sheet-orders', [AppScriptController::class, 'storeOrder']);
-Route::post('/ai', [AiController::class, 'ask']);
 Route::post('/end-call', [CallcenterController::class, 'endCall']);
 
 Route::post('/callcenter/make-call', [CallcenterController::class, 'makeCall']);

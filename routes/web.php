@@ -199,9 +199,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/incoming-sheet-orders', [IncomingSheetOrderController::class, 'index'])->name('incoming-sheet-orders.index');
     Route::post('/incoming-sheet-orders/{id}/retry', [IncomingSheetOrderController::class, 'retry'])->name('incoming-sheet-orders.retry');
 
+    // bulk expire orders
+    Route::get('/orders/bulk-expire', [App\Http\Controllers\OrderExpireController::class, 'index'])->name('orders.bulk-expire');
+    Route::post('/orders/bulk-expire', [App\Http\Controllers\OrderExpireController::class, 'bulkExpire'])->name('orders.bulk-expire.store');
+
     // Ai
     Route::resource('ai', AiController::class);
-    Route::post('/ai/create-order', [AiController::class, 'createOrder'])->name('ai.create-order');
+    Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask');
+    Route::post('/ai/create-orders', [AiController::class, 'createOrders'])->name('ai.create-orders');
+    Route::post('/ai/suggest-sheets', [AiController::class, 'suggestSheets'])->name('ai.suggest-sheets');
+    Route::post('/ai/conversations', [AiController::class, 'createConversation'])->name('ai.conversations.store');
+    Route::get('/ai/conversations/{conversation}', [AiController::class, 'showConversation'])->name('ai.conversations.show');
+    Route::delete('/ai/conversations/{conversation}', [AiController::class, 'deleteConversation'])->name('ai.conversations.destroy');
 
     // updates
     Route::post('/sheet-updates/run', [UpdateController::class, 'run'])
