@@ -128,7 +128,7 @@ class MetaWebhookController extends Controller
             $whatsapp = Whatsapp::create([
                 'to' => $from,
                 'client_name' => $clientName,
-                'store_name' => 'META_WEBHOOK',
+                'store_name' => $this->resolveStoreName($from),
                 'cc_agents' => null,
                 'message' => $messageBody,
                 'status' => 'received',
@@ -150,6 +150,41 @@ class MetaWebhookController extends Controller
                 'message' => $message,
             ]);
         }
+    }
+
+    /**
+     * Resolve the store name (country) for an inbound sender.
+     *
+     * Prefers the store name of an existing chat for the same phone so
+     * conversations stay consistent, then falls back to the country
+     * inferred from the phone number prefix.
+     */
+    private function resolveStoreName(?string $phone): string
+    {
+        if ($phone) {
+            $existing = Whatsapp::where('to', $phone)
+                ->whereNotNull('store_name')
+                ->where('store_name', '!=', '')
+                ->whereNotIn('store_name', ['META_WEBHOOK', 'WEBHOOK'])
+                ->latest()
+                ->first();
+
+            if ($existing?->store_name) {
+                return $existing->store_name;
+            }
+
+            $digits = preg_replace('/\D/', '', $phone);
+            $country = match (true) {
+                str_starts_with($digits, '260') => 'zambia',
+                str_starts_with($digits, '256') => 'uganda',
+                str_starts_with($digits, '255') => 'tanzania',
+                default => 'kenya',
+            };
+
+            return $country;
+        }
+
+        return 'kenya';
     }
 
     /**
