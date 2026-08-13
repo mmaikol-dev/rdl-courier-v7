@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { csrfHeaders } from '@/lib/csrf';
 import { format } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
 import {
@@ -238,13 +239,11 @@ export default function Index() {
     setPaymentResult(null);
 
     try {
-      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
-
       const res = await fetch("api/stk/stk-push", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken,
+          ...csrfHeaders(),
         },
         body: JSON.stringify({ phone, amount: order.amount, order_no: order.order_no }),
       });

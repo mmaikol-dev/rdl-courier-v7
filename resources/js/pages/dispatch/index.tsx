@@ -47,22 +47,21 @@ function getCsrfToken() {
 }
 
 function getXsrfToken() {
-    // Prefer the meta tag token as it's always fresh from the server
-    const metaToken = getCsrfToken();
-    if (metaToken) {
-        return metaToken;
-    }
-
-    // Fallback to cookie if meta tag is not available
+    // The XSRF-TOKEN cookie is refreshed on every response, so it stays in
+    // sync with the session even after client-side navigation. The meta tag
+    // goes stale after login regenerates the session, so prefer the cookie.
     const cookieName = 'XSRF-TOKEN';
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${cookieName}=`);
     if (parts.length === 2) {
         const cookieValue = parts.pop()?.split(';').shift();
-        return cookieValue ? decodeURIComponent(cookieValue) : '';
+        if (cookieValue) {
+            return decodeURIComponent(cookieValue);
+        }
     }
 
-    return '';
+    // Fallback to meta tag if the cookie is not available
+    return getCsrfToken();
 }
 
 interface SheetOrder {

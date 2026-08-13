@@ -4,6 +4,7 @@ import AppLayout from "@/layouts/app-layout";
 import { Head, usePage } from "@inertiajs/react";
 import { useState, useRef, useEffect } from "react";
 import { type BreadcrumbItem } from "@/types";
+import { csrfHeaders } from "@/lib/csrf";
 import {
   Check,
   CheckCheck,
@@ -26,6 +27,13 @@ import { Input } from "@/components/ui/input";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -74,6 +82,7 @@ export default function WhatsAppPage() {
   const [searchResults, setSearchResults] = useState<Conversation[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [agentFilter, setAgentFilter] = useState<string>("all");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Merge incoming conversations from polling into existing state
@@ -148,8 +157,28 @@ export default function WhatsAppPage() {
     return list.filter(conv => conv.store_name?.toLowerCase() === target);
   };
 
+  const filterByAgent = (list: Conversation[]) => {
+    if (!agentFilter || agentFilter === 'all') return list;
+    return list.filter(conv =>
+      conv.cc_agents?.toLowerCase().includes(agentFilter.toLowerCase())
+    );
+  };
+
+  const uniqueAgents = Array.from(
+    new Set(
+      conversations.flatMap(conv =>
+        (conv.cc_agents ?? '')
+          .split(',')
+          .map(a => a.trim())
+          .filter(Boolean)
+      )
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
   // Conversations to display: search results when searching, normal list otherwise
-  const displayConversations = filterByCountry(searchResults !== null ? searchResults : conversations);
+  const displayConversations = filterByAgent(
+    filterByCountry(searchResults !== null ? searchResults : conversations)
+  );
 
   const handleSearchEnter = async () => {
     const q = searchQuery.trim();
@@ -182,7 +211,7 @@ export default function WhatsAppPage() {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || "",
+        ...csrfHeaders(),
       },
       body: JSON.stringify({ type: "0" }),
     }).catch(() => {});
@@ -284,7 +313,7 @@ export default function WhatsAppPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || "",
+          ...csrfHeaders(),
         },
         body: JSON.stringify({ to: selected.phone, message: newMsg.message }),
       });
@@ -474,6 +503,25 @@ export default function WhatsAppPage() {
                 </button>
               )}
             </div>
+
+            {/* Agent Filter */}
+            {uniqueAgents.length > 0 && (
+              <div className="mt-3">
+                <Select value={agentFilter} onValueChange={setAgentFilter}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Filter by agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All agents</SelectItem>
+                    {uniqueAgents.map(agent => (
+                      <SelectItem key={agent} value={agent}>
+                        {agent}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {/* Chat List */}

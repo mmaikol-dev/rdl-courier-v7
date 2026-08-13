@@ -19,6 +19,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { csrfHeaders } from "@/lib/csrf";
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
@@ -132,8 +133,13 @@ export default function ImportOrdersPage() {
         xhr.withCredentials = true;
         xhr.setRequestHeader("Accept", "application/json");
         xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-        xhr.setRequestHeader("X-CSRF-TOKEN", getCsrfToken());
-        xhr.setRequestHeader("X-XSRF-TOKEN", getXsrfToken());
+
+        const csrf = csrfHeaders();
+        if (csrf["X-XSRF-TOKEN"]) {
+          xhr.setRequestHeader("X-XSRF-TOKEN", csrf["X-XSRF-TOKEN"]);
+        } else {
+          xhr.setRequestHeader("X-CSRF-TOKEN", csrf["X-CSRF-TOKEN"] ?? getCsrfToken());
+        }
 
         xhr.upload.onprogress = (event) => {
           if (!event.lengthComputable) return;

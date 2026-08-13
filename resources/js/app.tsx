@@ -49,7 +49,16 @@ createInertiaApp({
 // This will set light / dark mode on load...
 initializeTheme();
 
-// Register the service worker only in production and force stale shells to refresh.
+// In dev, register a lightweight service worker so Chrome can show the
+// install prompt (beforeinstallprompt only fires when a SW is active).
+if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+        console.error('SW registration failed:', error);
+    });
+}
+
+// Register the real (Workbox) service worker only in production and force
+// stale shells to refresh.
 if (import.meta.env.PROD) {
     let hasReloadedForUpdate = false;
 

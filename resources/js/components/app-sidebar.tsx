@@ -42,7 +42,7 @@ export function AppSidebar() {
       {/* NAVIGATION */}
       <SidebarContent className="scrollbar-custom overflow-y-auto">
         {filteredNav.map((dept) => (
-          <div key={dept.label} className="mb-4">
+          <div key={dept.id} className="mb-4">
             <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider 
               transition-all duration-200
               group-data-[state=collapsed]:hidden">

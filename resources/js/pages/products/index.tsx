@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AppLayout from '@/layouts/app-layout';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { cn } from '@/lib/utils';
+import { csrfHeaders } from '@/lib/csrf';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
@@ -409,7 +410,7 @@ export default function ProductsPage() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    ...csrfHeaders(),
                 },
                 body: JSON.stringify({
                     product_id: selectedProduct.id,

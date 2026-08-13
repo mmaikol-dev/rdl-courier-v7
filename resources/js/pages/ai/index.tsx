@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
 import { Head, usePage } from "@inertiajs/react";
+import { csrfHeaders } from "@/lib/csrf";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -178,11 +179,7 @@ export default function RdlAi() {
 
     fetch("/ai/suggest-sheets", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": csrfToken(),
-        "X-Requested-With": "XMLHttpRequest",
-      },
+      headers: postHeaders(),
       body: JSON.stringify({
         merchant: selectedMerchant,
         product_names: orderGroups.map((g) => (g.key === "__none__" ? "" : g.label)),
@@ -222,18 +219,17 @@ export default function RdlAi() {
     return list.filter((c) => (c.title ?? "New chat").toLowerCase().includes(q));
   }, [conversationList, chatSearch]);
 
-  const csrfToken = () =>
-    document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  const postHeaders = () => ({
+    "Content-Type": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+    ...csrfHeaders(),
+  });
 
   const newChat = async () => {
     try {
       const response = await fetch("/ai/conversations", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken(),
-          "X-Requested-With": "XMLHttpRequest",
-        },
+        headers: postHeaders(),
       });
       const data = await response.json();
 
@@ -289,10 +285,7 @@ export default function RdlAi() {
     try {
       const response = await fetch(`/ai/conversations/${id}`, {
         method: "DELETE",
-        headers: {
-          "X-CSRF-TOKEN": csrfToken(),
-          "X-Requested-With": "XMLHttpRequest",
-        },
+        headers: postHeaders(),
       });
       const data = await response.json();
 
@@ -338,11 +331,7 @@ export default function RdlAi() {
     try {
       const response = await fetch("/ai/ask", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken(),
-          "X-Requested-With": "XMLHttpRequest",
-        },
+        headers: postHeaders(),
         body: JSON.stringify({
           message: content,
           conversation_id: activeConversationId ?? undefined,
@@ -411,11 +400,7 @@ export default function RdlAi() {
     try {
       const response = await fetch("/ai/create-orders", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken(),
-          "X-Requested-With": "XMLHttpRequest",
-        },
+        headers: postHeaders(),
         body: JSON.stringify({
           merchant: selectedMerchant,
           status: selectedStatus,

@@ -35,19 +35,14 @@ export default defineConfig({
                 clientsClaim: true,
                 skipWaiting: true,
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-                manifestTransforms: [
-                    async (entries) => ({
-                        manifest: entries.map((entry) => ({
-                            ...entry,
-                            url: entry.url.startsWith('icons/') ? `/${entry.url}` : entry.url,
-                        })),
-                        warnings: [],
-                    }),
+                additionalManifestEntries: [
+                    { url: '/apple-touch-icon.png', revision: null },
+                    { url: '/favicon.ico', revision: null },
+                    { url: '/favicon.svg', revision: null },
                 ],
                 navigateFallback: null,
                 navigateFallbackDenylist: [/^\/.*$/],
             },
-            includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
             manifest: {
                 name: 'RealDeal Ltd',
                 short_name: 'RealDeal',

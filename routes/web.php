@@ -7,6 +7,7 @@ use App\Http\Controllers\C2BTransactionController;
 use App\Http\Controllers\CallcenterController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ClearanceController;
 use App\Http\Controllers\DailyBudgetController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DispatchController;
@@ -174,6 +175,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/finance-workflow/download-report', [FinanceWorkflowController::class, 'downloadMerchantReport'])->name('finance-workflow.download-report');
     Route::post('/finance-workflow/mark-confirmed', [FinanceWorkflowController::class, 'markConfirmed'])->name('finance-workflow.mark-confirmed');
     Route::post('/finance-workflow/mark-remitted', [FinanceWorkflowController::class, 'markRemitted'])->name('finance-workflow.mark-remitted');
+
+    Route::get('/clearance', [ClearanceController::class, 'index'])->name('clearance.index');
 
     // undelivered
     Route::resource('/undelivered', UndeliveredController::class);

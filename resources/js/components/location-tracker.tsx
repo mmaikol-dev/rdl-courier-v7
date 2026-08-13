@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Auth } from '@/types';
+import { csrfHeaders } from '@/lib/csrf';
 
 type GeoPayload = {
     latitude: number;
@@ -17,8 +18,17 @@ const LOGIN_URL = '/locations/login';
 const MIN_SEND_INTERVAL_MS = 60_000;
 const MIN_DISTANCE_METERS = 50;
 
-function getCsrfToken() {
-    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+async function postLocation(url: string, payload: GeoPayload) {
+    await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...csrfHeaders(),
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+    });
 }
 
 function toRadians(value: number) {
@@ -37,19 +47,6 @@ function distanceInMeters(a: { latitude: number; longitude: number }, b: { latit
         Math.cos(latitudeA) * Math.cos(latitudeB) * Math.sin(longitudeDelta / 2) ** 2;
 
     return 2 * earthRadius * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-}
-
-async function postLocation(url: string, payload: GeoPayload) {
-    await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'X-CSRF-TOKEN': getCsrfToken(),
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify(payload),
-    });
 }
 
 export function LocationTracker({ auth }: { auth?: Auth & { pendingLoginLocationCapture?: boolean } }) {

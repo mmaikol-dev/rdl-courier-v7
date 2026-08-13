@@ -34,6 +34,7 @@ class SidebarRegistry
             ['key' => 'transactions', 'title' => 'Transactions', 'href' => '/transactions', 'group' => 'Finance'],
             ['key' => 'budgets', 'title' => 'Budgets', 'href' => '/budgets', 'group' => 'Finance'],
             ['key' => 'finance-workflow', 'title' => 'Finance Workflow', 'href' => '/finance-workflow', 'group' => 'Finance'],
+            ['key' => 'clearance', 'title' => 'Clearance', 'href' => '/clearance', 'group' => 'Finance'],
             ['key' => 'requisitions', 'title' => 'Requisitions', 'href' => '/requisitions', 'group' => 'Finance'],
             ['key' => 'reqcategories', 'title' => 'Req-Categories', 'href' => '/reqcategories', 'group' => 'Finance'],
             ['key' => 'report', 'title' => 'Reports', 'href' => '/report', 'group' => 'Finance'],

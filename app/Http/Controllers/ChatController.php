@@ -133,7 +133,8 @@ class ChatController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('client_name', 'like', "%{$search}%")
                   ->orWhere('message', 'like', "%{$search}%")
-                  ->orWhere('to', 'like', "%{$search}%");
+                  ->orWhere('to', 'like', "%{$search}%")
+                  ->orWhere('cc_agents', 'like', "%{$search}%");
             });
         }
 

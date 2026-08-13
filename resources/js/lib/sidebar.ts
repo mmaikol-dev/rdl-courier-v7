@@ -1,4 +1,5 @@
 import {
+    BadgeCheck,
     BookOpen,
     BoxesIcon,
     BrainCircuitIcon,
@@ -57,6 +58,7 @@ export type SidebarItemKey =
     | 'transactions'
     | 'budgets'
     | 'finance-workflow'
+    | 'clearance'
     | 'requisitions'
     | 'reqcategories'
     | 'report'
@@ -68,12 +70,14 @@ export type SidebarItemKey =
     | 'bulk-expire';
 
 export interface SidebarGroupDefinition {
+    id: string;
     label: string;
     items: Array<NavItem & { key: SidebarItemKey; group: string }>;
 }
 
 export const sidebarGroups: SidebarGroupDefinition[] = [
     {
+        id: 'general',
         label: 'General',
         items: [
             { key: 'dashboard', title: 'Dashboard', href: '/dashboard', icon: LayoutGrid, group: 'General' },
@@ -82,6 +86,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         ],
     },
     {
+        id: 'operations',
         label: 'Operations',
         items: [
             { key: 'sheetorders', title: 'Orders', href: '/sheetorders', icon: ListCheckIcon, group: 'Operations' },
@@ -97,6 +102,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         ],
     },
     {
+        id: 'inventory',
         label: 'Inventory',
         items: [
             { key: 'products', title: 'Products', href: '/products', icon: BoxesIcon, group: 'Inventory' },
@@ -110,11 +116,13 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         ],
     },
     {
+        id: 'finance',
         label: 'Finance',
         items: [
             { key: 'transactions', title: 'Transactions', href: '/transactions', icon: HandCoins, group: 'Finance' },
             { key: 'budgets', title: 'Budgets', href: '/budgets', icon: CoinsIcon, group: 'Finance' },
             { key: 'finance-workflow', title: 'Finance Workflow', href: '/finance-workflow', icon: PrinterIcon, group: 'Finance' },
+            { key: 'clearance', title: 'Clearance', href: '/clearance', icon: BadgeCheck, group: 'Finance' },
             { key: 'requisitions', title: 'Requisitions', href: '/requisitions', icon: PenLineIcon, group: 'Finance' },
             { key: 'reqcategories', title: 'Req-Categories', href: '/reqcategories', icon: FileAxis3DIcon, group: 'Finance' },
             { key: 'report', title: 'Reports', href: '/report', icon: PrinterIcon, group: 'Finance' },
@@ -124,6 +132,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         ],
     },
     {
+        id: 'administration',
         label: 'Administration',
         items: [
             { key: 'users', title: 'Users', href: '/users', icon: Users, group: 'Administration' },
@@ -132,6 +141,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
 ];
 
 export const adminToolsGroup: SidebarGroupDefinition = {
+    id: 'admin-tools',
     label: 'Administration',
     items: [
         { key: 'sidebar-permissions', title: 'Sidebar Access', href: '/sidebar-permissions', icon: Settings2Icon, group: 'Administration' },
