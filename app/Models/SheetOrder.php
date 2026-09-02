@@ -42,6 +42,7 @@ class SheetOrder extends Model
         'inventory_product_id',
         'sheet_id',
         'sheet_name',
+        'clearance_status',
         'created_at',
         'updated_at',
             

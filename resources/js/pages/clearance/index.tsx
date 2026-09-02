@@ -6,6 +6,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -26,7 +27,7 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from '@/components/ui/pagination';
-import { Check, ChevronsUpDown, FilterIcon, LoaderCircle, RefreshCwIcon, SearchX, X } from 'lucide-react';
+import { Check, ChevronsUpDown, FilterIcon, History, LoaderCircle, Pin, RefreshCwIcon, SearchX, X } from 'lucide-react';
 import * as React from 'react';
 import { format } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
@@ -63,6 +64,7 @@ interface ClearanceOrder {
     merchant: string;
     code: string;
     agent: string;
+    clearance_status: string;
     updated_at: string;
 }
 
@@ -83,6 +85,28 @@ interface Filters {
     to_date?: string;
 }
 
+interface OrderHistoryItem {
+    id: number;
+    attribute: string;
+    old_value: string;
+    new_value: string;
+    created_at: string;
+    user: { name: string } | null;
+}
+
+const attributeLabels: Record<string, string> = {
+    agent: 'Agent',
+    clearance_status: 'Clearance Status',
+    status: 'Status',
+    amount: 'Amount',
+    quantity: 'Quantity',
+    delivery_date: 'Delivery Date',
+    cc_email: 'CC Email',
+    merchant: 'Merchant',
+    product_name: 'Product',
+    order_no: 'Order No',
+};
+
 const COLUMNS: { key: keyof ClearanceOrder; label: string; align?: 'right' }[] = [
     { key: 'order_no', label: 'Order No' },
     { key: 'client_name', label: 'Client' },
@@ -92,19 +116,20 @@ const COLUMNS: { key: keyof ClearanceOrder; label: string; align?: 'right' }[] =
     { key: 'status', label: 'Status' },
     { key: 'delivery_date', label: 'Delivery Date' },
     { key: 'agent', label: 'Agent' },
+    { key: 'clearance_status', label: 'Clearance Status' },
     { key: 'phone', label: 'Phone' },
     { key: 'address', label: 'Address' },
 ];
 
-const currency = new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: 'KES',
-    minimumFractionDigits: 2,
-});
-
 export default function Index() {
     const isMobile = useIsMobile();
     const { props } = usePage();
+    const currencyCode = (props.selectedCurrency as string) || 'KES';
+    const currency = new Intl.NumberFormat('en-' + (currencyCode === 'KES' ? 'KE' : 'US'), {
+        style: 'currency',
+        currency: currencyCode,
+        minimumFractionDigits: 2,
+    });
     const { orders, agents, filters: initialFilters } = props as unknown as {
         orders: { data: ClearanceOrder[]; links: PaginationLinkData[] },
         agents: AgentOption[],
@@ -124,7 +149,12 @@ export default function Index() {
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
     const [agentOpen, setAgentOpen] = React.useState(false);
     const [isRefreshing, setIsRefreshing] = React.useState(false);
+    const [stickyFirstColumn, setStickyFirstColumn] = React.useState(true);
     const [isApplyingFilters, setIsApplyingFilters] = React.useState(false);
+    const [updatingClearanceId, setUpdatingClearanceId] = React.useState<number | null>(null);
+    const [historyOrderNo, setHistoryOrderNo] = React.useState<string | null>(null);
+    const [historyLoading, setHistoryLoading] = React.useState(false);
+    const [selectedHistories, setSelectedHistories] = React.useState<OrderHistoryItem[]>([]);
 
     const formatDate = (date: Date) => format(date, "yyyy-MM-dd");
 
@@ -167,6 +197,34 @@ export default function Index() {
         });
     };
 
+    const toggleClearance = (order: ClearanceOrder) => {
+        const next = order.clearance_status === 'cleared' ? 'not_cleared' : 'cleared';
+        setUpdatingClearanceId(order.id);
+        router.put(`/sheetorders/${order.id}`, { clearance_status: next }, {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['orders'],
+            onSuccess: () => toast.success(next === 'cleared' ? 'Order marked as cleared' : 'Order marked as not cleared'),
+            onError: () => toast.error('Failed to update clearance status'),
+            onFinish: () => setUpdatingClearanceId(null),
+        });
+    };
+
+    const openHistory = async (order: ClearanceOrder) => {
+        setHistoryOrderNo(order.order_no);
+        setHistoryLoading(true);
+        setSelectedHistories([]);
+        try {
+            const res = await fetch(`/sheetorders/${order.id}/histories`);
+            const data = await res.json();
+            setSelectedHistories(data.histories || []);
+        } catch (error) {
+            toast.error('Failed to load edit history');
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
     const removeAgentFilter = () => {
         setFilters((prev) => ({ ...prev, agent: undefined }));
         router.get('/clearance', {
@@ -195,6 +253,11 @@ export default function Index() {
         () => new Set(orders.data.map((order) => order.merchant).filter(Boolean)).size,
         [orders.data],
     );
+    const clearedCount = React.useMemo(
+        () => orders.data.filter((order) => order.clearance_status === 'cleared').length,
+        [orders.data],
+    );
+    const pendingClearanceCount = orders.data.length - clearedCount;
 
     const getStatusPillClass = (status: string) => {
         const normalized = status?.trim() || "New Orders";
@@ -216,6 +279,29 @@ export default function Index() {
         if (col.key === 'agent') {
             return order.agent ? <Badge variant="secondary">{order.agent}</Badge> : '';
         }
+        if (col.key === 'clearance_status') {
+            const cleared = order.clearance_status === 'cleared';
+            const updating = updatingClearanceId === order.id;
+            return (
+                <Button
+                    variant={cleared ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn('gap-2', cleared && 'bg-emerald-600 hover:bg-emerald-700')}
+                    onClick={() => toggleClearance(order)}
+                    disabled={updating}
+                    title={cleared ? 'Click to mark as not cleared' : 'Click to mark as cleared'}
+                >
+                    {updating ? (
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    ) : cleared ? (
+                        <Check className="h-3.5 w-3.5" />
+                    ) : (
+                        <X className="h-3.5 w-3.5" />
+                    )}
+                    {cleared ? 'Cleared' : 'Not Cleared'}
+                </Button>
+            );
+        }
         return String(order[col.key] ?? "");
     };
 
@@ -223,7 +309,7 @@ export default function Index() {
         <AppLayout breadcrumbs={BREADCRUMBS}>
             <Head title="Clearance" />
 
-            <div className="space-y-4 px-4 pt-4">
+            <div className="flex flex-col gap-4 p-4 md:p-6">
                 <div className="rounded-xl border bg-card p-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
@@ -244,7 +330,7 @@ export default function Index() {
                         </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                         <div className="rounded-lg border bg-background p-3">
                             <p className="text-xs text-muted-foreground">Total Orders</p>
                             <p className="text-lg font-semibold">{orders.data.length}</p>
@@ -252,6 +338,14 @@ export default function Index() {
                         <div className="rounded-lg border bg-background p-3">
                             <p className="text-xs text-muted-foreground">Total Amount</p>
                             <p className="text-lg font-semibold">{currency.format(totalAmount)}</p>
+                        </div>
+                        <div className="rounded-lg border bg-background p-3">
+                            <p className="text-xs text-muted-foreground">Cleared</p>
+                            <p className="text-lg font-semibold text-emerald-600">{clearedCount}</p>
+                        </div>
+                        <div className="rounded-lg border bg-background p-3">
+                            <p className="text-xs text-muted-foreground">Pending Clearance</p>
+                            <p className="text-lg font-semibold text-amber-600">{pendingClearanceCount}</p>
                         </div>
                         <div className="rounded-lg border bg-background p-3">
                             <p className="text-xs text-muted-foreground">Agents</p>
@@ -290,31 +384,48 @@ export default function Index() {
                 </div>
             </div>
 
-            <div className="mt-4 border rounded-xl shadow-sm">
+            <div className="rounded-xl border bg-card shadow-sm">
+                <div className="flex items-center justify-end border-b px-4 py-2">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Pin className="h-3 w-3" />
+                        Lock order column
+                        <Switch
+                            checked={stickyFirstColumn}
+                            onCheckedChange={setStickyFirstColumn}
+                            className="scale-75"
+                        />
+                    </label>
+                </div>
                 <div className="scrollbar-custom w-full overflow-x-auto">
-                    <Table className="min-w-[1120px] border">
-                        <TableHeader className="bg-muted/50">
-                            <TableRow>
-                                {COLUMNS.map((col) => (
+                    <Table className="min-w-[1040px]">
+                        <TableHeader className="bg-muted/60">
+                            <TableRow className="hover:bg-muted/60">
+                                {COLUMNS.map((col, i) => (
                                     <TableHead
                                         key={col.key}
                                         className={cn(
-                                            'min-w-[120px] whitespace-nowrap border text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+                                            'h-11 whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground',
                                             col.align === 'right' && 'text-right',
+                                            i === 0 && stickyFirstColumn && 'sticky left-0 z-20 bg-muted/60 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]',
                                         )}
                                     >
                                         {col.label}
                                     </TableHead>
                                 ))}
+                                <TableHead className="h-11 whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    History
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {orders.data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={COLUMNS.length} className="h-40 text-center text-muted-foreground">
+                                    <TableCell colSpan={COLUMNS.length + 1} className="h-40 text-center text-muted-foreground">
                                         <div className="flex flex-col items-center gap-2">
-                                            <SearchX className="h-8 w-8 text-muted-foreground/50" />
-                                            <span>No clearance orders found.</span>
+                                            <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+                                                <SearchX className="h-6 w-6 text-muted-foreground/60" />
+                                            </div>
+                                            <span className="font-medium">No clearance orders found</span>
                                             {hasActiveFilters && (
                                                 <Button variant="outline" size="sm" onClick={clearAllFilters}>
                                                     Clear filters
@@ -325,18 +436,32 @@ export default function Index() {
                                 </TableRow>
                             ) : (
                                 orders.data.map((order) => (
-                                    <TableRow key={order.id} className="hover:bg-muted/50">
-                                        {COLUMNS.map((col) => (
+                                    <TableRow key={order.id} className="transition-colors hover:bg-muted/50">
+                                        {COLUMNS.map((col, i) => (
                                             <TableCell
                                                 key={col.key}
                                                 className={cn(
-                                                    'max-w-[180px] truncate whitespace-nowrap border',
-                                                    col.align === 'right' && 'text-right',
+                                                    'max-w-[180px] truncate whitespace-nowrap px-3 py-2',
+                                                    col.align === 'right' && 'text-right font-mono text-sm tabular-nums',
+                                                    col.key === 'order_no' && 'font-medium',
+                                                    col.key === 'product_name' && 'font-medium',
+                                                    i === 0 && stickyFirstColumn && 'sticky left-0 z-20 bg-card shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]',
                                                 )}
                                             >
                                                 {renderCellValue(order, col)}
                                             </TableCell>
                                         ))}
+                                        <TableCell className="whitespace-nowrap px-3 py-2 text-center">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                onClick={() => openHistory(order)}
+                                                title={`View edit history for ${order.order_no}`}
+                                            >
+                                                <History className="h-4 w-4" />
+                                            </Button>
+                                        </TableCell>
                                     </TableRow>
                                 ))
                             )}
@@ -345,7 +470,7 @@ export default function Index() {
                 </div>
             </div>
 
-            <div className="mt-4 flex justify-center pb-4">
+            <div className="flex justify-center pb-2">
                 <Pagination>
                     <PaginationContent className="flex-wrap">
                         {orders.links.map((link, index) => {
@@ -521,6 +646,53 @@ export default function Index() {
                             Apply
                         </Button>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={historyOrderNo !== null} onOpenChange={(open) => !open && setHistoryOrderNo(null)}>
+                <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Edit History for Order #{historyOrderNo}</DialogTitle>
+                    </DialogHeader>
+
+                    {historyLoading ? (
+                        <div className="flex h-48 items-center justify-center">
+                            <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : selectedHistories.length > 0 ? (
+                        <div className="scrollbar-custom max-h-[55vh] space-y-3 overflow-y-auto pr-2">
+                            {selectedHistories.map((history) => (
+                                <div key={history.id} className="rounded-lg border p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-sm font-semibold">
+                                            {attributeLabels[history.attribute] ?? history.attribute}
+                                        </span>
+                                        <span className="text-[10px] text-muted-foreground">
+                                            {new Date(history.created_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-muted-foreground line-through">
+                                            {history.old_value || '(empty)'}
+                                        </span>
+                                        <X className="h-3 w-3 text-muted-foreground" />
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 font-medium text-emerald-700">
+                                            {history.new_value || '(empty)'}
+                                        </span>
+                                    </div>
+                                    <p className="mt-2 text-[10px] text-muted-foreground">
+                                        By {history.user?.name ?? 'System'} on {new Date(history.created_at).toLocaleDateString()}{' '}
+                                        at {new Date(history.created_at).toLocaleTimeString()}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+                            <History className="h-8 w-8 text-muted-foreground/50" />
+                            <span className="text-sm">No edit history for this order.</span>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
         </AppLayout>

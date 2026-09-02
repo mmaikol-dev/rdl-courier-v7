@@ -13,6 +13,8 @@ class VerifyCsrfToken extends Middleware
         'stk/stk-push',
         'locations/heartbeat',
         'locations/login',
+        'dispatch/bulk-download-waybills',
+        'dispatch/bulk-assign',
     ];
     
 }

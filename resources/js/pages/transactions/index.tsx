@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,7 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import { format } from 'date-fns';
-import { CalendarRange, Edit, LoaderCircle, RefreshCwIcon, SearchIcon, ShieldAlert } from 'lucide-react';
+import { CalendarRange, Edit, LoaderCircle, RefreshCwIcon, SearchIcon, ShieldAlert, Inbox } from 'lucide-react';
 import * as React from 'react';
 import { type DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -264,8 +265,8 @@ export default function TransactionsView() {
                     <div className="overflow-x-auto rounded-lg border">
                         <div className="min-w-[980px]">
                             <Table className="table-fixed">
-                                <TableHeader className="sticky top-0 z-10 bg-background">
-                                    <TableRow>
+                                <TableHeader className="sticky top-0 z-10 bg-muted/60">
+                                    <TableRow className="hover:bg-muted/60">
                                         <TableHead className="w-[16%]">Txn ID</TableHead>
                                         <TableHead className="w-[14%]">Account</TableHead>
                                         <TableHead className="w-[10%]">Amount</TableHead>
@@ -279,44 +280,62 @@ export default function TransactionsView() {
                                 <TableBody>
                                     {list.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="py-10 text-center">
-                                                No transactions found.
+                                            <TableCell colSpan={8} className="py-16 text-center">
+                                                <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
+                                                    <Inbox className="size-6 text-muted-foreground" />
+                                                </div>
+                                                <p className="font-medium text-muted-foreground">No transactions found</p>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    Try adjusting your search or clearing the filters.
+                                                </p>
+                                                {hasActiveFilters && (
+                                                    <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>
+                                                        Clear filters
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ) : (
                                         list.map((txn) => (
-                                            <TableRow key={txn.id} className="hover:bg-muted/10">
-                                                <TableCell className="align-middle whitespace-nowrap">
+                                            <TableRow key={txn.id} className="transition-colors hover:bg-muted/40">
+                                                <TableCell className="whitespace-nowrap font-mono text-xs font-medium">
                                                     <span className="block max-w-[200px] truncate" title={txn.transaction_id}>
                                                         {txn.transaction_id}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
-                                                    <span className="block max-w-[180px] truncate" title={txn.account_number}>
+                                                <TableCell className="whitespace-nowrap">
+                                                    <span className="block max-w-[180px] truncate font-medium" title={txn.account_number}>
                                                         {txn.account_number}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
+                                                <TableCell className="whitespace-nowrap font-mono text-sm font-medium tabular-nums">
                                                     <span title={txn.amount}>{txn.amount}</span>
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
-                                                    <span className="block max-w-[180px] truncate" title={txn.payer_phone}>
+                                                <TableCell className="whitespace-nowrap">
+                                                    <span className="block max-w-[180px] truncate font-mono text-xs" title={txn.payer_phone}>
                                                         {txn.payer_phone || '—'}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
-                                                    <span className="block max-w-[180px] truncate" title={txn.business_shortcode}>
+                                                <TableCell className="whitespace-nowrap">
+                                                    <span
+                                                        className="block max-w-[180px] truncate font-mono text-xs"
+                                                        title={txn.business_shortcode}
+                                                    >
                                                         {txn.business_shortcode || '—'}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
+                                                <TableCell className="whitespace-nowrap">
                                                     {txn.processed ? (
-                                                        <span className="font-semibold text-green-600">Processed</span>
+                                                        <Badge className="border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
+                                                            Processed
+                                                        </Badge>
                                                     ) : (
-                                                        <span className="font-semibold text-yellow-600">Pending</span>
+                                                        <Badge variant="outline" className="border-yellow-300 bg-yellow-50 text-yellow-800">
+                                                            Pending
+                                                        </Badge>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
+                                                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                                                     {txn.created_at ? (
                                                         <span
                                                             className="block max-w-[220px] truncate"
@@ -328,14 +347,15 @@ export default function TransactionsView() {
                                                         '—'
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="align-middle whitespace-nowrap">
-                                                    <div className="flex justify-end gap-2">
+                                                <TableCell className="whitespace-nowrap">
+                                                    <div className="flex justify-end">
                                                         <Button
                                                             size="sm"
-                                                            variant="outline"
+                                                            variant="ghost"
                                                             onClick={() => handleEditOpen(txn)}
                                                             title="Edit"
                                                             disabled={isSaving}
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                                                         >
                                                             <Edit className="h-4 w-4" />
                                                         </Button>

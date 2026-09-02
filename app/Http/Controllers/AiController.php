@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\AiChat;
 use App\Models\AiConversation;
 use App\Models\OrderHistory;
+use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Services\ProductAutoMatchService;
 use App\Support\CountryAccess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -37,7 +39,7 @@ class AiController extends Controller
         private readonly ProductAutoMatchService $autoMatch = new ProductAutoMatchService,
     ) {
         $this->ollamaUrl = env('AI_OLLAMA_URL', 'http://127.0.0.1:11434/api/generate');
-        $this->model     = env('AI_OLLAMA_MODEL', 'qwen3.5:2b');
+        $this->model     = env('AI_OLLAMA_MODEL', 'gemma4:cloud');
     }
 
     /**
@@ -284,7 +286,7 @@ class AiController extends Controller
         ]);
 
         $merchantData = $this->merchantData($user);
-        $merchants = collect($merchantData)->keys()->all();
+        $merchants = array_keys($merchantData);
 
         if (! in_array($validated['merchant'], $merchants, true)) {
             return response()->json([
@@ -295,17 +297,20 @@ class AiController extends Controller
         }
 
         // Sheet frequency per product, from existing orders (country-scoped)
-        $rows = CountryAccess::scopeByCountryName(
-            SheetOrder::query()->where('merchant', $validated['merchant'])
-                ->whereNotNull('product_name')
-                ->where('product_name', '!=', '')
-                ->whereNotNull('sheet_name')
-                ->where('sheet_name', '!=', '')
-                ->selectRaw('product_name, sheet_name, COUNT(*) as cnt')
-                ->groupBy('product_name', 'sheet_name')
-                ->orderByDesc('cnt'),
-            $user
-        )->get();
+        $sheetId = $merchantData[$validated['merchant']]['sheet_id'] ?? null;
+
+        $rows = SheetOrder::query()->where('merchant', $validated['merchant'])
+            ->when($sheetId, fn ($q) => $q->where('sheet_id', $sheetId))
+            ->whereNotNull('product_name')
+            ->where('product_name', '!=', '')
+            ->whereNotNull('sheet_name')
+            ->where('sheet_name', '!=', '')
+            ->selectRaw('product_name, sheet_name, COUNT(*) as cnt')
+            ->groupBy('product_name', 'sheet_name')
+            ->orderByDesc('cnt')
+            ->get();
+
+        $availableTabs = $merchantData[$validated['merchant']]['tabs'] ?? [];
 
         $suggestions = [];
 
@@ -326,8 +331,9 @@ class AiController extends Controller
                 }
             }
 
+            // Fallback to first available tab
             if (! $suggestion) {
-                $suggestion = $merchantData[$validated['merchant']]['sheet_names'][0] ?? null;
+                $suggestion = $availableTabs[0] ?? null;
             }
 
             $suggestions[$name] = $suggestion;
@@ -386,18 +392,17 @@ class AiController extends Controller
             ], 422);
         }
 
-        // Each group's sheet must be one of the merchant's known sheets
-        $knownSheetNames = collect($merchantData[$validated['merchant']]['sheet_names'])
-            ->map(fn ($s) => strtolower(trim((string) $s)))
-            ->all();
+        // Each group's tab must be one of the merchant's known tabs
+        $knownTabs = $merchantData[$validated['merchant']]['tabs'] ?? [];
+        $normalizedTabs = array_map('strtolower', $knownTabs);
 
         foreach ($validated['groups'] as $group) {
             $normalized = strtolower(trim((string) $group['sheet_name']));
-            if (! in_array($normalized, $knownSheetNames, true)) {
+            if (! in_array($normalized, $normalizedTabs, true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Sheet \"{$group['sheet_name']}\" is not a known sheet for {$validated['merchant']}.",
-                    'sheets' => $merchantData[$validated['merchant']]['sheet_names'],
+                    'message' => "Tab \"{$group['sheet_name']}\" is not a known tab for {$validated['merchant']}.",
+                    'tabs' => $knownTabs,
                 ], 422);
             }
         }
@@ -406,76 +411,142 @@ class AiController extends Controller
         $status = $validated['status'] ?? 'Scheduled';
 
         $created = [];
+        $skipped = [];
 
-        foreach ($validated['groups'] as $group) {
-            $sheetName = $group['sheet_name'];
-            $sheetId = $group['sheet_id'] ?? '';
+        DB::transaction(function () use ($validated, $country, $status, &$created, &$skipped, $user) {
+            foreach ($validated['groups'] as $group) {
+                $sheetName = $group['sheet_name'];
+                $sheetId = $group['sheet_id'] ?? '';
 
-            foreach ($group['orders'] as $orderData) {
-                $orderData['country'] = $country;
-                $orderData['merchant'] = $validated['merchant'];
-                $orderData['sheet_name'] = $sheetName;
-                $orderData['sheet_id'] = $sheetId;
-                $orderData['status'] = $orderData['status'] ?? $status;
-                $orderData['order_no'] = $this->getNextOrderNumber($sheetName, $sheetId);
-                $orderData['order_type'] = 'ai-created';
-                $orderData['updated_at'] = now();
+                foreach ($group['orders'] as $orderData) {
+                    // Deduplication: skip if same client+phone+amount+date already exists in this sheet
+                    $existing = SheetOrder::where('sheet_id', $sheetId)
+                        ->where('sheet_name', $sheetName)
+                        ->where('client_name', $orderData['client_name'] ?? null)
+                        ->where('phone', $orderData['phone'] ?? null)
+                        ->where('amount', $orderData['amount'] ?? null)
+                        ->where('order_date', $orderData['order_date'] ?? null)
+                        ->exists();
 
-                $order = SheetOrder::create($orderData);
+                    if ($existing) {
+                        $skipped[] = $orderData['client_name'] ?? 'Unknown';
+                        continue;
+                    }
 
-                $this->autoMatch->applyMatches($order, $this->autoMatch->match($order));
+                    $orderData['country'] = $country;
+                    $orderData['merchant'] = $validated['merchant'];
+                    $orderData['sheet_name'] = $sheetName;
+                    $orderData['sheet_id'] = $sheetId;
+                    $orderData['status'] = $orderData['status'] ?? $status;
+                    $orderData['order_no'] = $this->getNextOrderNumber($sheetName, $sheetId);
+                    $orderData['order_type'] = 'ai-created';
+                    $orderData['updated_at'] = now();
 
-                OrderHistory::create([
-                    'order_id' => $order->id,
-                    'user_id' => $user->id,
-                    'attribute' => 'status',
-                    'old_value' => null,
-                    'new_value' => 'Created via AI',
-                ]);
+                    $order = SheetOrder::create($orderData);
 
-                $created[] = [
-                    'id' => $order->id,
-                    'order_no' => $order->order_no,
-                    'client_name' => $order->client_name,
-                    'sheet_name' => $sheetName,
-                ];
+                    $this->autoMatch->applyMatches($order, $this->autoMatch->match($order));
+
+                    OrderHistory::create([
+                        'order_id' => $order->id,
+                        'user_id' => $user->id,
+                        'attribute' => 'status',
+                        'old_value' => null,
+                        'new_value' => 'Created via AI',
+                    ]);
+
+                    $created[] = [
+                        'id' => $order->id,
+                        'order_no' => $order->order_no,
+                        'client_name' => $order->client_name,
+                        'sheet_name' => $sheetName,
+                    ];
+                }
             }
-        }
+        });
 
         Log::info('AI ORDERS: Created', [
             'user' => $user->name,
             'count' => count($created),
+            'skipped' => count($skipped),
             'order_nos' => array_column($created, 'order_no'),
         ]);
 
+        $message = count($created) . ' order(s) created successfully.';
+        if (count($skipped) > 0) {
+            $message .= ' ' . count($skipped) . ' duplicate(s) skipped.';
+        }
+
         return response()->json([
             'success' => true,
-            'message' => count($created) . ' order(s) created successfully.',
+            'message' => $message,
             'orders' => $created,
+            'skipped' => $skipped,
         ]);
     }
 
     /**
-     * Country-scoped merchant data: merchant => sheet_id, sheet_names, countries, store_name.
+     * Country-scoped merchant data sourced from the sheets table.
+     *
+     * sheets.sheet_name = merchant name
+     * sheets.sheet_id   = Google Sheet ID
+     * sheet_orders.sheet_name = tab name within that sheet
+     *
+     * Returns: merchant => { sheet_id, tabs: [tab_name, ...], countries, store_name }
      */
     private function merchantData(\App\Models\User $user): array
     {
-        return CountryAccess::scopeByCountryName(
-            SheetOrder::select('merchant', 'sheet_id', 'sheet_name', 'country', 'store_name'),
+        // Step 1: Get merchants from the sheets table (sheet_name = merchant name), country-scoped
+        $merchantRows = CountryAccess::scopeByCountryName(
+            Sheet::query()->selectRaw("sheet_name as merchant, sheet_id, LOWER(TRIM(country)) as country, store_name"),
             $user
         )
-            ->whereNotNull('merchant')
-            ->where('merchant', '!=', '')
-            ->groupBy('merchant', 'sheet_id', 'sheet_name', 'country', 'store_name')
+            ->whereNotNull('sheet_id')
+            ->where('sheet_id', '!=', '')
+            ->whereNotNull('sheet_name')
+            ->where('sheet_name', '!=', '')
+            ->groupBy('sheet_name', 'sheet_id', 'country', 'store_name')
+            ->get();
+
+        if ($merchantRows->isEmpty()) {
+            return [];
+        }
+
+        // Collect all sheet_ids to fetch tab names from sheet_orders
+        $sheetIds = $merchantRows->pluck('sheet_id')->unique()->values()->all();
+
+        // Step 2: Get distinct tab names (sheet_name) from sheet_orders for these sheet_ids
+        $tabsBySheetId = SheetOrder::whereIn('sheet_id', $sheetIds)
+            ->whereNotNull('sheet_name')
+            ->where('sheet_name', '!=', '')
+            ->selectRaw('sheet_id, sheet_name')
+            ->groupBy('sheet_id', 'sheet_name')
             ->get()
+            ->groupBy('sheet_id')
+            ->map(fn ($rows) => $rows->pluck('sheet_name')->sort()->values()->toArray())
+            ->toArray();
+
+        // Step 3: Build the response grouped by merchant
+        // If a merchant has multiple sheet_ids (rare — different countries), pick the one with most tabs
+        return $merchantRows
             ->groupBy('merchant')
-            ->map(function ($items) {
-                return [
-                    'sheet_id' => $items->first()->sheet_id,
-                    'sheet_names' => $items->pluck('sheet_name')->filter()->unique()->sort()->values(),
-                    'countries' => $items->pluck('country')->filter()->unique()->values(),
-                    'store_name' => $items->pluck('store_name')->filter()->first(),
-                ];
+            ->map(function ($items) use ($tabsBySheetId) {
+                $bestEntry = $items->groupBy('sheet_id')
+                    ->map(function ($rows, $sheetId) use ($tabsBySheetId) {
+                        $tabs = $tabsBySheetId[$sheetId] ?? [];
+                        return [
+                            'sheet_id' => $sheetId,
+                            'tabs' => $tabs,
+                            'tab_count' => count($tabs),
+                            'countries' => $rows->pluck('country')->filter()->unique()->values(),
+                            'store_name' => $rows->pluck('store_name')->filter()->first(),
+                        ];
+                    })
+                    ->sortByDesc('tab_count')
+                    ->first();
+
+                unset($bestEntry['tab_count']);
+
+                return $bestEntry;
             })
             ->toArray();
     }
@@ -561,7 +632,8 @@ PROMPT;
     }
 
     /**
-     * Generate next order number for a given sheet name, same logic as SheetOrderController.
+     * Generate next order number for a given sheet name and sheet_id.
+     * Uses the prefix from the most recent order in that sheet.
      */
     private function getNextOrderNumber(string $sheetName, ?string $sheetId = null): string
     {
@@ -571,22 +643,19 @@ PROMPT;
             $query->where('sheet_id', $sheetId);
         }
 
-        $lastNumber = $query
-            ->whereRaw('order_no REGEXP "^[A-Z]+[0-9]+$"')
-            ->selectRaw('MAX(CAST(SUBSTRING(order_no, LENGTH(REGEXP_SUBSTR(order_no, "^[A-Z]+")) + 1) AS UNSIGNED)) as max_number,
-                         REGEXP_SUBSTR(order_no, "^[A-Z]+") as prefix')
-            ->groupBy('prefix')
-            ->orderByDesc('max_number')
+        // Find the most recent order that has a valid prefix+number pattern
+        $lastOrder = $query
+            ->whereRaw('order_no REGEXP "^[A-Za-z]+[0-9]+$"')
+            ->orderByRaw('CAST(SUBSTRING(order_no, LENGTH(REGEXP_SUBSTR(order_no, "^[A-Za-z]+")) + 1) AS UNSIGNED) DESC')
             ->first();
 
-        $nextNumber = 1;
-        $prefix = 'ORD';
-
-        if ($lastNumber) {
-            $prefix = $lastNumber->prefix;
-            $nextNumber = $lastNumber->max_number + 1;
+        if ($lastOrder) {
+            preg_match('/^([A-Za-z]+)([0-9]+)$/', $lastOrder->order_no, $matches);
+            $prefix = strtoupper($matches[1]);
+            $nextNumber = (int) $matches[2] + 1;
+            return $prefix . $nextNumber;
         }
 
-        return $prefix . $nextNumber;
+        return 'ORD1';
     }
 }

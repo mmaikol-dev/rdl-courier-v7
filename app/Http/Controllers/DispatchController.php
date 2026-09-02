@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dispatch;
+use App\Models\OrderHistory;
 use App\Models\SheetOrder;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -227,12 +228,72 @@ class DispatchController extends Controller
     
     // Update orders
     $user = $request->user()->loadMissing('country');
-    $updatedCount = CountryAccess::scopeByCountryName(
-        SheetOrder::query()->whereIn('order_no', $orderNumbers),
+    $affectedOrders = CountryAccess::scopeByCountryName(
+        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'agent', 'clearance_status']),
         $user
-    )
-        ->update(['agent' => $validated['agent_name']]);
-    
+    )->get();
+
+    $updatedCount = 0;
+    $history = [];
+    $now = now();
+
+    foreach ($affectedOrders as $order) {
+        $oldAgent = $order->getRawOriginal('agent');
+        $oldClearance = $order->getRawOriginal('clearance_status');
+        $agentChanged = $oldAgent !== $validated['agent_name'];
+
+        $assignDate = $now->toDateString();
+        $oldDeliveryDate = $order->getRawOriginal('delivery_date');
+        $oldDeliveryDate = $oldDeliveryDate !== null ? substr((string) $oldDeliveryDate, 0, 10) : null;
+
+        $order->update([
+            'agent' => $validated['agent_name'],
+            'clearance_status' => 'not_cleared',
+            ...($agentChanged ? ['delivery_date' => $assignDate] : []),
+        ]);
+        $updatedCount++;
+
+        if ($agentChanged) {
+            $history[] = [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'attribute' => 'agent',
+                'old_value' => $oldAgent,
+                'new_value' => $validated['agent_name'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            if ($oldDeliveryDate !== $assignDate) {
+                $history[] = [
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'attribute' => 'delivery_date',
+                    'old_value' => $oldDeliveryDate,
+                    'new_value' => $assignDate,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+
+        if ($oldClearance !== 'not_cleared') {
+            $history[] = [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'attribute' => 'clearance_status',
+                'old_value' => $oldClearance,
+                'new_value' => 'not_cleared',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+    }
+
+    if (count($history) > 0) {
+        OrderHistory::insert($history);
+    }
+
     if ($updatedCount === 0) {
         return redirect()->back()->withErrors(['order_numbers' => 'No matching orders found.']);
     }
@@ -440,7 +501,52 @@ public function bulkDownloadWaybills(Request $request)
             'instructions' => 'nullable|string',
         ]);
 
-        $order->update($validated);
+        $newAgent = $validated['agent'] ?? null;
+
+        if ($newAgent !== null && trim((string) $newAgent) !== '' && $newAgent !== $order->getRawOriginal('agent')) {
+            $now = now();
+            $assignDate = $now->toDateString();
+            $oldAgent = $order->getRawOriginal('agent');
+            $oldClearance = $order->getRawOriginal('clearance_status');
+            $oldDeliveryDate = $order->getRawOriginal('delivery_date');
+            $oldDeliveryDate = $oldDeliveryDate !== null ? substr((string) $oldDeliveryDate, 0, 10) : null;
+
+            $order->update([
+                ...$validated,
+                'delivery_date' => $assignDate,
+                'clearance_status' => 'not_cleared',
+            ]);
+
+            OrderHistory::create([
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'attribute' => 'agent',
+                'old_value' => $oldAgent,
+                'new_value' => $newAgent,
+            ]);
+
+            if ($oldClearance !== 'not_cleared') {
+                OrderHistory::create([
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'attribute' => 'clearance_status',
+                    'old_value' => $oldClearance,
+                    'new_value' => 'not_cleared',
+                ]);
+            }
+
+            if ($oldDeliveryDate !== $assignDate) {
+                OrderHistory::create([
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'attribute' => 'delivery_date',
+                    'old_value' => $oldDeliveryDate,
+                    'new_value' => $assignDate,
+                ]);
+            }
+        } else {
+            $order->update($validated);
+        }
 
         return redirect()->back()->with('success', 'Order updated successfully');
     }

@@ -1,6 +1,6 @@
 import AppLayout from '@/layouts/app-layout';
-import { Head, router } from '@inertiajs/react';
-import { type BreadcrumbItem } from '@/types';
+import { Head, router, usePage } from '@inertiajs/react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
 import { useState } from 'react';
 import {
   AlertTriangle,
@@ -200,8 +200,6 @@ const getStatusTone = (status?: string | null) => {
   return 'bg-slate-100 text-slate-700 border-slate-200';
 };
 
-const formatMoney = (value: number) => `Ksh ${Number(value || 0).toLocaleString()}`;
-
 const compactDate = (value?: string) => {
   if (!value) return '-';
 
@@ -229,6 +227,16 @@ export default function StatsDashboard({
   filters,
 }: StatsPageProps) {
   const [showFilters, setShowFilters] = useState(false);
+
+  const { selectedCurrency } = usePage<SharedData>().props;
+  const currencyCode = selectedCurrency || 'KES';
+  const formatMoney = (value: number) =>
+    new Intl.NumberFormat('en-' + (currencyCode === 'KES' ? 'KE' : currencyCode === 'TZS' ? 'TZ' : currencyCode === 'UGX' ? 'UG' : currencyCode === 'ZMW' ? 'ZM' : 'KE'), {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0));
 
   const handleFilterChange = (key: keyof Filters, value?: string | null) => {
     const nextFilters: Record<string, string> = { ...filters } as Record<string, string>;

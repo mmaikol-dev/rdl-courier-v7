@@ -155,6 +155,67 @@
     scrollbar-color: hsl(var(--muted-foreground)) transparent;
   }
 
+@theme {
+    --animate-float: float 6s ease-in-out infinite;
+    --animate-float-slow: float 9s ease-in-out infinite;
+    --animate-drift: drift 14s ease-in-out infinite;
+    --animate-pulse-ring: pulse-ring 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    --animate-ticker: ticker 1s ease-in-out infinite;
+    --animate-shimmer: shimmer 2.5s linear infinite;
+    --animate-blob: blob 12s ease-in-out infinite;
+    --animate-fade-up: fade-up 0.7s ease-out both;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-14px); }
+}
+
+@keyframes float-slow {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(10px); }
+}
+
+@keyframes drift {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    33% { transform: translate(14px, -18px) rotate(4deg); }
+    66% { transform: translate(-10px, 10px) rotate(-3deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+@keyframes pulse-ring {
+    0% { transform: scale(0.6); opacity: 0.9; }
+    80%, 100% { transform: scale(1.8); opacity: 0; }
+}
+
+@keyframes ticker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+@keyframes blob {
+    0%, 100% { border-radius: 42% 58% 63% 37% / 44% 45% 55% 56%; }
+    33% { border-radius: 58% 42% 37% 63% / 55% 58% 42% 45%; }
+    66% { border-radius: 45% 55% 58% 42% / 40% 45% 55% 60%; }
+}
+
+@keyframes fade-up {
+    0% { opacity: 0; transform: translateY(16px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-float, .animate-float-slow, .animate-drift,
+    .animate-pulse-ring, .animate-blob, .animate-fade-up {
+        animation: none !important;
+    }
+}
+
 @layer base {
     * {
         @apply border-border;

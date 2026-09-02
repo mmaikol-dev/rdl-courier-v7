@@ -23,13 +23,17 @@ import {
     CopyIcon,
     EyeIcon,
     FilterIcon,
+    History,
+    LoaderCircle,
     MessageCircleMoreIcon,
     MicIcon,
     MicOffIcon,
+    PackageSearch,
     PhoneIcon,
     PlusIcon,
     RefreshCwIcon,
     Trash2Icon,
+    X,
 } from 'lucide-react';
 import * as React from 'react';
 import { type DateRange } from 'react-day-picker';
@@ -38,6 +42,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import VoicePanel from '@/components/voice/voice-panel';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // ✅ Move constants outside component to prevent recreation
@@ -74,18 +79,18 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const statusColors: Record<string, string> = {
-    Scheduled: 'text-blue-600 font-semibold',
-    Dispatched: 'text-indigo-600 font-semibold',
-    Followup: 'text-purple-600 font-semibold',
-    Duplicate: 'text-pink-600 font-semibold',
-    Cancelled: 'text-red-600 font-semibold',
-    Pending: 'text-yellow-600 font-semibold',
-    OutofStock: 'text-red-600 font-semibold',
-    Expired: 'text-orange-600 font-semibold',
-    Returned: 'text-rose-600 font-semibold',
-    WrongContact: 'text-gray-600 italic',
-    Delivered: 'text-green-600 font-semibold',
-    'New Orders': 'text-teal-600 font-semibold',
+    Scheduled: 'bg-sky-100 text-sky-700 border-sky-200',
+    Dispatched: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    Followup: 'bg-purple-100 text-purple-700 border-purple-200',
+    Duplicate: 'bg-pink-100 text-pink-700 border-pink-200',
+    Cancelled: 'bg-red-100 text-red-700 border-red-200',
+    Pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    OutofStock: 'bg-orange-100 text-orange-700 border-orange-200',
+    Expired: 'bg-orange-100 text-orange-700 border-orange-200',
+    Returned: 'bg-rose-100 text-rose-700 border-rose-200',
+    WrongContact: 'bg-slate-100 text-slate-700 border-slate-200 italic',
+    Delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'New Orders': 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -150,6 +155,23 @@ interface OrderHistory {
     user: { name: string } | null;
 }
 
+const attributeLabels: Record<string, string> = {
+    cc_email: 'CC Email',
+    order_no: 'Order No',
+    client_name: 'Client',
+    quantity: 'Quantity',
+    amount: 'Amount',
+    product_name: 'Product',
+    address: 'Address',
+    phone: 'Phone',
+    alt_no: 'Alt Number',
+    status: 'Status',
+    delivery_date: 'Delivery Date',
+    instructions: 'Instructions',
+    code: 'Code',
+    merchant: 'Merchant',
+};
+
 interface PaginationLinkData {
     url: string | null;
     label: string;
@@ -183,7 +205,7 @@ const TableRowMemo = React.memo(
         const isDeleteLoading = loadingCells[`delete-${order.id}`];
 
         return (
-            <TableRow className="hover:bg-muted/10">
+            <TableRow className="transition-colors hover:bg-muted/50">
                 {COLUMNS.map((col) => {
                     const key = `${order.id}-${col}`;
                     const isSavingCell = loadingCells[`save-${key}`];
@@ -202,19 +224,36 @@ const TableRowMemo = React.memo(
                     // ✅ Apply green color to all columns if the row has a code value
                     const hasCode = order.code && order.code.trim() !== '';
 
-                    const colorClass = col === 'status' ? statusColors[value] || '' : hasCode ? 'text-green-600 font-semibold' : '';
+                    const colorClass = col === 'status' ? '' : hasCode ? 'text-green-700 font-semibold' : '';
+
+                    const baseCellClass = cn(
+                        'max-w-[130px] min-w-[130px] whitespace-nowrap cursor-pointer truncate px-3 py-2',
+                        highlighted[key] ? 'bg-green-200' : '',
+                        colorClass,
+                    );
+
+                    const cellContent = col === 'status' ? (
+                        <span className={cn(
+                            'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
+                            statusColors[value] || 'bg-slate-100 text-slate-700 border-slate-200',
+                        )}>
+                            {value}
+                        </span>
+                    ) : undefined;
 
                     return (
                         <TableCell
                             key={col}
-                            className={`max-w-[130px] min-w-[130px] cursor-pointer truncate ${highlighted[key] ? 'bg-green-200' : ''} ${colorClass}`}
+                            className={baseCellClass}
                             onClick={() => onEdit(order, col)}
                             title={value}
                         >
                             {isSavingCell ? (
                                 <div className="flex w-full items-center justify-center">
-                                    <Spinner className="text-black" />
+                                    <Spinner className="text-muted-foreground" />
                                 </div>
+                            ) : cellContent ? (
+                                cellContent
                             ) : canCopyFromColumn ? (
                                 <div className="flex items-center justify-between gap-1">
                                     <span className="truncate">{value}</span>
@@ -248,7 +287,7 @@ const TableRowMemo = React.memo(
                     );
                 })}
 
-                <TableCell className="sticky right-0 z-10 flex justify-end space-x-1 bg-background text-right">
+                <TableCell className="sticky right-0 z-10 flex justify-end space-x-1 bg-card pl-2 pr-1 text-right shadow-[-2px_0_4px_-3px_rgba(0,0,0,0.15)]">
                     {/* Copy Row */}
                     <Button
                         className="flex h-5 w-5 items-center justify-center p-0"
@@ -372,6 +411,7 @@ export default function Index() {
     const [highlighted, setHighlighted] = React.useState<Record<string, boolean>>({});
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
     const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
+    const [historyLoading, setHistoryLoading] = React.useState(false);
     const [createModalOpen, setCreateModalOpen] = React.useState(false);
     const [createMerchantOpen, setCreateMerchantOpen] = React.useState(false);
     const [newOrder, setNewOrder] = React.useState<Partial<SheetOrder>>({});
@@ -521,16 +561,19 @@ export default function Index() {
     const handleHistory = React.useCallback(
         async (orderId: number, orderNo: string) => {
             setLoadingCell(`history-${orderId}`, true);
+            setHistoryLoading(true);
+            setSelectedOrderNo(orderNo);
+            setHistoryModalOpen(true);
+            setSelectedHistories([]);
             try {
                 const res = await fetch(`/sheetorders/${orderId}/histories`);
                 const data = await res.json();
                 setSelectedHistories(data.histories || []);
-                setSelectedOrderNo(orderNo);
-                setHistoryModalOpen(true);
             } catch (error) {
                 console.error('Failed to fetch histories', error);
             } finally {
                 setLoadingCell(`history-${orderId}`, false);
+                setHistoryLoading(false);
             }
         },
         [setLoadingCell],
@@ -813,42 +856,55 @@ export default function Index() {
                 </div>
             </div>
 
-            <div className="rounded-lg border">
+            <div className="rounded-xl border bg-card shadow-sm">
                 <div className="scrollbar-custom overflow-x-auto">
                     <div className="inline-block min-w-full">
                         <div className="max-h-[600px] overflow-y-auto">
-                            <Table className="min-w-full border border-gray-200">
-                                <TableHeader className="sticky top-0 z-10 bg-background">
-                                    <TableRow className="h-10">
+                            <Table className="min-w-full">
+                                <TableHeader className="sticky top-0 z-10 bg-muted/60">
+                                    <TableRow className="h-11 hover:bg-muted/60">
                                         {COLUMNS.map((col) => (
                                             <TableHead
                                                 key={col}
-                                                className="min-w-[130px] truncate border border-gray-300 text-sm font-medium"
-                                                title={col}
+                                                className="min-w-[130px] whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                                                title={attributeLabels[col] ?? col}
                                             >
-                                                {col}
+                                                {attributeLabels[col] ?? col}
                                             </TableHead>
                                         ))}
-                                        <TableHead className="sticky right-0 z-20 min-w-[40px] border border-gray-300 bg-background text-sm font-medium">
+                                        <TableHead className="sticky right-0 z-20 min-w-[40px] whitespace-nowrap bg-muted/60 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                             Actions
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
 
                                 <TableBody>
-                                    {localOrders.map((order) => (
-                                        <TableRowMemo
-                                            key={order.id}
-                                            order={order}
-                                            highlighted={highlighted}
-                                            onEdit={handleEdit}
-                                            onHistory={handleHistory}
-                                            onWhatsapp={handleWhatsapp}
-                                            canDelete={userPermissions.canDelete}
-                                            onDelete={handleDeleteOrder}
-                                            loadingCells={loadingCells}
-                                        />
-                                    ))}
+                                    {localOrders.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={COLUMNS.length + 1} className="h-40 text-center text-muted-foreground">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+                                                        <PackageSearch className="h-6 w-6 text-muted-foreground/60" />
+                                                    </div>
+                                                    <span className="font-medium">No sheet orders found</span>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        localOrders.map((order) => (
+                                            <TableRowMemo
+                                                key={order.id}
+                                                order={order}
+                                                highlighted={highlighted}
+                                                onEdit={handleEdit}
+                                                onHistory={handleHistory}
+                                                onWhatsapp={handleWhatsapp}
+                                                canDelete={userPermissions.canDelete}
+                                                onDelete={handleDeleteOrder}
+                                                loadingCells={loadingCells}
+                                            />
+                                        ))
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -1210,29 +1266,49 @@ export default function Index() {
             {/* ✅ History Modal */}
             {historyModalOpen && (
                 <Dialog open={historyModalOpen} onOpenChange={setHistoryModalOpen}>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[80vh] flex flex-col">
                         <DialogHeader>
                             <DialogTitle>Edit History for Order #{selectedOrderNo}</DialogTitle>
-                            <DialogDescription>View all changes made to this order.</DialogDescription>
                         </DialogHeader>
-                        <div className="max-h-[500px] space-y-2 overflow-y-auto p-2">
-                            {selectedHistories.length > 0 ? (
-                                selectedHistories.map((history) => (
-                                    <div key={history.id} className="border-b py-2">
-                                        <div className="text-sm font-medium">{history.attribute}</div>
-                                        <div className="text-xs text-muted-foreground">
-                                            <span className="font-semibold">Old:</span> {history.old_value} <br />
-                                            <span className="font-semibold">New:</span> {history.new_value} <br />
-                                            <span className="text-[10px]">
-                                                By {history.user?.name ?? 'System (C2B Callback)'} on {new Date(history.created_at).toLocaleString()}
+
+                        {historyLoading ? (
+                            <div className="flex h-48 items-center justify-center">
+                                <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : selectedHistories.length > 0 ? (
+                            <div className="scrollbar-custom max-h-[55vh] space-y-3 overflow-y-auto pr-2">
+                                {selectedHistories.map((history) => (
+                                    <div key={history.id} className="rounded-lg border p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-sm font-semibold">
+                                                {attributeLabels[history.attribute] ?? history.attribute}
+                                            </span>
+                                            <span className="text-[10px] text-muted-foreground">
+                                                {new Date(history.created_at).toLocaleString()}
                                             </span>
                                         </div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                            <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-muted-foreground line-through">
+                                                {history.old_value || '(empty)'}
+                                            </span>
+                                            <X className="h-3 w-3 text-muted-foreground" />
+                                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 font-medium text-emerald-700">
+                                                {history.new_value || '(empty)'}
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-[10px] text-muted-foreground">
+                                            By {history.user?.name ?? 'System (C2B Callback)'} on {new Date(history.created_at).toLocaleDateString()}{' '}
+                                            at {new Date(history.created_at).toLocaleTimeString()}
+                                        </p>
                                     </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-muted-foreground">No edit history for this order.</p>
-                            )}
-                        </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+                                <History className="h-8 w-8 text-muted-foreground/50" />
+                                <span className="text-sm">No edit history for this order.</span>
+                            </div>
+                        )}
                     </DialogContent>
                 </Dialog>
             )}

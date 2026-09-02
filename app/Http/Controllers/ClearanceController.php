@@ -53,6 +53,7 @@ class ClearanceController extends Controller
                 'merchant' => $order->merchant,
                 'code' => $order->code,
                 'agent' => $order->agent,
+                'clearance_status' => $order->clearance_status,
                 'updated_at' => $order->updated_at,
             ];
         });

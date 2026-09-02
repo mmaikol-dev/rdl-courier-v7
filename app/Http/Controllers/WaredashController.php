@@ -63,12 +63,6 @@ class WaredashController extends Controller
             ->when($isMerchant, fn ($q) => $q->where('merchant', $user->name))
             ->get();
 
-        // Scans grouped by operation
-        $scansByOperation = Barcode::select('operation_type', DB::raw('COUNT(*) as total'))
-            ->whereIn('product_id', $scopedProductIds)
-            ->groupBy('operation_type')
-            ->get();
-
         // Last 10 scans
         $recentScans = Barcode::whereIn('product_id', $scopedProductIds)
             ->latest()
@@ -121,7 +115,6 @@ class WaredashController extends Controller
             'nearDepletedProducts' => $nearDepletedProducts,
 
             'transfersByRegion' => $transfersByRegion,
-            'scansByOperation'  => $scansByOperation,
             'recentScans'       => $recentScans,
             'products'          => $products,
         ]);

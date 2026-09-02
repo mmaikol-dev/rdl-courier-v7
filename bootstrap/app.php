@@ -22,6 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
+        $middleware->validateCsrfTokens(except: [
+            'dispatch/bulk-download-waybills',
+            'dispatch/bulk-assign',
+        ]);
+
         $middleware->web(append: [
             CheckSidebarPageAccess::class,
             HandleAppearance::class,

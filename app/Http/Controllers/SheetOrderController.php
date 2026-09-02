@@ -247,6 +247,7 @@ class SheetOrderController extends Controller
             'cc_email' => 'string|max:255',
             'status' => 'string|max:50',
             'instructions' => 'nullable|string',
+            'clearance_status' => 'string|in:cleared,not_cleared',
         ];
 
         $validated = $request->validate([

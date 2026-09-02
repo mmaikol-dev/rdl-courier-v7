@@ -33,9 +33,9 @@ import {
     Printer,
     Trash2,
     Users,
-    XCircle,
 } from 'lucide-react';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -138,12 +138,6 @@ export default function DispatchView() {
     const [updatingAgentId, setUpdatingAgentId] = React.useState<number | null>(null);
     const [togglingAgentId, setTogglingAgentId] = React.useState<number | null>(null);
 
-    // Success/Error modals
-    const [showSuccessModal, setShowSuccessModal] = React.useState(false);
-    const [showErrorModal, setShowErrorModal] = React.useState(false);
-    const [successMessage, setSuccessMessage] = React.useState('');
-    const [errorMessage, setErrorMessage] = React.useState('');
-
     // Restrict merchants
     const restricted = userRole === 'merchant' || readOnly;
 
@@ -232,10 +226,9 @@ export default function DispatchView() {
         setTimeout(() => {
             setIsBulkAssigning(false);
             setShowBulkAssignModal(false);
-            setSuccessMessage(`Successfully assigned orders to ${bulkSelectedAgent}. PDF is downloading...`);
-            setShowSuccessModal(true);
             setBulkOrderNumbers('');
             setBulkSelectedAgent('');
+            toast.success(`Successfully assigned orders to ${bulkSelectedAgent}. PDF is downloading...`);
 
             // Reload the page data to show updated assignments
             router.reload({ only: ['orders'] });
@@ -250,12 +243,12 @@ export default function DispatchView() {
         const hasFilters = bulkDownloadAgent !== 'all' || bulkDownloadDateRange.from;
 
         if (!hasOrderNumbers && !hasFilters) {
-            setErrorMessage('Please enter order numbers or select at least one filter (agent or date range).');
-            setShowErrorModal(true);
+            toast.error('Please enter order numbers or select at least one filter (agent or date range).');
             return;
         }
 
         setIsBulkDownloading(true);
+        toast.success('Preparing waysheet download...');
 
         const form = document.createElement('form');
         form.method = 'POST';
@@ -360,12 +353,10 @@ export default function DispatchView() {
         router.put(`/sheet_orders/${editingOrder.id}`, editValues, {
             onSuccess: () => {
                 setEditingOrder(null);
-                setSuccessMessage('Order updated successfully!');
-                setShowSuccessModal(true);
+                toast.success('Order updated successfully!');
             },
             onError: (errors) => {
-                setErrorMessage('Failed to update order. Please try again.');
-                setShowErrorModal(true);
+                toast.error('Failed to update order. Please try again.');
             },
             onFinish: () => setIsUpdating(false),
         });
@@ -378,12 +369,10 @@ export default function DispatchView() {
         router.delete(`/sheet_orders/${deletingOrder.id}`, {
             onSuccess: () => {
                 setDeletingOrder(null);
-                setSuccessMessage('Order deleted successfully!');
-                setShowSuccessModal(true);
+                toast.success('Order deleted successfully!');
             },
             onError: (errors) => {
-                setErrorMessage('Failed to delete order. Please try again.');
-                setShowErrorModal(true);
+                toast.error('Failed to delete order. Please try again.');
             },
             onFinish: () => setIsDeleting(false),
         });
@@ -392,8 +381,19 @@ export default function DispatchView() {
     const handleDownload = (orderId: number) => {
         if (readOnly) return handleRestrictedAction();
         setIsDownloading(orderId);
-        window.location.href = `/waybill/download/${orderId}`;
-        setTimeout(() => setIsDownloading(null), 2000);
+        toast.success('Preparing waybill download...');
+
+        // Use a hidden iframe pointed at the GET download URL so the current
+        // page does not navigate away. This keeps the spinner and toast visible
+        // while the file downloads in the background.
+        const frame = document.createElement('iframe');
+        frame.style.display = 'none';
+        frame.src = `/waybill/download/${orderId}`;
+        document.body.appendChild(frame);
+        setTimeout(() => {
+            document.body.removeChild(frame);
+            setIsDownloading(null);
+        }, 2500);
     };
 
     const handleAgentChange = (orderId: number, agentName: string | null) => {
@@ -405,12 +405,10 @@ export default function DispatchView() {
             {
                 preserveState: true,
                 onSuccess: () => {
-                    setSuccessMessage(`Agent ${agentName ? 'assigned' : 'removed'} successfully!`);
-                    setShowSuccessModal(true);
+                    toast.success(`Agent ${agentName ? 'assigned' : 'removed'} successfully!`);
                 },
                 onError: (errors) => {
-                    setErrorMessage('Failed to update agent. Please try again.');
-                    setShowErrorModal(true);
+                    toast.error('Failed to update agent. Please try again.');
                 },
                 onFinish: () => setUpdatingAgentId(null),
             },
@@ -428,12 +426,10 @@ export default function DispatchView() {
                 {
                     preserveState: true,
                     onSuccess: () => {
-                        setSuccessMessage(`Agent unassigned from order ${order.order_no} successfully!`);
-                        setShowSuccessModal(true);
+                        toast.success(`Agent unassigned from order ${order.order_no} successfully!`);
                     },
                     onError: (errors) => {
-                        setErrorMessage('Failed to unassign agent. Please try again.');
-                        setShowErrorModal(true);
+                        toast.error('Failed to unassign agent. Please try again.');
                     },
                     onFinish: () => setTogglingAgentId(null),
                 },
@@ -581,45 +577,48 @@ export default function DispatchView() {
                             </div>
                         ) : (
                             <div className="overflow-x-auto rounded-lg border">
-                                <Table>
+                                <Table className="table-fixed">
                                     <TableHeader>
-                                        <TableRow className="bg-muted/50">
-                                            <TableHead className="w-[120px] font-semibold">Order No</TableHead>
-                                            <TableHead className="w-[150px] font-semibold">Client</TableHead>
-                                            <TableHead className="w-[120px] font-semibold">Product</TableHead>
-                                            <TableHead className="w-[80px] text-right font-semibold">Qty</TableHead>
-                                            <TableHead className="w-[100px] text-right font-semibold">Amount</TableHead>
-                                            <TableHead className="w-[120px] font-semibold">Phone</TableHead>
-                                            <TableHead className="w-[180px] font-semibold">Agent</TableHead>
-                                            <TableHead className="w-[80px] font-semibold">Active</TableHead>
-                                            <TableHead className="w-[120px] font-semibold">Status</TableHead>
-                                            <TableHead className="w-[140px] text-right font-semibold">Actions</TableHead>
+                                        <TableRow className="bg-muted/60 hover:bg-muted/60">
+                                            <TableHead className="w-[130px]">Order No</TableHead>
+                                            <TableHead className="w-[160px]">Client</TableHead>
+                                            <TableHead className="w-[180px]">Product</TableHead>
+                                            <TableHead className="w-[70px] text-right">Qty</TableHead>
+                                            <TableHead className="w-[110px] text-right">Amount</TableHead>
+                                            <TableHead className="w-[130px]">Phone</TableHead>
+                                            <TableHead className="w-[170px]">Agent</TableHead>
+                                            <TableHead className="w-[70px]">Active</TableHead>
+                                            <TableHead className="w-[110px]">Status</TableHead>
+                                            <TableHead className="w-[130px] text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {orders.data.map((order: SheetOrder) => (
                                             <TableRow
                                                 key={order.id}
-                                                className={cn(order.confirmed === 0 ? 'bg-red-100 hover:!bg-red-200' : 'hover:bg-muted/30')}
-                                                style={order.confirmed === 0 ? { backgroundColor: '#fee2e2' } : undefined}
+                                                className={cn(
+                                                    'transition-colors',
+                                                    order.confirmed === 0 &&
+                                                        'bg-destructive/10 hover:bg-destructive/15 data-[state=selected]:bg-destructive/15',
+                                                )}
                                             >
-                                                <TableCell className="w-[120px] truncate font-medium" title={order.order_no}>
+                                                <TableCell className="truncate font-mono text-xs font-medium" title={order.order_no}>
                                                     {order.order_no}
                                                 </TableCell>
-                                                <TableCell className="w-[120px] truncate" title={order.client_name}>
+                                                <TableCell className="truncate font-medium" title={order.client_name}>
                                                     {order.client_name}
                                                 </TableCell>
-                                                <TableCell className="w-[120px] truncate" title={order.product_name}>
+                                                <TableCell className="truncate" title={order.product_name}>
                                                     {order.product_name}
                                                 </TableCell>
-                                                <TableCell className="w-[80px] text-right">{order.quantity}</TableCell>
-                                                <TableCell className="w-[100px] truncate text-right font-medium" title={order.amount}>
+                                                <TableCell className="text-right font-mono tabular-nums">{order.quantity}</TableCell>
+                                                <TableCell className="truncate text-right font-mono tabular-nums" title={order.amount}>
                                                     {order.amount}
                                                 </TableCell>
-                                                <TableCell className="w-[120px] truncate" title={order.phone}>
+                                                <TableCell className="truncate font-mono text-xs" title={order.phone}>
                                                     {order.phone}
                                                 </TableCell>
-                                                <TableCell className="w-[180px]">
+                                                <TableCell>
                                                     <div className="relative">
                                                         <Select
                                                             value={order.agent || 'none'}
@@ -648,7 +647,7 @@ export default function DispatchView() {
                                                         )}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="w-[80px]">
+                                                <TableCell>
                                                     {order.agent ? (
                                                         <div className="flex items-center justify-center">
                                                             {togglingAgentId === order.id ? (
@@ -664,59 +663,61 @@ export default function DispatchView() {
                                                         </div>
                                                     ) : (
                                                         <div className="flex items-center justify-center">
-                                                            <span className="text-xs text-muted-foreground">N/A</span>
+                                                            <span className="text-xs text-muted-foreground">—</span>
                                                         </div>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="w-[120px]">
-                                                    <Badge
-                                                        variant={order.status === 'scheduled' ? 'secondary' : 'default'}
-                                                        className={cn(
-                                                            'whitespace-nowrap',
-                                                            order.status === 'scheduled'
-                                                                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                                                                : 'bg-green-100 text-green-800 hover:bg-green-200',
-                                                        )}
-                                                    >
-                                                        {order.status === 'scheduled' ? '⏳ Scheduled' : '✅ Dispatched'}
-                                                    </Badge>
+                                                <TableCell>
+                                                    {order.status === 'scheduled' ? (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="whitespace-nowrap border-yellow-300 bg-yellow-50 text-yellow-800"
+                                                        >
+                                                            Scheduled
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge className="whitespace-nowrap border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
+                                                            Dispatched
+                                                        </Badge>
+                                                    )}
                                                 </TableCell>
 
-                                                <TableCell className="w-[140px] text-right">
-                                                    <div className="flex justify-end gap-1">
+                                                <TableCell className="text-right">
+                                                    <div className="flex items-center justify-end gap-0.5">
                                                         <Button
                                                             size="sm"
-                                                            variant="outline"
+                                                            variant="ghost"
                                                             onClick={() => handleEditOpen(order)}
-                                                            className="h-8 w-8 p-0"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                                                             title="Edit order"
                                                             disabled={readOnly}
                                                         >
-                                                            <Edit size={14} />
+                                                            <Edit size={15} />
                                                         </Button>
                                                         <Button
                                                             size="sm"
-                                                            variant="destructive"
-                                                            onClick={() => handleDeleteOpen(order)}
-                                                            className="h-8 w-8 p-0"
-                                                            title="Delete order"
-                                                            disabled={readOnly}
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="secondary"
+                                                            variant="ghost"
                                                             onClick={() => handleDownload(order.id)}
-                                                            className="h-8 w-8 p-0"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                                                             title="Download waybill"
                                                             disabled={isDownloading === order.id || readOnly}
                                                         >
                                                             {isDownloading === order.id ? (
-                                                                <Loader2 size={14} className="animate-spin" />
+                                                                <Loader2 size={15} className="animate-spin" />
                                                             ) : (
-                                                                <FileText size={14} />
+                                                                <FileText size={15} />
                                                             )}
+                                                        </Button>
+                                                        <div className="mx-1 h-4 w-px bg-border" />
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleDeleteOpen(order)}
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                            title="Delete order"
+                                                            disabled={readOnly}
+                                                        >
+                                                            <Trash2 size={15} />
                                                         </Button>
                                                     </div>
                                                 </TableCell>
@@ -762,50 +763,6 @@ export default function DispatchView() {
                     </div>
                 )}
             </div>
-
-            {/* Success Modal */}
-            <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
-                <DialogContent className="max-h-[85vh] max-w-sm overflow-y-auto">
-                    <DialogHeader>
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="rounded-full bg-green-100 p-3">
-                                <CheckCircle2 className="h-8 w-8 text-green-600" />
-                            </div>
-                            <DialogTitle className="text-center text-lg">Success!</DialogTitle>
-                        </div>
-                    </DialogHeader>
-                    <div className="py-2 text-center">
-                        <p className="text-sm text-muted-foreground">{successMessage}</p>
-                    </div>
-                    <DialogFooter className="sm:justify-center">
-                        <Button onClick={() => setShowSuccessModal(false)} className="w-full sm:w-auto">
-                            OK
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Error Modal */}
-            <Dialog open={showErrorModal} onOpenChange={setShowErrorModal}>
-                <DialogContent className="max-h-[85vh] max-w-sm overflow-y-auto">
-                    <DialogHeader>
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="rounded-full bg-red-100 p-3">
-                                <XCircle className="h-8 w-8 text-red-600" />
-                            </div>
-                            <DialogTitle className="text-center text-lg">Error</DialogTitle>
-                        </div>
-                    </DialogHeader>
-                    <div className="py-2 text-center">
-                        <p className="text-sm text-muted-foreground">{errorMessage}</p>
-                    </div>
-                    <DialogFooter className="sm:justify-center">
-                        <Button onClick={() => setShowErrorModal(false)} variant="destructive" className="w-full sm:w-auto">
-                            Close
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             {/* Print Agent Orders Modal */}
             <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>

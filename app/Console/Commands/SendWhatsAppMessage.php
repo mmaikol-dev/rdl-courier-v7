@@ -38,7 +38,7 @@ class SendWhatsAppMessage extends Command
             '254' => '+254 740 801 187',
             '255' => '+255 614 924 382',
             '256' => '+256 701 600 293',
-            '260' => '+260 740 801 187',
+            '260' => '+260 973 302 105',
             default => '+254 740 801 187',
         };
     }
@@ -91,7 +91,7 @@ class SendWhatsAppMessage extends Command
                 }
                 if (! $phone) {
                     Log::error("No valid phone for order {$orderNo}. Skipping.");
-                    $this->error("Skipping order {$orderNo} – no phone.");
+                    $this->error("Skipping order {$orderNo} â€“ no phone.");
                     $failed++;
                     continue;
                 }
@@ -116,7 +116,7 @@ class SendWhatsAppMessage extends Command
                 ]);
 
                 // Log to whatsapp table
-                $previewBody = "Hello {$clientName},\n\nYour order *{$orderNo}* for *{$productName}* ({$quantity} pcs), valued at *{$amount}*, is scheduled for delivery *today*.\n\nOur delivery team will be in touch shortly. Please ensure your phone is available and someone is present to receive the package.\n\nIf you have any questions or need to make changes, contact us at *{$this->getContactForCountry($countryCode)}*.\n\nThank you for choosing *RealDeal Logistics*! 📦";
+                $previewBody = "Hello {$clientName},\n\nYour order *{$orderNo}* for *{$productName}* ({$quantity} pcs), valued at *{$amount}*, is scheduled for delivery *today*.\n\nOur delivery team will be in touch shortly. Please ensure your phone is available and someone is present to receive the package.\n\nIf you have any questions or need to make changes, contact us at *{$this->getContactForCountry($countryCode)}*.\n\nThank you for choosing *RealDeal Logistics*! ðŸ“¦";
                 Whatsapp::create([
                     'to' => $result['to'],
                     'client_name' => $clientName,
@@ -139,7 +139,7 @@ class SendWhatsAppMessage extends Command
 
             } catch (Exception $e) {
                 Log::error("Failed for order {$order->order_no}: ".$e->getMessage());
-                $this->error("Failed: {$order->order_no} – ".$e->getMessage());
+                $this->error("Failed: {$order->order_no} â€“ ".$e->getMessage());
                 $failed++;
 
                 Whatsapp::create([
@@ -147,7 +147,7 @@ class SendWhatsAppMessage extends Command
                     'client_name' => $order->client_name ?? 'Client',
                     'store_name' => $order->country ?? 'unknown',
                     'cc_agents' => $order->cc_email ?? null,
-                    'message' => "Order {$order->order_no} — template send failed.",
+                    'message' => "Order {$order->order_no} â€” template send failed.",
                     'status' => 'failed',
                     'sid' => null,
                 ]);

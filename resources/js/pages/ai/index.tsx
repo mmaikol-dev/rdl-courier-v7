@@ -53,7 +53,7 @@ interface OrderDraft {
 
 interface MerchantData {
   sheet_id: string | null;
-  sheet_names: string[];
+  tabs: string[];
   countries: string[];
   store_name: string | null;
 }
@@ -149,7 +149,7 @@ export default function RdlAi() {
   }, [messages, pendingOrders]);
 
   const merchantOptions = useMemo(() => Object.keys(merchants ?? {}).sort(), [merchants]);
-  const sheetNames = useMemo(() => merchants?.[selectedMerchant]?.sheet_names ?? [], [merchants, selectedMerchant]);
+  const sheetNames = useMemo(() => merchants?.[selectedMerchant]?.tabs ?? [], [merchants, selectedMerchant]);
   const merchantCountries = useMemo(() => merchants?.[selectedMerchant]?.countries ?? [], [merchants, selectedMerchant]);
 
   // Group extracted orders by product name (normalized)
@@ -391,7 +391,7 @@ export default function RdlAi() {
       return;
     }
     if (orderGroups.some((_, i) => !groupSheets[i])) {
-      toast.error("Please pick a sheet for every product group");
+      toast.error("Please pick a tab for every product group");
       return;
     }
 
@@ -682,7 +682,7 @@ export default function RdlAi() {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Orders are grouped by product. Pick the merchant, then choose which sheet each group goes to.
+                  Orders are grouped by product. Pick the merchant, then choose which tab each group goes to.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -706,7 +706,7 @@ export default function RdlAi() {
                                 selectedMerchant
                                   ? isSuggesting
                                     ? "Suggesting..."
-                                    : "Select sheet"
+                                    : "Select tab"
                                   : "Pick merchant first"
                               }
                             />
