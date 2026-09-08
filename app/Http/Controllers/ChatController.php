@@ -7,6 +7,7 @@ use App\Models\Whatsapp;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 
@@ -217,6 +218,51 @@ class ChatController extends Controller
     }
 
     
+
+    /**
+     * Serve a stored WhatsApp media file.
+     */
+    public function serveMedia(string $filename)
+    {
+        $path = "whatsapp-media/{$filename}";
+
+        if (! Storage::exists($path)) {
+            return response()->json(['error' => 'File not found'], 404);
+        }
+
+        $mimeTypes = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'mp4' => 'video/mp4',
+            '3gp' => 'video/3gpp',
+            'mp3' => 'audio/mpeg',
+            'ogg' => 'audio/ogg',
+            'amr' => 'audio/amr',
+            'aac' => 'audio/aac',
+            'm4a' => 'audio/mp4',
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls' => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'ppt' => 'application/vnd.ms-powerpoint',
+            'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'txt' => 'text/plain',
+        ];
+
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $contentType = $mimeTypes[$ext] ?? 'application/octet-stream';
+
+        $headers = [
+            'Content-Type' => $contentType,
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            'Cache-Control' => 'public, max-age=86400',
+        ];
+
+        return Storage::download($path, $filename, $headers);
+    }
 
     /**
      * Remove the specified resource from storage.

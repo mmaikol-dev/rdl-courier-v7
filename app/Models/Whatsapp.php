@@ -20,6 +20,10 @@ class Whatsapp extends Model
         'status',
         'sid',
         'type',
+        'media_url',
+        'media_type',
+        'mime_type',
+        'media_path',
     ];
 }
 

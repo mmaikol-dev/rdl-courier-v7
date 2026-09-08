@@ -8,6 +8,7 @@ use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\CallcenterController;
 use App\Http\Controllers\WhatsappController;
 use App\Http\Controllers\MetaWebhookController;
+use App\Http\Controllers\ChatController;
 
 
 Route::post('/c2b/confirmation', [C2BTransactionController::class, 'confirmTransaction']);
@@ -20,6 +21,7 @@ Route::post('/end-call', [CallcenterController::class, 'endCall']);
 
 Route::post('/callcenter/make-call', [CallcenterController::class, 'makeCall']);
 Route::post('/whatsapp/send-chat', [WhatsappController::class, 'sendChat'])->name('whatsapp.sendChat');
+Route::get('/whatsapp/media/{filename}', [ChatController::class, 'serveMedia'])->name('whatsapp.media');
 // ============================================
 // WasenderAPI Webhook Routes
 // ============================================

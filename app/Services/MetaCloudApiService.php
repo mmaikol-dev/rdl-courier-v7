@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class MetaCloudApiService
 {
@@ -120,6 +121,114 @@ class MetaCloudApiService
     public function formatForStorage(string $phoneNumber, ?string $countryCode = '254'): ?string
     {
         return $this->formatPhone($phoneNumber, $countryCode);
+    }
+
+    // -----------------------------------------------------------------
+    //  Media helpers
+    // -----------------------------------------------------------------
+
+    /**
+     * Retrieve the download URL and metadata for a media ID.
+     *
+     * @return array{url: string, mime_type: string, file_size: int, id: string}
+     */
+    public function getMediaUrl(string $mediaId): array
+    {
+        $url = "https://graph.facebook.com/{$this->apiVersion}/{$mediaId}";
+
+        $response = Http::withToken($this->accessToken)->get($url);
+
+        if ($response->failed()) {
+            Log::error('Meta Cloud API: failed to get media URL', [
+                'media_id' => $mediaId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            throw new \RuntimeException("Failed to get media URL for media ID: {$mediaId}");
+        }
+
+        $payload = $response->json();
+
+        Log::info('Meta Cloud API: media URL retrieved', [
+            'media_id' => $mediaId,
+            'mime_type' => $payload['mime_type'] ?? 'unknown',
+            'file_size' => $payload['file_size'] ?? 0,
+        ]);
+
+        return [
+            'url' => $payload['url'] ?? '',
+            'mime_type' => $payload['mime_type'] ?? 'application/octet-stream',
+            'file_size' => $payload['file_size'] ?? 0,
+            'id' => $payload['id'] ?? $mediaId,
+        ];
+    }
+
+    /**
+     * Download media binary from a URL and save to local storage.
+     *
+     * @return array{media_path: string, mime_type: string}
+     */
+    public function downloadMedia(string $mediaUrl, string $mimeType = 'application/octet-stream'): array
+    {
+        $response = Http::withToken($this->accessToken)->get($mediaUrl);
+
+        if ($response->failed()) {
+            Log::error('Meta Cloud API: failed to download media', [
+                'url' => $mediaUrl,
+                'status' => $response->status(),
+            ]);
+
+            throw new \RuntimeException("Failed to download media from URL: {$mediaUrl}");
+        }
+
+        $extension = $this->getExtensionForMime($mimeType);
+        $filename = Str::uuid().'.'.$extension;
+        $storagePath = "whatsapp-media/{$filename}";
+
+        \Storage::put($storagePath, $response->body());
+
+        Log::info('Meta Cloud API: media downloaded and saved', [
+            'path' => $storagePath,
+            'mime_type' => $mimeType,
+            'size' => strlen($response->body()),
+        ]);
+
+        return [
+            'media_path' => $storagePath,
+            'mime_type' => $mimeType,
+        ];
+    }
+
+    /**
+     * Map a MIME type to a file extension.
+     */
+    public function getExtensionForMime(string $mimeType): string
+    {
+        $map = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'video/mp4' => 'mp4',
+            'video/3gpp' => '3gp',
+            'audio/mpeg' => 'mp3',
+            'audio/ogg' => 'ogg',
+            'audio/amr' => 'amr',
+            'audio/aac' => 'aac',
+            'audio/mp4' => 'm4a',
+            'application/pdf' => 'pdf',
+            'application/msword' => 'doc',
+            'application/vnd.ms-excel' => 'xls',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+            'application/vnd.ms-powerpoint' => 'ppt',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
+            'text/plain' => 'txt',
+        ];
+
+        $base = explode(';', $mimeType)[0] ?? $mimeType;
+
+        return $map[$base] ?? $map[$mimeType] ?? 'bin';
     }
 
     // -----------------------------------------------------------------

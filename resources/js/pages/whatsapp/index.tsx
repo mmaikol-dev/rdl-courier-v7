@@ -48,13 +48,17 @@ interface Chat {
   to: string;
   client_name: string;
   store_name: string;
-  cc_agents?: string; // 👈 Added cc_agents field
-  status: string; // sent | delivered | read
+  cc_agents?: string;
+  status: string;
   sid: string;
   message: string;
   created_at: string;
   updated_at: string;
-  type?: string; // 1 for green dot
+  type?: string;
+  media_url?: string;
+  media_type?: string;
+  mime_type?: string;
+  media_path?: string;
 }
 
 interface Conversation {
@@ -83,6 +87,7 @@ export default function WhatsAppPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Merge incoming conversations from polling into existing state
@@ -369,10 +374,80 @@ export default function WhatsAppPage() {
     return conversation.messages.filter(msg => msg.type === "1").length;
   };
 
-  const renderMessageContent = (text: string) => {
-    const trimmed = text.trim();
-    if (trimmed.startsWith("[Image received")) {
-      const caption = trimmed.replace("[Image received]", "").replace(/^:?\s*/, "");
+  const renderMessageContent = (msg: Chat) => {
+    const text = msg.message.trim();
+    const hasMedia = !!msg.media_path;
+    const mediaUrl = msg.media_path ? `/api/whatsapp/media/${msg.media_path.split('/').pop()}` : null;
+
+    if (hasMedia && msg.media_type === 'image' && mediaUrl) {
+      const caption = text.replace("[Image received]", "").replace(/^:?\s*/, "");
+      return (
+        <div className="space-y-1">
+          <img
+            src={mediaUrl}
+            alt={caption || "Image"}
+            className="rounded-lg max-w-[280px] max-h-[300px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setPreviewImage(mediaUrl)}
+            loading="lazy"
+          />
+          {caption && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{caption}</p>}
+        </div>
+      );
+    }
+
+    if (hasMedia && msg.media_type === 'audio' && mediaUrl) {
+      return (
+        <div className="flex items-center gap-2 min-w-[200px]">
+          <Music className="w-5 h-5 shrink-0" />
+          <audio controls src={mediaUrl} className="h-8 flex-1" preload="metadata" />
+        </div>
+      );
+    }
+
+    if (hasMedia && msg.media_type === 'video' && mediaUrl) {
+      const caption = text.replace("[Video received]", "").replace(/^:?\s*/, "");
+      return (
+        <div className="space-y-1">
+          <video
+            controls
+            src={mediaUrl}
+            className="rounded-lg max-w-[280px] max-h-[300px]"
+            preload="metadata"
+          />
+          {caption && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{caption}</p>}
+        </div>
+      );
+    }
+
+    if (hasMedia && msg.media_type === 'document' && mediaUrl) {
+      const name = text.replace("[Document received: ", "").replace("]", "");
+      return (
+        <a
+          href={mediaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 hover:underline"
+        >
+          <File className="w-5 h-5 shrink-0" />
+          <span className="truncate text-sm">{name}</span>
+        </a>
+      );
+    }
+
+    if (hasMedia && msg.media_type === 'sticker' && mediaUrl) {
+      return (
+        <img
+          src={mediaUrl}
+          alt="Sticker"
+          className="max-w-[120px] max-h-[120px] object-contain"
+          loading="lazy"
+        />
+      );
+    }
+
+    // Fallback: icon-based placeholders for old messages without stored media
+    if (text.startsWith("[Image received")) {
+      const caption = text.replace("[Image received]", "").replace(/^:?\s*/, "");
       return (
         <div className="flex items-center gap-2">
           <Image className="w-5 h-5 shrink-0" />
@@ -380,8 +455,8 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (trimmed.startsWith("[Video received")) {
-      const caption = trimmed.replace("[Video received]", "").replace(/^:?\s*/, "");
+    if (text.startsWith("[Video received")) {
+      const caption = text.replace("[Video received]", "").replace(/^:?\s*/, "");
       return (
         <div className="flex items-center gap-2">
           <Video className="w-5 h-5 shrink-0" />
@@ -389,7 +464,7 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (trimmed.startsWith("[Audio received")) {
+    if (text.startsWith("[Audio received")) {
       return (
         <div className="flex items-center gap-2">
           <Music className="w-5 h-5 shrink-0" />
@@ -397,8 +472,8 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (trimmed.startsWith("[Document received")) {
-      const name = trimmed.replace("[Document received: ", "").replace("]", "");
+    if (text.startsWith("[Document received")) {
+      const name = text.replace("[Document received: ", "").replace("]", "");
       return (
         <div className="flex items-center gap-2">
           <File className="w-5 h-5 shrink-0" />
@@ -406,7 +481,7 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (trimmed.startsWith("[Sticker received")) {
+    if (text.startsWith("[Sticker received")) {
       return (
         <div className="flex items-center gap-2">
           <File className="w-5 h-5 shrink-0" />
@@ -461,6 +536,19 @@ export default function WhatsAppPage() {
               Close
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Lightbox */}
+      <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+        <DialogContent className="sm:max-w-3xl p-0 bg-black border-none overflow-hidden">
+          {previewImage && (
+            <img
+              src={previewImage}
+              alt="Preview"
+              className="w-full h-auto max-h-[85vh] object-contain"
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -581,7 +669,7 @@ export default function WhatsAppPage() {
 
                           <div className="flex items-center gap-1">
                             <div className="text-sm text-muted-foreground truncate flex-1">
-                              {lastMsg?.message.startsWith("[") ? renderMessageContent(lastMsg.message) : lastMsg?.message}
+                              {lastMsg?.media_path ? renderMessageContent(lastMsg) : lastMsg?.message.startsWith("[") ? renderMessageContent(lastMsg) : lastMsg?.message}
                             </div>
                             {lastMsg && renderStatusIcon(lastMsg.status)}
                           </div>
@@ -683,7 +771,7 @@ export default function WhatsAppPage() {
                                 : "bg-muted rounded-bl-md"
                             )}
                           >
-                            {renderMessageContent(msg.message)}
+                            {renderMessageContent(msg)}
                             <div className="flex items-center justify-end gap-1 mt-1">
                               <span className={cn(
                                 "text-xs",

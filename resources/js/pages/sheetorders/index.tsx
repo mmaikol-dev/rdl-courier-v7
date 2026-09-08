@@ -417,7 +417,6 @@ export default function Index() {
     const [newOrder, setNewOrder] = React.useState<Partial<SheetOrder>>({});
     const [selectedHistories, setSelectedHistories] = React.useState<OrderHistory[]>([]);
     const [selectedOrderNo, setSelectedOrderNo] = React.useState<string | null>(null);
-    const [whatsappAlert, setWhatsappAlert] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
     const [isCallSheetOpen, setIsCallSheetOpen] = React.useState(false);
     const voiceDialNumber = '';
@@ -587,13 +586,11 @@ export default function Index() {
                 {},
                 {
                     onSuccess: () => {
-                        setWhatsappAlert({ type: 'success', message: 'WhatsApp message sent successfully ✅' });
-                        setTimeout(() => setWhatsappAlert(null), 2000);
+                        toast.success('WhatsApp message sent successfully');
                         setLoadingCell(`whatsapp-${orderId}`, false);
                     },
                     onError: () => {
-                        setWhatsappAlert({ type: 'error', message: 'Failed to send WhatsApp message ❌' });
-                        setTimeout(() => setWhatsappAlert(null), 2000);
+                        toast.error('Failed to send WhatsApp message');
                         setLoadingCell(`whatsapp-${orderId}`, false);
                     },
                 },
@@ -806,18 +803,6 @@ export default function Index() {
     return (
         <AppLayout breadcrumbs={BREADCRUMBS}>
             <Head title="Sheet Orders" />
-
-            {/* ✅ WhatsApp Alert */}
-            {whatsappAlert && (
-                <div
-                    className={`fixed top-5 right-5 z-50 rounded-lg px-4 py-3 text-white shadow-lg transition-opacity duration-500 ${
-                        whatsappAlert.type === 'success' ? 'bg-green-500' : 'bg-red-500'
-                    }`}
-                >
-                    <strong className="block">{whatsappAlert.type === 'success' ? 'Success' : 'Error'}</strong>
-                    <span className="text-sm">{whatsappAlert.message}</span>
-                </div>
-            )}
 
             <div className="mb-2 flex items-center justify-between px-4 pt-4">
                 {/* Left side - Total Orders */}

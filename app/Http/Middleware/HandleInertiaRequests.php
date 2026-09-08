@@ -55,7 +55,6 @@ class HandleInertiaRequests extends Middleware
         }
 
         $countries = Country::query()
-            ->whereIn('name', ['Kenya', 'Tanzania', 'Uganda', 'Zambia'])
             ->orderBy('name')
             ->get(['id', 'name', 'code', 'currency']);
 

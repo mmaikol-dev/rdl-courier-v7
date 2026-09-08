@@ -16,5 +16,9 @@ class Chat extends Model
         'sid',
         'message',
         'type',
+        'media_url',
+        'media_type',
+        'mime_type',
+        'media_path',
     ];
 }

@@ -3,12 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Models\Whatsapp;
+use App\Services\MetaCloudApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class MetaWebhookController extends Controller
 {
+    private MetaCloudApiService $metaService;
+
+    public function __construct(MetaCloudApiService $metaService)
+    {
+        $this->metaService = $metaService;
+    }
     /**
      * Handle the verification challenge from Meta.
      *
@@ -125,7 +132,10 @@ class MetaWebhookController extends Controller
                 return;
             }
 
-            $whatsapp = Whatsapp::create([
+            // Download media if applicable
+            $mediaData = $this->downloadMessageMedia($message, $type);
+
+            $whatsapp = Whatsapp::create(array_merge([
                 'to' => $from,
                 'client_name' => $clientName,
                 'store_name' => $this->resolveStoreName($from),
@@ -134,7 +144,7 @@ class MetaWebhookController extends Controller
                 'status' => 'received',
                 'sid' => $messageId,
                 'type' => '1',
-            ]);
+            ], $mediaData));
 
             Log::info('✅ Meta incoming message saved', [
                 'id' => $whatsapp->id,
@@ -142,6 +152,7 @@ class MetaWebhookController extends Controller
                 'client_name' => $clientName,
                 'type' => $type,
                 'message' => mb_substr($messageBody, 0, 100),
+                'has_media' => ! empty($mediaData['media_path']),
             ]);
 
         } catch (\Throwable $e) {
@@ -149,6 +160,48 @@ class MetaWebhookController extends Controller
                 'error' => $e->getMessage(),
                 'message' => $message,
             ]);
+        }
+    }
+
+    /**
+     * Download media for image, video, audio, document, or sticker messages.
+     *
+     * @return array{media_url: string, media_type: string, mime_type: string, media_path: string}|array{}
+     */
+    private function downloadMessageMedia(array $message, string $type): array
+    {
+        $mediaTypes = ['image', 'video', 'audio', 'document', 'sticker'];
+
+        if (! in_array($type, $mediaTypes)) {
+            return [];
+        }
+
+        $mediaId = $message[$type]['id'] ?? null;
+
+        if (! $mediaId) {
+            Log::warning('⚠️ Meta webhook: media message missing media ID', ['type' => $type]);
+
+            return [];
+        }
+
+        try {
+            $mediaInfo = $this->metaService->getMediaUrl($mediaId);
+            $downloaded = $this->metaService->downloadMedia($mediaInfo['url'], $mediaInfo['mime_type']);
+
+            return [
+                'media_url' => $mediaInfo['url'],
+                'media_type' => $type,
+                'mime_type' => $mediaInfo['mime_type'],
+                'media_path' => $downloaded['media_path'],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('❌ Meta webhook: failed to download media', [
+                'media_id' => $mediaId,
+                'type' => $type,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
         }
     }
 
