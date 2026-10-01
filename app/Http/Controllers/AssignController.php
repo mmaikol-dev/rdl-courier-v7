@@ -41,15 +41,7 @@ class AssignController extends Controller
     
         if ($request->filled('status')) {
             $statuses = is_array($request->status) ? $request->status : explode(',', $request->status);
-            $query->where(function($q) use ($statuses) {
-                if (in_array('New Orders', $statuses)) {
-                    $q->orWhereNull('status')->orWhere('status', '');
-                }
-                $otherStatuses = array_diff($statuses, ['New Orders']);
-                if (!empty($otherStatuses)) {
-                    $q->orWhereIn('status', $otherStatuses);
-                }
-            });
+            $query->whereStatuses($statuses);
         }
     
         if ($request->filled('merchant') && $user?->roles !== 'merchant') {

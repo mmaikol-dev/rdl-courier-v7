@@ -65,15 +65,7 @@ class SheetOrderController extends Controller
 
         if ($request->filled('status')) {
             $statuses = is_array($request->status) ? $request->status : explode(',', $request->status);
-            $query->where(function ($q) use ($statuses) {
-                if (in_array('New Orders', $statuses)) {
-                    $q->orWhereNull('status')->orWhere('status', '');
-                }
-                $otherStatuses = array_diff($statuses, ['New Orders']);
-                if (! empty($otherStatuses)) {
-                    $q->orWhereIn('status', $otherStatuses);
-                }
-            });
+            $query->whereStatuses($statuses);
         }
 
         if ($request->filled('merchant') && $user->roles !== 'merchant') {
@@ -277,20 +269,20 @@ class SheetOrderController extends Controller
         return redirect()->back()->with('success', 'Order updated successfully.');
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         // Check if the logged-in user has the 'g.o.d' role
         if (strtolower(trim((string) auth()->user()->roles)) !== 'g.o.d') {
-            return redirect()->route('sheetorders.index')
+            return redirect()->route('sheetorders.index', $request->query())
                 ->with('error', 'Access denied. Only G.O.D can delete orders.');
         }
 
         // Proceed to delete only if user is G.O.D
         $order = SheetOrder::findOrFail($id);
-        $this->ensureCountryAccess(request(), $order);
+        $this->ensureCountryAccess($request, $order);
         $order->delete();
 
-        return redirect()->route('sheetorders.index')
+        return redirect()->route('sheetorders.index', $request->query())
             ->with('success', 'Order deleted successfully');
     }
 

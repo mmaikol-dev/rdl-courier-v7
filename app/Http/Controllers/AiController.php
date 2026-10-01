@@ -32,7 +32,7 @@ class AiController extends Controller
         'Returned',
         'WrongContact',
         'Delivered',
-        'New Orders',
+        SheetOrder::NEW_ORDERS_STATUS,
     ];
 
     public function __construct(

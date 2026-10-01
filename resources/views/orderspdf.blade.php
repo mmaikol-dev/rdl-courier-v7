@@ -229,7 +229,7 @@
         }
 
         tr {
-            page-break-inside: avoid;
+            page-break-inside: auto;
         }
 
         /* FOOTER */
@@ -290,6 +290,20 @@
     </header>
 
 
+
+    @if (!empty($noOrdersNotice))
+        <div class="signature-box" style="margin: 20px 0; border-color: #f0c36d; background: #fef7e0;">
+            <h3 style="color: #b45309;">No Orders Found</h3>
+            <p style="font-size: 12px;">
+                No scheduled/dispatched orders were found for this selection
+                @if (!empty($dateRange))
+                    within the date range {{ $dateRange['start'] }} to {{ $dateRange['end'] }}.
+                @else
+                    .
+                @endif
+            </p>
+        </div>
+    @endif
 
     <table class="inventory">
         <thead>

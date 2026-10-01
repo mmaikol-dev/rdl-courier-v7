@@ -1,3 +1,5 @@
+opencode -s ses_f8ebc7da2ffe6MGlDbnVLpSk81
+
 # RealDeal Logistics Operations System
 
 > A full-stack logistics platform for managing orders, dispatch, warehouse, payments, finance, and back-office operations — built with Laravel 12 + React + Inertia.js.

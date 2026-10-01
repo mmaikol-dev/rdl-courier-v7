@@ -54,6 +54,7 @@ const COLUMNS = [
     'amount',
     'product_name',
     'address',
+    'city',
     'phone',
     'alt_no',
     'status',
@@ -163,6 +164,7 @@ const attributeLabels: Record<string, string> = {
     amount: 'Amount',
     product_name: 'Product',
     address: 'Address',
+    city: 'City',
     phone: 'Phone',
     alt_no: 'Alt Number',
     status: 'Status',
@@ -218,7 +220,9 @@ const TableRowMemo = React.memo(
                                 : 'New Orders'
                             : col === 'delivery_date' && order.delivery_date
                               ? format(new Date(order.delivery_date), 'yyyy-MM-dd')
-                              : String(order[col as keyof SheetOrder] || '');
+                              : col === 'city'
+                                ? order.city?.trim() || 'N/A'
+                                : String(order[col as keyof SheetOrder] || '');
                     const canCopyFromColumn = (col === 'phone' || col === 'alt_no') && value.trim() !== '';
 
                     // ✅ Apply green color to all columns if the row has a code value
@@ -713,11 +717,32 @@ export default function Index() {
         });
     }, [newOrder]);
 
+    const formatDate = React.useCallback((date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }, []);
+
     const handleDelete = React.useCallback(() => {
         if (!deletingOrder) return;
         setIsDeleting(true);
 
-        router.delete(`/sheetorders/${deletingOrder.id}`, {
+        const params = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                value.forEach((v) => params.append(key, v));
+            } else if (value) {
+                params.set(key, value);
+            }
+        });
+        if (dateRange?.from) params.set('from_date', formatDate(dateRange.from));
+        if (dateRange?.to) params.set('to_date', formatDate(dateRange.to));
+
+        const queryString = params.toString();
+        const url = `/sheetorders/${deletingOrder.id}${queryString ? `?${queryString}` : ''}`;
+
+        router.delete(url, {
             onSuccess: () => {
                 setDeletingOrder(null);
                 setIsDeleting(false);
@@ -727,14 +752,7 @@ export default function Index() {
                 setIsDeleting(false);
             },
         });
-    }, [deletingOrder]);
-
-    const formatDate = React.useCallback((date: Date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }, []);
+    }, [deletingOrder, filters, dateRange, formatDate]);
 
     const applyFilters = React.useCallback(() => {
         setIsFiltering(true);

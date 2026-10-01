@@ -136,7 +136,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/dispatch/bulk-download-waybills', [DispatchController::class, 'bulkDownloadWaybills'])->name('dispatch.bulkDownload');
 
     // Or update your frontend to use /dispatch endpoints
-    Route::get('/dispatch/agent-orders/{agent}', [DispatchController::class, 'printAgentOrders'])
+    Route::get('/dispatch/agent-orders', [DispatchController::class, 'printAgentOrders'])
         ->name('dispatch.agent-orders');
     Route::resource('dispatch', DispatchController::class);
     Route::get('dispatch/{order}/waybill', [DispatchController::class, 'generateWaybill'])->name('dispatch.waybill');
@@ -168,6 +168,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // report
     // Only the ones you actually use
     Route::get('/report', [ReportController::class, 'index'])->name('report.index');
+    Route::post('/report/preview', [ReportController::class, 'preview'])->name('report.preview');
     Route::get('/report/download', [ReportController::class, 'download'])->name('report.download');
     Route::get('/finance-workflow', [FinanceWorkflowController::class, 'index'])->name('finance-workflow.index');
     Route::get('/finance-workflow/orders', [FinanceWorkflowController::class, 'merchantOrders'])->name('finance-workflow.orders');

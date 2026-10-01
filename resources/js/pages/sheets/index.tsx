@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
-import { ChevronLeft, ChevronRight, Edit, EyeIcon, Maximize2, Minimize2, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Edit, EyeIcon, Loader2, Maximize2, Minimize2, Plus, Trash2, X } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -275,6 +275,7 @@ export default function SheetsView() {
     const [editValues, setEditValues] = React.useState<Partial<Sheet>>({});
     const [editCcAgents, setEditCcAgents] = React.useState<Record<string, string[]>>({});
     const [editKeyInput, setEditKeyInput] = React.useState('');
+    const [isUpdating, setIsUpdating] = React.useState(false);
     const [deletingSheet, setDeletingSheet] = React.useState<Sheet | null>(null);
     const [creatingSheet, setCreatingSheet] = React.useState(false);
     const [createValues, setCreateValues] = React.useState<Partial<Sheet>>({});
@@ -370,6 +371,7 @@ export default function SheetsView() {
 
     const handleEditSave = () => {
         if (!editingSheet) return;
+        setIsUpdating(true);
         const ccAgentsPayload = buildCcAgentsJson(editValues.cc_agents as string | undefined, editCcAgents);
         router.put(
             `/sheets/${editingSheet.id}`,
@@ -386,6 +388,9 @@ export default function SheetsView() {
                 },
                 onError: () => {
                     toast.error('Failed to update sheet');
+                },
+                onFinish: () => {
+                    setIsUpdating(false);
                 },
             },
         );
@@ -659,6 +664,7 @@ export default function SheetsView() {
                     if (!open) {
                         setEditingSheet(null);
                         setEditCcAgents({});
+                        setIsUpdating(false);
                     }
                 }}
             >
@@ -752,10 +758,13 @@ export default function SheetsView() {
                         </div>
                     </div>
                     <div className="mt-4 flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setEditingSheet(null)}>
+                        <Button variant="outline" onClick={() => setEditingSheet(null)} disabled={isUpdating}>
                             Cancel
                         </Button>
-                        <Button onClick={handleEditSave}>Save</Button>
+                        <Button onClick={handleEditSave} disabled={isUpdating}>
+                            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isUpdating ? 'Saving...' : 'Save'}
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>

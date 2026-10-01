@@ -277,13 +277,7 @@ class FinanceWorkflowController extends Controller
             ]);
         }
 
-        $workflowOrdersQuery
-            ->update([
-                'report_generated_at' => now(),
-                'report_generated_by' => $user?->id,
-            ]);
-
-        return Excel::download(new OrdersExport([
+        $response = Excel::download(new OrdersExport([
             'merchant' => $merchant,
             'country' => CountryAccess::userCountryName($user),
             'workflow_order_ids' => $workflowOrderIds,
@@ -291,6 +285,17 @@ class FinanceWorkflowController extends Controller
             'from' => $validated['from'] ?? null,
             'to' => $validated['to'] ?? null,
         ]), 'merchant_report_' . str()->slug($merchant) . '.xlsx');
+
+        // Only mark the orders as reported once the workbook has been built. Doing this
+        // first (as it used to be) stranded orders whenever the export threw, leaving
+        // them silently excluded from every future report.
+        $workflowOrdersQuery
+            ->update([
+                'report_generated_at' => now(),
+                'report_generated_by' => $user?->id,
+            ]);
+
+        return $response;
     }
 
     public function markConfirmed(Request $request): RedirectResponse

@@ -3,6 +3,7 @@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -85,6 +86,338 @@ interface Agent {
     name: string;
 }
 
+interface OrdersTableProps {
+    orders: any;
+    agents: Agent[];
+    readOnly: boolean;
+    isBulkAssigning: boolean;
+    isBulkDownloading: boolean;
+    isFiltering: boolean;
+    hasActiveFilters: boolean;
+    updatingAgentId: number | null;
+    togglingAgentId: number | null;
+    isDownloading: number | null;
+    onOpenBulkAssign: () => void;
+    onOpenBulkDownload: () => void;
+    onOpenPrint: () => void;
+    onOpenFilter: () => void;
+    onGoToPage: (page: number) => void;
+    onAgentChange: (orderId: number, agentName: string | null) => void;
+    onAgentToggle: (order: SheetOrder, checked: boolean) => void;
+    onEdit: (order: SheetOrder) => void;
+    onDelete: (order: SheetOrder) => void;
+    onDownload: (orderId: number) => void;
+}
+
+const OrdersTable = React.memo(function OrdersTable({
+    orders,
+    agents,
+    readOnly,
+    isBulkAssigning,
+    isBulkDownloading,
+    isFiltering,
+    hasActiveFilters,
+    updatingAgentId,
+    togglingAgentId,
+    isDownloading,
+    onOpenBulkAssign,
+    onOpenBulkDownload,
+    onOpenPrint,
+    onOpenFilter,
+    onGoToPage,
+    onAgentChange,
+    onAgentToggle,
+    onEdit,
+    onDelete,
+    onDownload,
+}: OrdersTableProps) {
+    const generatePageNumbers = () => {
+        const current = orders.current_page;
+        const last = orders.last_page;
+        const delta = 2;
+        const pages: (number | string)[] = [];
+
+        for (let i = 1; i <= last; i++) {
+            if (i === 1 || i === last || (i >= current - delta && i <= current + delta)) {
+                pages.push(i);
+            } else if (pages[pages.length - 1] !== '...') {
+                pages.push('...');
+            }
+        }
+
+        return pages;
+    };
+
+    return (
+        <>
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                        <div>
+                            <CardTitle className="text-xl">Dispatch Orders</CardTitle>
+                            <CardDescription>Manage and track all dispatch orders</CardDescription>
+                        </div>
+                        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                            <Button
+                                onClick={() => !readOnly && onOpenBulkAssign()}
+                                className="flex-1 sm:flex-none"
+                                disabled={isBulkAssigning || readOnly}
+                            >
+                                {isBulkAssigning ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Users className="mr-2 h-4 w-4" />
+                                        Assign Orders
+                                    </>
+                                )}
+                            </Button>
+                            <Button
+                                onClick={() => !readOnly && onOpenBulkDownload()}
+                                variant="secondary"
+                                className="flex-1 sm:flex-none"
+                                disabled={isBulkDownloading || readOnly}
+                            >
+                                {isBulkDownloading ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Downloading...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Bulk Download
+                                    </>
+                                )}
+                            </Button>
+                            <Button
+                                onClick={() => !readOnly && onOpenPrint()}
+                                variant="outline"
+                                className="flex-1 sm:flex-none"
+                                disabled={readOnly}
+                            >
+                                <Printer className="mr-2 h-4 w-4" />
+                                Print Orders
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={onOpenFilter}
+                                className="relative flex-1 sm:flex-none"
+                                disabled={isFiltering}
+                            >
+                                {isFiltering ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter size={16} className="mr-2" />}
+                                Filters
+                                {hasActiveFilters && !isFiltering && (
+                                    <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-blue-500" />
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {orders.data.length === 0 ? (
+                        <div className="py-12 text-center">
+                            <PackageCheck className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
+                            <p className="text-lg text-muted-foreground">No orders available.</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto rounded-lg border">
+                            <Table className="table-fixed">
+                                <TableHeader>
+                                    <TableRow className="bg-muted/60 hover:bg-muted/60">
+                                        <TableHead className="w-[130px]">Order No</TableHead>
+                                        <TableHead className="w-[160px]">Client</TableHead>
+                                        <TableHead className="w-[180px]">Product</TableHead>
+                                        <TableHead className="w-[70px] text-right">Qty</TableHead>
+                                        <TableHead className="w-[110px] text-right">Amount</TableHead>
+                                        <TableHead className="w-[130px]">Phone</TableHead>
+                                        <TableHead className="w-[120px]">Delivery Date</TableHead>
+                                        <TableHead className="w-[170px]">Agent</TableHead>
+                                        <TableHead className="w-[70px]">Active</TableHead>
+                                        <TableHead className="w-[110px]">Status</TableHead>
+                                        <TableHead className="w-[130px] text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {orders.data.map((order: SheetOrder) => (
+                                        <TableRow
+                                            key={order.id}
+                                            className={cn(
+                                                'transition-colors',
+                                                order.confirmed === 0 &&
+                                                    'bg-destructive/10 hover:bg-destructive/15 data-[state=selected]:bg-destructive/15',
+                                            )}
+                                        >
+                                            <TableCell className="truncate font-mono text-xs font-medium" title={order.order_no}>
+                                                {order.order_no}
+                                            </TableCell>
+                                            <TableCell className="truncate font-medium" title={order.client_name}>
+                                                {order.client_name}
+                                            </TableCell>
+                                            <TableCell className="truncate" title={order.product_name}>
+                                                {order.product_name}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono tabular-nums">{order.quantity}</TableCell>
+                                            <TableCell className="truncate text-right font-mono tabular-nums" title={order.amount}>
+                                                {order.amount}
+                                            </TableCell>
+                                            <TableCell className="truncate font-mono text-xs" title={order.phone}>
+                                                {order.phone}
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap text-xs" title={order.delivery_date}>
+                                                {order.delivery_date ? format(new Date(order.delivery_date), 'do MMM yyyy') : '—'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="relative">
+                                                    <Select
+                                                        value={order.agent || 'none'}
+                                                        onValueChange={(value) => {
+                                                            const agentName = value === 'none' ? null : value;
+                                                            onAgentChange(order.id, agentName);
+                                                        }}
+                                                        disabled={updatingAgentId === order.id || readOnly}
+                                                    >
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                            <SelectValue placeholder="No Agent" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="none">No Agent</SelectItem>
+                                                            {agents?.map((agent) => (
+                                                                <SelectItem key={agent.id} value={agent.name}>
+                                                                    {agent.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {updatingAgentId === order.id && (
+                                                        <div className="absolute inset-0 flex items-center justify-center rounded bg-background/50">
+                                                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                {order.agent ? (
+                                                    <div className="flex items-center justify-center">
+                                                        {togglingAgentId === order.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                        ) : (
+                                                            <Switch
+                                                                checked={!!order.agent}
+                                                                onCheckedChange={(checked) => onAgentToggle(order, checked)}
+                                                                disabled={togglingAgentId === order.id || readOnly}
+                                                                className="data-[state=checked]:bg-green-500"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center">
+                                                        <span className="text-xs text-muted-foreground">—</span>
+                                                    </div>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {order.status === 'scheduled' ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="whitespace-nowrap border-yellow-300 bg-yellow-50 text-yellow-800"
+                                                    >
+                                                        Scheduled
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge className="whitespace-nowrap border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
+                                                        Dispatched
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+
+                                            <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-0.5">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => onEdit(order)}
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                                        title="Edit order"
+                                                        disabled={readOnly}
+                                                    >
+                                                        <Edit size={15} />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => onDownload(order.id)}
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                                        title="Download waybill"
+                                                        disabled={isDownloading === order.id || readOnly}
+                                                    >
+                                                        {isDownloading === order.id ? (
+                                                            <Loader2 size={15} className="animate-spin" />
+                                                        ) : (
+                                                            <FileText size={15} />
+                                                        )}
+                                                    </Button>
+                                                    <div className="mx-1 h-4 w-px bg-border" />
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => onDelete(order)}
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                        title="Delete order"
+                                                        disabled={readOnly}
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Pagination */}
+            {orders.last_page > 1 && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                    {orders.prev_page_url && (
+                        <Button variant="outline" size="sm" onClick={() => onGoToPage(orders.current_page - 1)}>
+                            Previous
+                        </Button>
+                    )}
+
+                    {generatePageNumbers().map((page, index) => (
+                        <React.Fragment key={index}>
+                            {page === '...' ? (
+                                <span className="px-2 text-muted-foreground">...</span>
+                            ) : (
+                                <Button
+                                    variant={page === orders.current_page ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => onGoToPage(page as number)}
+                                >
+                                    {page}
+                                </Button>
+                            )}
+                        </React.Fragment>
+                    ))}
+
+                    {orders.next_page_url && (
+                        <Button variant="outline" size="sm" onClick={() => onGoToPage(orders.current_page + 1)}>
+                            Next
+                        </Button>
+                    )}
+                </div>
+            )}
+        </>
+    );
+});
+
 export default function DispatchView() {
     const { orders, agents, filters, auth, flash } = usePage<{
         orders: any;
@@ -113,7 +446,8 @@ export default function DispatchView() {
     const [bulkOrderNumbers, setBulkOrderNumbers] = React.useState('');
     const [bulkDownloadOrderNumbers, setBulkDownloadOrderNumbers] = React.useState('');
     const [bulkSelectedAgent, setBulkSelectedAgent] = React.useState('');
-    const [printAgent, setPrintAgent] = React.useState('');
+    const [bulkOrderType, setBulkOrderType] = React.useState('');
+    const [printAgents, setPrintAgents] = React.useState<string[]>([]);
     const [printDateRange, setPrintDateRange] = React.useState<{
         from: Date | undefined;
         to: Date | undefined;
@@ -188,7 +522,7 @@ export default function DispatchView() {
 
     const handleBulkAssign = () => {
         if (readOnly) return handleRestrictedAction();
-        if (!bulkOrderNumbers.trim() || !bulkSelectedAgent) {
+        if (!bulkOrderNumbers.trim() || !bulkSelectedAgent || !bulkOrderType) {
             return;
         }
 
@@ -218,6 +552,12 @@ export default function DispatchView() {
         agentInput.value = bulkSelectedAgent;
         form.appendChild(agentInput);
 
+        const orderTypeInput = document.createElement('input');
+        orderTypeInput.type = 'hidden';
+        orderTypeInput.name = 'order_type';
+        orderTypeInput.value = bulkOrderType;
+        form.appendChild(orderTypeInput);
+
         document.body.appendChild(form);
         form.submit();
         document.body.removeChild(form);
@@ -228,6 +568,7 @@ export default function DispatchView() {
             setShowBulkAssignModal(false);
             setBulkOrderNumbers('');
             setBulkSelectedAgent('');
+            setBulkOrderType('');
             toast.success(`Successfully assigned orders to ${bulkSelectedAgent}. PDF is downloading...`);
 
             // Reload the page data to show updated assignments
@@ -312,13 +653,14 @@ export default function DispatchView() {
 
     const handlePrintAgentOrders = () => {
         if (readOnly) return handleRestrictedAction();
-        if (!printAgent) {
+        if (printAgents.length === 0) {
             return;
         }
 
         // Build URL with optional date filters
-        let url = `/dispatch/agent-orders/${encodeURIComponent(printAgent)}`;
+        let url = `/dispatch/agent-orders`;
         const params = new URLSearchParams();
+        params.append('agents', printAgents.join(','));
 
         if (printDateRange.from) {
             params.append('start_date', format(printDateRange.from, 'yyyy-MM-dd'));
@@ -327,24 +669,35 @@ export default function DispatchView() {
             params.append('end_date', format(printDateRange.to, 'yyyy-MM-dd'));
         }
 
-        if (params.toString()) {
-            url += `?${params.toString()}`;
-        }
-
+        url += `?${params.toString()}`;
         window.open(url, '_blank');
         setShowPrintModal(false);
     };
 
-    const handleEditOpen = (order: SheetOrder) => {
+    const handlePrintAgentToggle = (agentName: string) => {
+        setPrintAgents((prev) =>
+            prev.includes(agentName) ? prev.filter((a) => a !== agentName) : [...prev, agentName],
+        );
+    };
+
+    const handlePrintSelectAllAgents = () => {
+        if (printAgents.length === agents.length) {
+            setPrintAgents([]);
+        } else {
+            setPrintAgents(agents.map((a) => a.name));
+        }
+    };
+
+    const handleEditOpen = React.useCallback((order: SheetOrder) => {
         if (restricted) return handleRestrictedAction();
         setEditingOrder(order);
         setEditValues(order);
-    };
+    }, [restricted]);
 
-    const handleDeleteOpen = (order: SheetOrder) => {
+    const handleDeleteOpen = React.useCallback((order: SheetOrder) => {
         if (restricted) return handleRestrictedAction();
         setDeletingOrder(order);
-    };
+    }, [restricted]);
 
     const handleEditSave = () => {
         if (readOnly) return handleRestrictedAction();
@@ -378,7 +731,7 @@ export default function DispatchView() {
         });
     };
 
-    const handleDownload = (orderId: number) => {
+    const handleDownload = React.useCallback((orderId: number) => {
         if (readOnly) return handleRestrictedAction();
         setIsDownloading(orderId);
         toast.success('Preparing waybill download...');
@@ -394,9 +747,9 @@ export default function DispatchView() {
             document.body.removeChild(frame);
             setIsDownloading(null);
         }, 2500);
-    };
+    }, [readOnly]);
 
-    const handleAgentChange = (orderId: number, agentName: string | null) => {
+    const handleAgentChange = React.useCallback((orderId: number, agentName: string | null) => {
         if (readOnly) return handleRestrictedAction();
         setUpdatingAgentId(orderId);
         router.put(
@@ -413,9 +766,9 @@ export default function DispatchView() {
                 onFinish: () => setUpdatingAgentId(null),
             },
         );
-    };
+    }, [readOnly]);
 
-    const handleAgentToggle = (order: SheetOrder, checked: boolean) => {
+    const handleAgentToggle = React.useCallback((order: SheetOrder, checked: boolean) => {
         if (readOnly) return handleRestrictedAction();
         if (!checked && order.agent) {
             // Directly unassign without confirmation modal
@@ -435,9 +788,13 @@ export default function DispatchView() {
                 },
             );
         }
-    };
+    }, [readOnly]);
 
-    const goToPage = (page: number) => {
+    const filtersRef = React.useRef({ searchTerm, dateRange, selectedAgent, selectedCountry });
+    filtersRef.current = { searchTerm, dateRange, selectedAgent, selectedCountry };
+
+    const goToPage = React.useCallback((page: number) => {
+        const { searchTerm, dateRange, selectedAgent, selectedCountry } = filtersRef.current;
         router.get(
             `/dispatch?page=${page}`,
             {
@@ -449,24 +806,7 @@ export default function DispatchView() {
             },
             { preserveState: true },
         );
-    };
-
-    const generatePageNumbers = () => {
-        const current = orders.current_page;
-        const last = orders.last_page;
-        const delta = 2;
-        const pages = [];
-
-        for (let i = 1; i <= last; i++) {
-            if (i === 1 || i === last || (i >= current - delta && i <= current + delta)) {
-                pages.push(i);
-            } else if (pages[pages.length - 1] !== '...') {
-                pages.push('...');
-            }
-        }
-
-        return pages;
-    };
+    }, []);
 
     const parseOrderNumbers = (text: string) => {
         return text
@@ -480,6 +820,11 @@ export default function DispatchView() {
     const parsedDownloadOrders = React.useMemo(() => parseOrderNumbers(bulkDownloadOrderNumbers), [bulkDownloadOrderNumbers]);
 
     const hasActiveFilters = searchTerm || dateRange.from || dateRange.to || selectedAgent !== 'all' || selectedCountry !== 'all';
+
+    const handleOpenBulkAssign = React.useCallback(() => setShowBulkAssignModal(true), []);
+    const handleOpenBulkDownload = React.useCallback(() => setShowBulkDownloadModal(true), []);
+    const handleOpenPrint = React.useCallback(() => setShowPrintModal(true), []);
+    const handleOpenFilter = React.useCallback(() => setShowFilterModal(true), []);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -501,297 +846,71 @@ export default function DispatchView() {
                     </Alert>
                 )}
 
-                {/* Orders Table */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-                            <div>
-                                <CardTitle className="text-xl">Dispatch Orders</CardTitle>
-                                <CardDescription>Manage and track all dispatch orders</CardDescription>
-                            </div>
-                            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                                <Button
-                                    onClick={() => !readOnly && setShowBulkAssignModal(true)}
-                                    className="flex-1 sm:flex-none"
-                                    disabled={isBulkAssigning || readOnly}
-                                >
-                                    {isBulkAssigning ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Users className="mr-2 h-4 w-4" />
-                                            Assign Orders
-                                        </>
-                                    )}
-                                </Button>
-                                <Button
-                                    onClick={() => !readOnly && setShowBulkDownloadModal(true)}
-                                    variant="secondary"
-                                    className="flex-1 sm:flex-none"
-                                    disabled={isBulkDownloading || readOnly}
-                                >
-                                    {isBulkDownloading ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Downloading...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Download className="mr-2 h-4 w-4" />
-                                            Bulk Download
-                                        </>
-                                    )}
-                                </Button>
-                                <Button
-                                    onClick={() => !readOnly && setShowPrintModal(true)}
-                                    variant="outline"
-                                    className="flex-1 sm:flex-none"
-                                    disabled={readOnly}
-                                >
-                                    <Printer className="mr-2 h-4 w-4" />
-                                    Print Orders
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setShowFilterModal(true)}
-                                    className="relative flex-1 sm:flex-none"
-                                    disabled={isFiltering}
-                                >
-                                    {isFiltering ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter size={16} className="mr-2" />}
-                                    Filters
-                                    {hasActiveFilters && !isFiltering && (
-                                        <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-blue-500" />
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {orders.data.length === 0 ? (
-                            <div className="py-12 text-center">
-                                <PackageCheck className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
-                                <p className="text-lg text-muted-foreground">No orders available.</p>
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto rounded-lg border">
-                                <Table className="table-fixed">
-                                    <TableHeader>
-                                        <TableRow className="bg-muted/60 hover:bg-muted/60">
-                                            <TableHead className="w-[130px]">Order No</TableHead>
-                                            <TableHead className="w-[160px]">Client</TableHead>
-                                            <TableHead className="w-[180px]">Product</TableHead>
-                                            <TableHead className="w-[70px] text-right">Qty</TableHead>
-                                            <TableHead className="w-[110px] text-right">Amount</TableHead>
-                                            <TableHead className="w-[130px]">Phone</TableHead>
-                                            <TableHead className="w-[170px]">Agent</TableHead>
-                                            <TableHead className="w-[70px]">Active</TableHead>
-                                            <TableHead className="w-[110px]">Status</TableHead>
-                                            <TableHead className="w-[130px] text-right">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {orders.data.map((order: SheetOrder) => (
-                                            <TableRow
-                                                key={order.id}
-                                                className={cn(
-                                                    'transition-colors',
-                                                    order.confirmed === 0 &&
-                                                        'bg-destructive/10 hover:bg-destructive/15 data-[state=selected]:bg-destructive/15',
-                                                )}
-                                            >
-                                                <TableCell className="truncate font-mono text-xs font-medium" title={order.order_no}>
-                                                    {order.order_no}
-                                                </TableCell>
-                                                <TableCell className="truncate font-medium" title={order.client_name}>
-                                                    {order.client_name}
-                                                </TableCell>
-                                                <TableCell className="truncate" title={order.product_name}>
-                                                    {order.product_name}
-                                                </TableCell>
-                                                <TableCell className="text-right font-mono tabular-nums">{order.quantity}</TableCell>
-                                                <TableCell className="truncate text-right font-mono tabular-nums" title={order.amount}>
-                                                    {order.amount}
-                                                </TableCell>
-                                                <TableCell className="truncate font-mono text-xs" title={order.phone}>
-                                                    {order.phone}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="relative">
-                                                        <Select
-                                                            value={order.agent || 'none'}
-                                                            onValueChange={(value) => {
-                                                                const agentName = value === 'none' ? null : value;
-                                                                handleAgentChange(order.id, agentName);
-                                                            }}
-                                                            disabled={updatingAgentId === order.id || readOnly}
-                                                        >
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue placeholder="No Agent" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="none">No Agent</SelectItem>
-                                                                {agents?.map((agent) => (
-                                                                    <SelectItem key={agent.id} value={agent.name}>
-                                                                        {agent.name}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        {updatingAgentId === order.id && (
-                                                            <div className="absolute inset-0 flex items-center justify-center rounded bg-background/50">
-                                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {order.agent ? (
-                                                        <div className="flex items-center justify-center">
-                                                            {togglingAgentId === order.id ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                                            ) : (
-                                                                <Switch
-                                                                    checked={!!order.agent}
-                                                                    onCheckedChange={(checked) => handleAgentToggle(order, checked)}
-                                                                    disabled={togglingAgentId === order.id || readOnly}
-                                                                    className="data-[state=checked]:bg-green-500"
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center justify-center">
-                                                            <span className="text-xs text-muted-foreground">—</span>
-                                                        </div>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    {order.status === 'scheduled' ? (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="whitespace-nowrap border-yellow-300 bg-yellow-50 text-yellow-800"
-                                                        >
-                                                            Scheduled
-                                                        </Badge>
-                                                    ) : (
-                                                        <Badge className="whitespace-nowrap border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
-                                                            Dispatched
-                                                        </Badge>
-                                                    )}
-                                                </TableCell>
-
-                                                <TableCell className="text-right">
-                                                    <div className="flex items-center justify-end gap-0.5">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => handleEditOpen(order)}
-                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                                                            title="Edit order"
-                                                            disabled={readOnly}
-                                                        >
-                                                            <Edit size={15} />
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => handleDownload(order.id)}
-                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                                                            title="Download waybill"
-                                                            disabled={isDownloading === order.id || readOnly}
-                                                        >
-                                                            {isDownloading === order.id ? (
-                                                                <Loader2 size={15} className="animate-spin" />
-                                                            ) : (
-                                                                <FileText size={15} />
-                                                            )}
-                                                        </Button>
-                                                        <div className="mx-1 h-4 w-px bg-border" />
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => handleDeleteOpen(order)}
-                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                                            title="Delete order"
-                                                            disabled={readOnly}
-                                                        >
-                                                            <Trash2 size={15} />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Pagination */}
-                {orders.last_page > 1 && (
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                        {orders.prev_page_url && (
-                            <Button variant="outline" size="sm" onClick={() => goToPage(orders.current_page - 1)}>
-                                Previous
-                            </Button>
-                        )}
-
-                        {generatePageNumbers().map((page, index) => (
-                            <React.Fragment key={index}>
-                                {page === '...' ? (
-                                    <span className="px-2 text-muted-foreground">...</span>
-                                ) : (
-                                    <Button
-                                        variant={page === orders.current_page ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => goToPage(page as number)}
-                                    >
-                                        {page}
-                                    </Button>
-                                )}
-                            </React.Fragment>
-                        ))}
-
-                        {orders.next_page_url && (
-                            <Button variant="outline" size="sm" onClick={() => goToPage(orders.current_page + 1)}>
-                                Next
-                            </Button>
-                        )}
-                    </div>
-                )}
+                <OrdersTable
+                    orders={orders}
+                    agents={agents}
+                    readOnly={readOnly}
+                    isBulkAssigning={isBulkAssigning}
+                    isBulkDownloading={isBulkDownloading}
+                    isFiltering={isFiltering}
+                    hasActiveFilters={hasActiveFilters}
+                    updatingAgentId={updatingAgentId}
+                    togglingAgentId={togglingAgentId}
+                    isDownloading={isDownloading}
+                    onOpenBulkAssign={handleOpenBulkAssign}
+                    onOpenBulkDownload={handleOpenBulkDownload}
+                    onOpenPrint={handleOpenPrint}
+                    onOpenFilter={handleOpenFilter}
+                    onGoToPage={goToPage}
+                    onAgentChange={handleAgentChange}
+                    onAgentToggle={handleAgentToggle}
+                    onEdit={handleEditOpen}
+                    onDelete={handleDeleteOpen}
+                    onDownload={handleDownload}
+                />
             </div>
 
             {/* Print Agent Orders Modal */}
             <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
-                <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto">
+                <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">
                             <Printer className="h-5 w-5" />
                             Print Agent Orders
                         </DialogTitle>
-                        <DialogDescription>Select an agent to generate a PDF report of their assigned orders.</DialogDescription>
+                        <DialogDescription>Select one or more agents to generate a PDF report of their assigned orders.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-5 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="print_agent" className="text-base font-semibold">
-                                Select Agent <span className="text-red-500">*</span>
-                            </Label>
-                            <Select value={printAgent} onValueChange={setPrintAgent}>
-                                <SelectTrigger id="print_agent" className="h-11">
-                                    <SelectValue placeholder="Choose an agent..." />
-                                </SelectTrigger>
-                                <SelectContent>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-base font-semibold">
+                                    Select Agents <span className="text-red-500">*</span>
+                                </Label>
+                                <button type="button" onClick={handlePrintSelectAllAgents} className="text-xs text-blue-600 hover:underline">
+                                    {printAgents.length === agents.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                            <div className="max-h-[240px] overflow-y-auto rounded-lg border p-3">
+                                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
                                     {agents?.map((agent) => (
-                                        <SelectItem key={agent.id} value={agent.name}>
-                                            {agent.name}
-                                        </SelectItem>
+                                        <label
+                                            key={agent.id}
+                                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                                        >
+                                            <Checkbox
+                                                checked={printAgents.includes(agent.name)}
+                                                onCheckedChange={() => handlePrintAgentToggle(agent.name)}
+                                            />
+                                            <span className="truncate">{agent.name}</span>
+                                        </label>
                                     ))}
-                                </SelectContent>
-                            </Select>
-                            <p className="mt-1 text-xs text-muted-foreground">Required: Select which agent's orders to print</p>
+                                </div>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                {printAgents.length > 0
+                                    ? `${printAgents.length} agent(s) selected`
+                                    : 'Required: Select at least one agent'}
+                            </p>
                         </div>
 
                         <div className="space-y-2">
@@ -832,16 +951,16 @@ export default function DispatchView() {
                                     />
                                 </PopoverContent>
                             </Popover>
-                            <p className="mt-1 text-xs text-muted-foreground">Leave empty to print all orders for the selected agent</p>
+                            <p className="mt-1 text-xs text-muted-foreground">Leave empty to print all orders for the selected agents</p>
                         </div>
 
-                        {printAgent && (
+                        {printAgents.length > 0 && (
                             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                                 <div className="flex items-start gap-2">
                                     <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
                                     <div className="space-y-1">
                                         <p className="text-sm font-medium text-blue-900">
-                                            Ready to print orders for: <strong>{printAgent}</strong>
+                                            Ready to print orders for: <strong>{printAgents.join(', ')}</strong>
                                         </p>
                                         {printDateRange.from && printDateRange.to && (
                                             <p className="text-xs text-blue-700">
@@ -861,15 +980,15 @@ export default function DispatchView() {
                             variant="outline"
                             onClick={() => {
                                 setShowPrintModal(false);
-                                setPrintAgent('');
+                                setPrintAgents([]);
                                 setPrintDateRange({ from: undefined, to: undefined });
                             }}
                         >
                             Cancel
                         </Button>
-                        <Button onClick={handlePrintAgentOrders} disabled={!printAgent}>
+                        <Button onClick={handlePrintAgentOrders} disabled={printAgents.length === 0}>
                             <Printer className="mr-2 h-4 w-4" />
-                            Generate PDF
+                            Generate PDF {printAgents.length > 0 && `(${printAgents.length})`}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1098,7 +1217,23 @@ export default function DispatchView() {
                             <p className="text-xs text-muted-foreground">Required: All selected orders will be assigned to this agent.</p>
                         </div>
 
-                        {parsedOrders.length > 0 && bulkSelectedAgent && (
+                        <div className="space-y-2">
+                            <Label htmlFor="bulk_order_type" className="text-base font-semibold">
+                                Order Type <span className="text-red-500">*</span>
+                            </Label>
+                            <Select value={bulkOrderType} onValueChange={setBulkOrderType}>
+                                <SelectTrigger id="bulk_order_type" className="h-11">
+                                    <SelectValue placeholder="Choose an order type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="inbound">Inbound</SelectItem>
+                                    <SelectItem value="outbound">Outbound</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">Required: Applied to the order_type column of all selected orders.</p>
+                        </div>
+
+                        {parsedOrders.length > 0 && bulkSelectedAgent && bulkOrderType && (
                             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                                 <div className="flex items-start gap-2">
                                     <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
@@ -1137,11 +1272,12 @@ export default function DispatchView() {
                                 setShowBulkAssignModal(false);
                                 setBulkOrderNumbers('');
                                 setBulkSelectedAgent('');
+                                setBulkOrderType('');
                             }}
                         >
                             Cancel
                         </Button>
-                        <Button onClick={handleBulkAssign} disabled={!parsedOrders.length || !bulkSelectedAgent || isBulkAssigning}>
+                        <Button onClick={handleBulkAssign} disabled={!parsedOrders.length || !bulkSelectedAgent || !bulkOrderType || isBulkAssigning}>
                             {isBulkAssigning ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

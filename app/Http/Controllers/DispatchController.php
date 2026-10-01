@@ -128,9 +128,18 @@ class DispatchController extends Controller
     }
 
 
-    public function printAgentOrders(Request $request, $agent)
+    public function printAgentOrders(Request $request)
 {
     $user = $request->user()->loadMissing('country');
+
+    $agentsInput = $request->input('agents');
+    $agents = $agentsInput ? array_filter(array_map('trim', explode(',', $agentsInput))) : [];
+
+    if (empty($agents)) {
+        return back()->withErrors([
+            'error' => 'No agents selected. Please select at least one agent to print orders.',
+        ]);
+    }
 
     $ordersQuery = CountryAccess::scopeByCountryName(SheetOrder::select([
         'id',
@@ -154,7 +163,7 @@ class DispatchController extends Controller
         'created_at',
         'confirmed',
     ]), $user)
-        ->where('agent', $agent)
+        ->whereIn('agent', $agents)
         ->whereIn('status', ['scheduled', 'dispatched'])
         ->orderBy('delivery_date', 'asc');
 
@@ -163,37 +172,38 @@ class DispatchController extends Controller
         $ordersQuery->where('merchant', $user->name);
     }
 
-    // ✅ ADD DATE RANGE FILTERING HERE
+    // Date range filtering (local app timezone -> UTC boundaries, since delivery_date is stored in UTC)
     if ($request->has('start_date') && $request->has('end_date')) {
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
-        
-        $ordersQuery->whereBetween('delivery_date', [$startDate, $endDate]);
+
+        $startUtc = Carbon::parse($startDate, config('app.timezone'))->startOfDay()->setTimezone('UTC');
+        $endUtc = Carbon::parse($endDate, config('app.timezone'))->endOfDay()->setTimezone('UTC');
+
+        $ordersQuery->whereBetween('delivery_date', [$startUtc, $endUtc]);
     } elseif ($request->has('start_date')) {
         $startDate = $request->input('start_date');
-        $ordersQuery->whereDate('delivery_date', '>=', $startDate);
+        $startUtc = Carbon::parse($startDate, config('app.timezone'))->startOfDay()->setTimezone('UTC');
+        $ordersQuery->whereDate('delivery_date', '>=', $startUtc);
     } elseif ($request->has('end_date')) {
         $endDate = $request->input('end_date');
-        $ordersQuery->whereDate('delivery_date', '<=', $endDate);
+        $endUtc = Carbon::parse($endDate, config('app.timezone'))->endOfDay()->setTimezone('UTC');
+        $ordersQuery->whereDate('delivery_date', '<=', $endUtc);
     }
 
     $orders = $ordersQuery->get();
 
-    if ($orders->isEmpty()) {
-        return back()->withErrors([
-            'error' => "No orders found for agent: {$agent}",
-        ]);
-    }
+    $agentLabel = count($agents) === 1 ? $agents[0] : count($agents).' Agents';
 
     $pdf = Pdf::loadView('orderspdf', [
         'orders' => $orders,
-        'agent' => $agent,
+        'agent' => $agentLabel,
         'printDate' => now()->format('F d, Y g:i A'),
-        // Optional: Pass date range to the view if you want to show it in the PDF
         'dateRange' => $request->has('start_date') ? [
             'start' => $request->input('start_date'),
             'end' => $request->input('end_date'),
         ] : null,
+        'noOrdersNotice' => $orders->isEmpty(),
     ]);
 
     $pdf->setPaper('a4', 'potrait');
@@ -204,7 +214,7 @@ class DispatchController extends Controller
     ]);
 
     return $pdf->download(
-        "orders_{$agent}_".now()->format('Ymd_His').'.pdf'
+        "orders_".str_replace(' ', '_', $agentLabel).'_'.now()->format('Ymd_His').'.pdf'
     );
 }
     
@@ -216,6 +226,7 @@ class DispatchController extends Controller
     $validated = $request->validate([
         'order_numbers' => 'required|string',
         'agent_name' => 'required|string',
+        'order_type' => 'required|string|in:inbound,outbound',
     ]);
     
     // Parse order numbers (split by spaces, commas, or new lines)
@@ -240,6 +251,7 @@ class DispatchController extends Controller
     foreach ($affectedOrders as $order) {
         $oldAgent = $order->getRawOriginal('agent');
         $oldClearance = $order->getRawOriginal('clearance_status');
+        $oldOrderType = $order->getRawOriginal('order_type');
         $agentChanged = $oldAgent !== $validated['agent_name'];
 
         $assignDate = $now->toDateString();
@@ -248,6 +260,7 @@ class DispatchController extends Controller
 
         $order->update([
             'agent' => $validated['agent_name'],
+            'order_type' => $validated['order_type'],
             'clearance_status' => 'not_cleared',
             ...($agentChanged ? ['delivery_date' => $assignDate] : []),
         ]);
@@ -284,6 +297,18 @@ class DispatchController extends Controller
                 'attribute' => 'clearance_status',
                 'old_value' => $oldClearance,
                 'new_value' => 'not_cleared',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if ($oldOrderType !== $validated['order_type']) {
+            $history[] = [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'attribute' => 'order_type',
+                'old_value' => $oldOrderType,
+                'new_value' => $validated['order_type'],
                 'created_at' => $now,
                 'updated_at' => $now,
             ];

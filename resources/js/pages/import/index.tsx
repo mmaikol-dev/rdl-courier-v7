@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
 import { Head, usePage } from "@inertiajs/react";
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   Check,
@@ -34,6 +35,13 @@ interface Sheet {
   country: string;
 }
 
+interface Country {
+  id: number;
+  name: string;
+  code: string;
+  currency: string;
+}
+
 function getCsrfToken() {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
 }
@@ -54,16 +62,81 @@ function getXsrfToken() {
 }
 
 export default function ImportOrdersPage() {
-  const { props } = usePage<{ sheets: Sheet[]; flash?: { success?: string; error?: string; errors?: Record<string, string | string[]> } }>();
+  const { props } = usePage<{
+    sheets: Sheet[];
+    countries?: Country[];
+    userCountry?: string | null;
+    auth?: {
+      user: {
+        name?: string;
+        username?: string;
+        roles?: string;
+        store_address?: string | null;
+        country?: { name?: string } | null;
+      };
+    };
+    flash?: { success?: string; error?: string; errors?: Record<string, string | string[]> };
+  }>();
   const sheets = props.sheets || [];
+  const countries = props.countries || [];
   const flash = props.flash;
 
+  const isMerchant = props.auth?.user?.roles === "merchant";
+  const merchantIdentity = props.auth?.user?.name || props.auth?.user?.username || "";
+  // Mirrors CountryAccess::userCountryName(): store_address wins, country.name is the fallback.
+  const userCountry =
+    props.userCountry || props.auth?.user?.store_address || props.auth?.user?.country?.name || "";
+  const canPickCountry = props.auth?.user?.roles === "g.o.d";
+
+  const normalizeCountry = (value?: string | null) => (value || "").trim().toLowerCase();
+
+  const countryOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    countries.forEach((c) => names.set(normalizeCountry(c.name), c.name));
+    sheets.forEach((s) => {
+      if (!names.has(normalizeCountry(s.country))) {
+        names.set(normalizeCountry(s.country), s.country);
+      }
+    });
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
+  }, [countries, sheets]);
+
+  // Sheet records store countries with inconsistent casing (UGANDA vs Uganda), while
+  // Radix Select matches option values exactly. Always map onto the canonical option
+  // so the control renders instead of falling back to the placeholder.
+  const matchCountryOption = (raw?: string | null) => {
+    const key = normalizeCountry(raw);
+    if (!key) return "";
+    return countryOptions.find((c) => normalizeCountry(c) === key) ?? (raw as string);
+  };
+
   const [selectedSheet, setSelectedSheet] = useState<Sheet | null>(null);
-  const [sheetName, setSheetName] = useState("");
+  const [sheetName, setSheetName] = useState("orders");
+  const [country, setCountry] = useState(isMerchant ? "" : matchCountryOption(userCountry));
   const [file, setFile] = useState<File | null>(null);
   const [open, setOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  const sheetsForCountry = useMemo(() => {
+    // Merchants legitimately trade across countries, so they are never country-filtered.
+    if (isMerchant) return sheets;
+    if (!normalizeCountry(country)) return sheets;
+    return sheets.filter((s) => normalizeCountry(s.country) === normalizeCountry(country));
+  }, [sheets, country, isMerchant]);
+
+  const handleCountryChange = (nextCountry: string) => {
+    setCountry(nextCountry);
+    const firstSheet = sheetsForCountry.find(
+      (s) => normalizeCountry(s.country) === normalizeCountry(nextCountry),
+    );
+    setSelectedSheet(firstSheet ?? null);
+  };
+
+  const handleSheetChange = (sheet: Sheet) => {
+    setSelectedSheet(sheet);
+    setCountry(matchCountryOption(sheet.country));
+  };
 
   useEffect(() => {
     if (flash?.success) {
@@ -84,7 +157,8 @@ export default function ImportOrdersPage() {
 
   const clearForm = () => {
     setSelectedSheet(null);
-    setSheetName("");
+    setSheetName("orders");
+    setCountry(isMerchant ? "" : matchCountryOption(userCountry));
     setFile(null);
   };
 
@@ -101,13 +175,18 @@ export default function ImportOrdersPage() {
       return;
     }
 
+    if (!country.trim()) {
+      toast.error("Select a country.");
+      return;
+    }
+
     if (!sheetName.trim()) {
       toast.error("Enter the destination sheet name.");
       return;
     }
 
     const formData = new FormData();
-    formData.append("country", selectedSheet.country);
+    formData.append("country", country);
     formData.append("merchant", selectedSheet.sheet_name);
     formData.append("sheet_id", selectedSheet.sheet_id);
     formData.append("sheet_name", sheetName.trim());
@@ -231,7 +310,9 @@ export default function ImportOrdersPage() {
             <CardContent className="space-y-6 p-6">
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Merchant</label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Merchant <span className="text-red-500">*</span>
+                  </label>
                   <Popover open={open} onOpenChange={setOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -240,24 +321,32 @@ export default function ImportOrdersPage() {
                         aria-expanded={open}
                         className="h-auto min-h-11 w-full justify-between gap-2 py-3 text-left font-normal"
                       >
-                        <span className={cn("flex-1 whitespace-normal break-words", !selectedSheet && "text-muted-foreground")}>
-                          {selectedSheet ? selectedSheet.sheet_name : "Select merchant"}
+                        <span
+                          className={cn(
+                            "flex-1 whitespace-normal break-words",
+                            !selectedSheet && "text-muted-foreground",
+                          )}
+                        >
+                          {selectedSheet
+                            ? [selectedSheet.sheet_name, selectedSheet.country]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : "Select merchant"}
                         </span>
                         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[min(36rem,calc(100vw-2rem))] p-0" align="start">
                       <Command>
-                        <CommandInput placeholder="Search merchant, store, country, or sheet ID..." />
+                        <CommandInput placeholder="Search merchant, store, or country..." />
                         <CommandList>
                           <CommandGroup>
-                            {sheets.length > 0 ? (
-                              sheets.map((sheet) => (
+                            {sheetsForCountry.length > 0 ? (
+                              sheetsForCountry.map((sheet) => (
                                 <CommandItem
                                   key={sheet.id}
-                                  value={[sheet.sheet_name, sheet.store_name, sheet.country, sheet.sheet_id].join(" ")}
-                                  onSelect={() => {
-                                    setSelectedSheet(sheet);
+                                  value={[sheet.sheet_name, sheet.store_name, sheet.country].join(" ")}                                  onSelect={() => {
+                                    handleSheetChange(sheet);
                                     setOpen(false);
                                   }}
                                 >
@@ -268,43 +357,77 @@ export default function ImportOrdersPage() {
                                     )}
                                   />
                                   <div className="min-w-0">
-                                    <div className="whitespace-normal break-words font-medium">{sheet.sheet_name}</div>
+                                    <div className="whitespace-normal break-words font-medium">
+                                      {sheet.sheet_name}
+                                    </div>
                                     <div className="text-xs text-muted-foreground">
-                                      {sheet.store_name} · {sheet.country}
+                                      {[sheet.store_name, sheet.country].filter(Boolean).join(" · ")}
                                     </div>
                                   </div>
                                 </CommandItem>
                               ))
                             ) : (
-                              <div className="p-3 text-sm text-muted-foreground">No merchants found.</div>
+                              <div className="p-3 text-sm text-muted-foreground">
+                                No merchants found{country ? ` for ${country}` : ""}.
+                              </div>
                             )}
                           </CommandGroup>
                         </CommandList>
                       </Command>
                     </PopoverContent>
                   </Popover>
+                  {isMerchant && (
+                    <p className="text-xs text-muted-foreground">Showing merchants linked to your account.</p>
+                  )}
                 </div>
-
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Destination Sheet Name</label>
+                  <label htmlFor="import_sheet_name" className="text-sm font-medium text-slate-700">
+                    Destination Sheet Name
+                  </label>
                   <Input
+                    id="import_sheet_name"
                     value={sheetName}
                     onChange={(e) => setSheetName(e.target.value)}
                     placeholder="Enter the target sheet tab name"
                     className="h-11"
                   />
+                  <p className="text-xs text-muted-foreground">Defaults to &quot;orders&quot;.</p>
                 </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Country</label>
-                  <Input value={selectedSheet?.country || ""} readOnly placeholder="Auto-filled from merchant" className="h-11 bg-slate-50" />
+                  <label htmlFor="import_country" className="text-sm font-medium text-slate-700">
+                    Country <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={country}
+                    onValueChange={handleCountryChange}
+                    disabled={!canPickCountry}
+                  >
+                    <SelectTrigger id="import_country" className="h-11">
+                      <SelectValue placeholder="Select a country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {countryOptions.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {canPickCountry
+                      ? "Selecting a country loads its default sheet ID."
+                      : isMerchant
+                        ? "Set from the merchant you select — merchants trade across all countries."
+                        : "Fixed to your assigned country."}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Sheet ID</label>
-                  <Input value={selectedSheet?.sheet_id || ""} readOnly placeholder="Auto-filled from merchant" className="h-11 bg-slate-50" />
+                  <Input value={selectedSheet?.sheet_id || ""} readOnly placeholder="Auto-filled from the selected country/sheet" className="h-11 bg-slate-50" />
                 </div>
               </div>
 
@@ -371,12 +494,12 @@ export default function ImportOrdersPage() {
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-slate-600">
                 <div className="rounded-xl border bg-slate-50 p-4">
-                  <div className="font-medium text-slate-900">1. Confirm merchant mapping</div>
-                  <p className="mt-1">Make sure the merchant selection matches the sheet ID and store name shown on the right.</p>
+                  <div className="font-medium text-slate-900">1. Confirm the merchant</div>
+                  <p className="mt-1">Pick the merchant first. Its store name and country fill in automatically.</p>
                 </div>
                 <div className="rounded-xl border bg-slate-50 p-4">
                   <div className="font-medium text-slate-900">2. Check the destination tab name</div>
-                  <p className="mt-1">The sheet name field is manual. Use the exact target tab you want updated.</p>
+                  <p className="mt-1">It defaults to &quot;orders&quot;. Change it only if you want orders written to a different tab.</p>
                 </div>
                 <div className="rounded-xl border bg-slate-50 p-4">
                   <div className="font-medium text-slate-900">3. Upload the latest file only once</div>
