@@ -16,6 +16,7 @@ import {
     MessagesSquareIcon,
     PackageSearch,
     PenLineIcon,
+    PlugZap,
     PlusIcon,
     PrinterIcon,
     RefreshCcwIcon,
@@ -65,6 +66,7 @@ export type SidebarItemKey =
     | 'undelivered'
     | 'unremitted'
     | 'stk'
+    | 'integrations'
     | 'sidebar-permissions'
     | 'users'
     | 'bulk-expire';
@@ -136,6 +138,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         label: 'Administration',
         items: [
             { key: 'users', title: 'Users', href: '/users', icon: Users, group: 'Administration' },
+            { key: 'integrations', title: 'Integrations', href: '/integrations', icon: PlugZap, group: 'Administration' },
         ],
     },
 ];

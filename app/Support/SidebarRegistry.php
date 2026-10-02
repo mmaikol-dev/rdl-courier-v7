@@ -42,6 +42,7 @@ class SidebarRegistry
             ['key' => 'unremitted', 'title' => 'Unremitted Orders', 'href' => '/unremitted', 'group' => 'Finance'],
             ['key' => 'stk', 'title' => 'STK push', 'href' => '/stk', 'group' => 'Finance'],
             ['key' => 'users', 'title' => 'Users', 'href' => '/users', 'group' => 'Administration'],
+            ['key' => 'integrations', 'title' => 'Integrations', 'href' => '/integrations', 'group' => 'Administration'],
         ];
     }
 
@@ -73,6 +74,36 @@ class SidebarRegistry
     public static function canManage(?string $role): bool
     {
         return self::normalizeRole($role) === 'g.o.d';
+    }
+
+    /**
+     * The keys a role should actually see.
+     *
+     * A stored permission row is a curated subset, but G.O.D always sees every
+     * page, and an unknown role falls back to its defaults. Centralised so the
+     * sidebar, the page-access guard and the permissions screen cannot drift.
+     *
+     * @param  array<int, mixed>|mixed  $saved
+     * @return string[]
+     */
+    public static function resolveVisibleKeys(?string $role, mixed $saved): array
+    {
+        if (self::canManage($role)) {
+            return self::allKeys();
+        }
+
+        // A stored row is JSON. Depending on the call path it arrives either
+        // already cast to an array or still as a raw JSON string, so accept both.
+        if (is_string($saved)) {
+            $decoded = json_decode($saved, true);
+            $saved = is_array($decoded) ? $decoded : null;
+        }
+
+        if (is_array($saved)) {
+            return array_values(array_intersect($saved, self::allKeys()));
+        }
+
+        return self::defaultVisibleKeysForRole($role);
     }
 
     public static function titleForKey(string $key): ?string

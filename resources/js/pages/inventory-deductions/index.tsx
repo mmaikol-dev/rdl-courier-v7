@@ -8,7 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink } from '@/components/ui/pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -37,6 +46,7 @@ interface DeliveredOrder {
   client_name: string | null;
   product_name: string | null;
   code: string | null;
+  city: string | null;
   quantity: number;
   amount: number;
   status: string | null;
@@ -45,10 +55,27 @@ interface DeliveredOrder {
   inventory_product_id: number | null;
 }
 
+interface PaginationLinkData {
+  url: string | null;
+  label: string;
+  active: boolean;
+}
+
+interface PaginatedOrders {
+  data: DeliveredOrder[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+  from: number | null;
+  to: number | null;
+  links: PaginationLinkData[];
+}
+
 interface PageProps {
   merchantOptions: string[];
   selectedMerchant: string | null;
-  orders: DeliveredOrder[];
+  orders: PaginatedOrders;
   products: MerchantProduct[];
   errors?: Record<string, string>;
 }
@@ -126,6 +153,9 @@ function SearchableSelect({
 
 export default function InventoryDeductionsPage() {
   const { merchantOptions, selectedMerchant, orders, products, errors } = usePage<PageProps>().props;
+  // Defensive: the server always sends a paginator, but a stale/partial prop must not
+  // white-screen the page.
+  const orderRows = React.useMemo(() => orders?.data ?? [], [orders]);
   const [merchant, setMerchant] = React.useState(selectedMerchant ?? '');
   const [selectedOrderIds, setSelectedOrderIds] = React.useState<number[]>([]);
   const [productSelections, setProductSelections] = React.useState<Record<number, string>>({});
@@ -133,24 +163,36 @@ export default function InventoryDeductionsPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isMerchantLoading, setIsMerchantLoading] = React.useState(false);
   const [orderFilter, setOrderFilter] = React.useState('');
+  const [isProductsOpen, setIsProductsOpen] = React.useState(false);
 
   React.useEffect(() => {
-    const nextSelections: Record<number, string> = {};
+    setProductSelections((current) => {
+      const next = { ...current };
 
-    orders.forEach((order) => {
-      const matched = products.find((product) => (
-        order.inventory_product_id === product.id
-        || product.code.trim().toLowerCase() === (order.code ?? '').trim().toLowerCase()
-        || product.name.trim().toLowerCase() === (order.product_name ?? '').trim().toLowerCase()
-      ));
+      orderRows.forEach((order) => {
+        const matched = products.find((product) => (
+          order.inventory_product_id === product.id
+          || product.code.trim().toLowerCase() === (order.code ?? '').trim().toLowerCase()
+          || product.name.trim().toLowerCase() === (order.product_name ?? '').trim().toLowerCase()
+        ));
 
-      nextSelections[order.id] = matched ? String(matched.id) : '';
+        if (matched) {
+          next[order.id] = String(matched.id);
+        } else if (!(order.id in next)) {
+          next[order.id] = '';
+        }
+      });
+
+      return next;
     });
+  }, [orderRows, products]);
 
-    setProductSelections(nextSelections);
+  React.useEffect(() => {
     setSelectedOrderIds([]);
     setDismissedOrderIds([]);
-  }, [orders, products]);
+    setProductSelections({});
+    setOrderFilter('');
+  }, [selectedMerchant]);
 
   React.useEffect(() => {
     if (errors?.deductions) {
@@ -174,15 +216,15 @@ export default function InventoryDeductionsPage() {
   const filteredOrders = React.useMemo(() => {
     const keyword = orderFilter.trim().toLowerCase();
 
-    const visibleOrders = orders.filter((order) => !dismissedOrderIds.includes(order.id));
+    const visibleOrders = orderRows.filter((order) => !dismissedOrderIds.includes(order.id));
 
     if (keyword === '') return visibleOrders;
 
     return visibleOrders.filter((order) =>
-      [order.order_no, order.client_name, order.product_name, order.code, order.status]
+      [order.order_no, order.client_name, order.product_name, order.city, order.code, order.status]
         .some((value) => (value ?? '').toLowerCase().includes(keyword)),
     );
-  }, [dismissedOrderIds, orderFilter, orders]);
+  }, [dismissedOrderIds, orderFilter, orderRows]);
 
   const productById = React.useMemo(
     () => Object.fromEntries(products.map((product) => [String(product.id), product])),
@@ -204,6 +246,21 @@ export default function InventoryDeductionsPage() {
     });
   }, []);
 
+  const goToPage = React.useCallback((page: number) => {
+    if (page < 1 || page > (orders?.last_page ?? 1) || page === orders?.current_page) {
+      return;
+    }
+
+    setIsMerchantLoading(true);
+
+    router.get('/inventory-deductions', { merchant, page }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      onFinish: () => setIsMerchantLoading(false),
+    });
+  }, [merchant, orders?.current_page, orders?.last_page]);
+
   const toggleOrder = React.useCallback((orderId: number, checked: boolean) => {
     setSelectedOrderIds((current) => (
       checked ? [...current, orderId] : current.filter((id) => id !== orderId)
@@ -211,7 +268,15 @@ export default function InventoryDeductionsPage() {
   }, []);
 
   const toggleAllVisible = React.useCallback((checked: boolean) => {
-    setSelectedOrderIds(checked ? filteredOrders.map((order) => order.id) : []);
+    setSelectedOrderIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, ...filteredOrders.map((order) => order.id)]));
+      }
+
+      const visibleIds = new Set(filteredOrders.map((order) => order.id));
+
+      return current.filter((id) => !visibleIds.has(id));
+    });
   }, [filteredOrders]);
 
   const assignProductToOrder = React.useCallback((orderId: number, productId: string) => {
@@ -260,6 +325,7 @@ export default function InventoryDeductionsPage() {
         setDismissedOrderIds((current) => [...new Set([...current, ...selectedOrderIds])]);
         toast.success(`${deductions.length} order(s) deducted successfully.`);
         setSelectedOrderIds([]);
+        setProductSelections({});
         router.reload({ only: ['orders', 'products'] });
       },
       onError: (formErrors) => {
@@ -299,7 +365,7 @@ export default function InventoryDeductionsPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border p-4">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Delivered Orders</div>
-                <div className="mt-2 text-2xl font-semibold">{orders.length}</div>
+                <div className="mt-2 text-2xl font-semibold">{orders?.total ?? 0}</div>
               </div>
               <div className="rounded-xl border p-4">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Merchant Products</div>
@@ -315,71 +381,101 @@ export default function InventoryDeductionsPage() {
 
         {merchant ? (
           isMerchantLoading ? (
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.9fr)]">
-              <Card className="border-border/60 shadow-sm">
-                <CardHeader>
-                  <Skeleton className="h-6 w-72" />
-                  <Skeleton className="h-4 w-full max-w-xl" />
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <Skeleton className="h-10 w-full sm:max-w-sm" />
-                    <Skeleton className="h-10 w-36" />
-                  </div>
-
-                  <div className="rounded-xl border p-4">
-                    <div className="space-y-4">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <div key={index} className="grid gap-3 border-b pb-4 last:border-b-0 last:pb-0 md:grid-cols-[40px_1fr_1fr_1.2fr_120px_80px_100px_280px]">
-                          <Skeleton className="h-5 w-5" />
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60 shadow-sm">
-                <CardHeader>
-                  <Skeleton className="h-6 w-48" />
-                  <Skeleton className="h-4 w-full max-w-sm" />
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <div key={index} className="rounded-xl border p-4">
-                      <Skeleton className="h-5 w-40" />
-                      <Skeleton className="mt-2 h-4 w-28" />
-                      <div className="mt-4 flex items-center justify-between">
-                        <Skeleton className="h-4 w-12" />
-                        <Skeleton className="h-6 w-16 rounded-full" />
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.9fr)]">
             <Card className="border-border/60 shadow-sm">
-              <CardHeader>
-                <CardTitle>Delivered Orders Waiting for Deduction</CardTitle>
-                <CardDescription>
-                  Only delivered orders for {merchant} that have not yet been deducted appear here.
-                </CardDescription>
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <Skeleton className="h-6 w-72" />
+                  <Skeleton className="mt-2 h-4 w-full max-w-xl" />
+                </div>
+                <Skeleton className="h-10 w-52 shrink-0" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <Skeleton className="h-10 w-full sm:max-w-sm" />
+                  <Skeleton className="h-10 w-36" />
+                </div>
+
+                <div className="rounded-xl border p-4">
+                  <div className="space-y-4">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <div key={index} className="grid gap-3 border-b pb-4 last:border-b-0 last:pb-0 md:grid-cols-[40px_1fr_1fr_1.2fr_120px_80px_100px_280px]">
+                        <Skeleton className="h-5 w-5" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+          <div>
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Delivered Orders Waiting for Deduction</CardTitle>
+                  <CardDescription>
+                    Only delivered orders for {merchant} that have not yet been deducted appear here.
+                  </CardDescription>
+                </div>
+
+                <Dialog open={isProductsOpen} onOpenChange={setIsProductsOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="shrink-0 justify-between gap-3" disabled={products.length === 0}>
+                      <span className="flex items-center gap-2">
+                        <PackageSearch className="size-4" />
+                        Merchant Products
+                      </span>
+                      <Badge variant="secondary">
+                        {products.length} product{products.length === 1 ? '' : 's'}
+                      </Badge>
+                    </Button>
+                  </DialogTrigger>
+
+                  <DialogContent className="flex max-h-[85vh] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+                    <DialogHeader className="border-b px-6 py-4 pr-12">
+                      <DialogTitle>Merchant Products</DialogTitle>
+                      <DialogDescription>
+                        Current stock for products linked to {merchant}.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+                      {products.length === 0 ? (
+                        <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                          No products linked to this merchant yet.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {products.map((product) => (
+                            <div key={product.id} className="rounded-xl border p-4">
+                              <div className="font-medium">{product.name}</div>
+                              <div className="mt-1 text-sm text-muted-foreground">Code: {product.code}</div>
+                              <div className="mt-2 flex items-center justify-between text-sm">
+                                <span>Stock</span>
+                                <Badge variant={product.quantity > 0 ? 'secondary' : 'destructive'}>
+                                  {product.quantity}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <Input
                     value={orderFilter}
                     onChange={(event) => setOrderFilter(event.target.value)}
-                    placeholder="Filter by order no, client, product, code, or status"
+                    placeholder="Filter this page by order no, client, product, city, code, or status"
                     className="sm:max-w-sm"
                   />
                   <Button onClick={submitDeductions} disabled={isSubmitting || selectedOrderIds.length === 0} className="gap-2">
@@ -389,11 +485,11 @@ export default function InventoryDeductionsPage() {
                 </div>
 
                 {filteredOrders.length === 0 ? (
-                  <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                    No delivered undeducted orders found for this merchant.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-xl border">
+                      <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                        No delivered undeducted orders found for this merchant.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border">
                     <Table className="table-fixed">
                       <TableHeader>
                         <TableRow>
@@ -406,6 +502,7 @@ export default function InventoryDeductionsPage() {
                           <TableHead className="w-[150px]">Order</TableHead>
                           <TableHead className="w-[160px]">Client</TableHead>
                           <TableHead className="w-[180px]">Order Product</TableHead>
+                          <TableHead className="w-[150px]">City</TableHead>
                           <TableHead className="w-[140px]">Code</TableHead>
                           <TableHead className="w-[70px]">Qty</TableHead>
                           <TableHead className="w-[110px]">Amount</TableHead>
@@ -444,6 +541,11 @@ export default function InventoryDeductionsPage() {
                                 <Badge variant="outline" className="mt-1">{order.status ?? '-'}</Badge>
                               </TableCell>
                               <TableCell className="align-top">
+                                <div className="truncate" title={order.city ?? '-'}>
+                                  {order.city ?? '-'}
+                                </div>
+                              </TableCell>
+                              <TableCell className="align-top">
                                 <Badge variant={order.code ? 'secondary' : 'outline'} className="max-w-full truncate" title={order.code ?? '-'}>
                                   {order.code ?? '-'}
                                 </Badge>
@@ -473,40 +575,38 @@ export default function InventoryDeductionsPage() {
                     </Table>
                   </div>
                 )}
-              </CardContent>
-            </Card>
 
-            <Card className="border-border/60 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <PackageSearch className="size-5" />
-                  Merchant Products
-                </CardTitle>
-                <CardDescription>
-                  Current stock for products linked to {merchant}.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {products.length === 0 ? (
-                  <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                    No products linked to this merchant yet.
+                {(orders?.last_page ?? 1) > 1 ? (
+                  <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {orders?.from ?? 0}&ndash;{orders?.to ?? 0} of {orders?.total ?? 0}
+                      {selectedOrderIds.length > 0 ? ` \u00b7 ${selectedOrderIds.length} selected across pages` : ''}
+                    </p>
+                    <Pagination>
+                      <PaginationContent>
+                        {(orders?.links ?? []).map((link, index) => {
+                          if (link.url === null) return null;
+
+                          const page = Number(new URL(link.url, window.location.origin).searchParams.get('page'));
+
+                          return (
+                            <PaginationItem key={index}>
+                              <PaginationLink
+                                href={link.url}
+                                isActive={link.active}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  goToPage(page);
+                                }}
+                                dangerouslySetInnerHTML={{ __html: link.label }}
+                              />
+                            </PaginationItem>
+                          );
+                        })}
+                      </PaginationContent>
+                    </Pagination>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {products.map((product) => (
-                      <div key={product.id} className="rounded-xl border p-4">
-                        <div className="font-medium">{product.name}</div>
-                        <div className="mt-1 text-sm text-muted-foreground">Code: {product.code}</div>
-                        <div className="mt-2 flex items-center justify-between text-sm">
-                          <span>Stock</span>
-                          <Badge variant={product.quantity > 0 ? 'secondary' : 'destructive'}>
-                            {product.quantity}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           </div>

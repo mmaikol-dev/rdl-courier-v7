@@ -42,7 +42,7 @@ class SidebarRolePermissionController extends Controller
 
         $permissionsByRole = $roles
             ->mapWithKeys(fn (string $role): array => [
-                $role => $savedPermissions[$role] ?? SidebarRegistry::defaultVisibleKeysForRole($role),
+                $role => SidebarRegistry::resolveVisibleKeys($role, $savedPermissions[$role] ?? null),
             ])
             ->all();
 

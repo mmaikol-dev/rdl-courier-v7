@@ -25,6 +25,7 @@ use App\Http\Controllers\SheetOrderController;
 use App\Http\Controllers\SidebarRolePermissionController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\StkController;
+use App\Http\Controllers\StoreepIntegrationController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UndeliveredController;
 use App\Http\Controllers\UnitController;
@@ -202,6 +203,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/orders/import', [ImportController::class, 'store'])->name('orders.import.store');
     Route::get('/incoming-sheet-orders', [IncomingSheetOrderController::class, 'index'])->name('incoming-sheet-orders.index');
     Route::post('/incoming-sheet-orders/{id}/retry', [IncomingSheetOrderController::class, 'retry'])->name('incoming-sheet-orders.retry');
+
+    // storeep integrations (credentials live in the DB, one row per store/market)
+    Route::get('/integrations', [StoreepIntegrationController::class, 'index'])->name('integrations.index');
+    Route::post('/integrations', [StoreepIntegrationController::class, 'store'])->name('integrations.store');
+    Route::put('/integrations/{integration}', [StoreepIntegrationController::class, 'update'])->name('integrations.update');
+    Route::delete('/integrations/{integration}', [StoreepIntegrationController::class, 'destroy'])->name('integrations.destroy');
+    Route::post('/integrations/{integration}/test', [StoreepIntegrationController::class, 'test'])->name('integrations.test');
+    Route::post('/integrations/{integration}/sync', [StoreepIntegrationController::class, 'syncNow'])->name('integrations.sync');
 
     // bulk expire orders
     Route::get('/orders/bulk-expire', [App\Http\Controllers\OrderExpireController::class, 'index'])->name('orders.bulk-expire');

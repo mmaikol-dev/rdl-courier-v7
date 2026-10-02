@@ -10,6 +10,8 @@ use App\Services\OpenwaService;
 use App\Support\CountryAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -37,6 +39,25 @@ class InventoryDeductionController extends Controller
             ->whereNull('inventory_deducted_at');
     }
 
+    private function perPage(Request $request): int
+    {
+        $perPage = (int) $request->integer('per_page', 25);
+
+        return in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
+    }
+
+    /**
+     * An empty paginator matching the shape of the populated one, so the frontend
+     * can always read `orders.data` regardless of whether a merchant is selected.
+     */
+    private function emptyOrdersPaginator(): LengthAwarePaginator
+    {
+        return (new LengthAwarePaginator([], 0, 25, 1, [
+            'path' => Paginator::resolveCurrentPath(),
+            'pageName' => 'page',
+        ]))->withQueryString();
+    }
+
     public function index(Request $request): Response
     {
         $user = $request->user()?->loadMissing('country');
@@ -49,34 +70,26 @@ class InventoryDeductionController extends Controller
             ->pluck('merchant')
             ->values();
 
-        $orders = collect();
+        // Always a paginator, even with no merchant selected, so the React prop shape
+        // never changes between the empty and populated states.
+        $orders = $this->emptyOrdersPaginator();
         $products = collect();
 
         if ($selectedMerchant !== '') {
             $orders = (clone $this->deliveredOrdersQuery($request))
                 ->where('merchant', $selectedMerchant)
                 ->orderByDesc('delivery_date')
-                ->limit(300)
-                ->get([
-                    'id',
-                    'order_no',
-                    'client_name',
-                    'product_name',
-                    'code',
-                    'quantity',
-                    'amount',
-                    'status',
-                    'merchant',
-                    'delivery_date',
-                    'inventory_product_id',
-                ])
-                ->map(function (SheetOrder $order) use ($selectedMerchant) {
+                ->orderByDesc('id')
+                ->paginate($this->perPage($request), ['id', 'order_no', 'client_name', 'product_name', 'code', 'city', 'quantity', 'amount', 'status', 'merchant', 'delivery_date', 'inventory_product_id'])
+                ->withQueryString()
+                ->through(function (SheetOrder $order) use ($selectedMerchant) {
                     return [
                         'id' => $order->id,
                         'order_no' => $order->order_no,
                         'client_name' => $order->client_name,
                         'product_name' => $order->product_name,
                         'code' => $order->code,
+                        'city' => $order->city,
                         'quantity' => (int) $order->quantity,
                         'amount' => (float) ($order->amount ?? 0),
                         'status' => $order->status,
@@ -84,8 +97,7 @@ class InventoryDeductionController extends Controller
                         'delivery_date' => $order->delivery_date,
                         'inventory_product_id' => $order->inventory_product_id,
                     ];
-                })
-                ->values();
+                });
 
             $products = CountryAccess::scopeProducts(
                 Product::query(),

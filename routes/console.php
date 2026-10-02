@@ -24,3 +24,11 @@ Schedule::command('whatsapp:send-meta')
 Schedule::command('whatsapp:notify-overdue')
         ->dailyAt('07:00')
         ->withoutOverlapping(60);
+
+
+// Storeep reconciliation. Webhooks (when configured) give low latency; this
+// walk is the safety net that makes missed deliveries a non-event. Storeep
+// rate limits at 60 requests/minute per token, so every few minutes is plenty.
+Schedule::command('storeep:sync-orders')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(30);

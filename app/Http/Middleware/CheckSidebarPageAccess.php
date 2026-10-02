@@ -63,14 +63,13 @@ class CheckSidebarPageAccess
         }
 
         $role = $user->roles;
-        $normalizedRole = SidebarRegistry::normalizeRole($role);
-        $visibleItems = SidebarRolePermission::query()
-            ->where('role', $role)
-            ->value('visible_items');
 
-        if (! is_array($visibleItems)) {
-            $visibleItems = SidebarRegistry::defaultVisibleKeysForRole($normalizedRole);
-        }
+        // G.O.D always resolves to every key; other roles use their saved
+        // subset or the role default.
+        $visibleItems = SidebarRegistry::resolveVisibleKeys(
+            $role,
+            SidebarRolePermission::query()->where('role', $role)->first()?->visible_items,
+        );
 
         if (in_array($key, $visibleItems, true)) {
             return $next($request);

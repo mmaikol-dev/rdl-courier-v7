@@ -60,6 +60,10 @@ return [
         'verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
     ],
 
+    'orders_reminder' => [
+        'recipient_phone' => env('ORDERS_REMINDER_RECIPIENT_PHONE'),
+    ],
+
     'openwa' => [
         'base_url' => env('OPENWA_BASE_URL', 'https://api.sitebase.co.ke'),
         'api_key' => env('OPENWA_API_KEY'),
@@ -69,6 +73,20 @@ return [
             '256' => env('OPENWA_SESSION_UGANDA'),
             '260' => env('OPENWA_SESSION_ZAMBIA'),
         ],
+    ],
+
+    'storeep' => [
+        // Per-store access tokens live in the `storeep_integrations` table
+        // (encrypted at rest), not here — there is one store per merchant.
+        'base_url' => env('STOREEP_BASE_URL', 'https://api.storeep.com/v1'),
+        'timeout' => env('STOREEP_TIMEOUT', 30),
+        // Storeep enforces 60 requests/minute per token. The docs suggest
+        // spacing requests at least 1s apart, so default the page size to the
+        // documented maximum of 50 and leave headroom for the health check.
+        'per_page' => env('STOREEP_PER_PAGE', 50),
+        // Ceiling on pages walked in a single run, so one integration with a
+        // large backlog cannot starve the others or trip the rate limiter.
+        'max_pages_per_run' => env('STOREEP_MAX_PAGES_PER_RUN', 20),
     ],
 
     'wawp' => [
