@@ -46,7 +46,6 @@ class OrdersExport implements FromQuery, WithHeadings, WithMapping
                     });
                 }
             });
-
         return $query
             ->orderBy('status')
             ->orderBy('product_name')

@@ -114,6 +114,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // sheets
     Route::resource('sheets', SheetController::class);
     Route::get('/sheets/{sheetId}/view', [SheetController::class, 'viewSheetData']);
+    // Pull new orders straight from the sheet's Google Sheet (blank status only,
+    // never a duplicate order number).
+    Route::get('/sheets/{sheet}/tabs', [SheetController::class, 'tabs'])->name('sheets.tabs');
+    Route::post('/sheets/{sheet}/import-orders', [SheetController::class, 'importOrders'])
+        ->middleware('throttle:6,1')
+        ->name('sheets.import-orders');
 
     // units(merchants)
     Route::resource('units', UnitController::class);

@@ -6,6 +6,7 @@ use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Services\ProductAutoMatchService;
 use App\Support\CountryAccess;
+use App\Support\SpreadsheetValue;
 use Generator;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -247,80 +248,13 @@ class ImportController extends Controller
     /**
      * Parse a number out of a spreadsheet cell.
      *
-     * Excel/CSV cells are frequently text-formatted, so values arrive as
-     * "4,399.00", "KES 4,399.00" or "(1,250.50)" for accounting negatives. A plain
-     * (float) cast silently truncates all of those (4,399.00 becomes 4.0), so the
-     * separators and currency noise are stripped first.
-     *
-     * Returns null when the cell holds no number at all, so genuine blanks are not
-     * confused with a zero-value order.
+     * Delegates to the shared parser so uploaded files and Google Sheets cells
+     * are read identically — see SpreadsheetValue::decimal() for the formats it
+     * handles.
      */
     private function parseDecimal(mixed $value): ?float
     {
-        if ($value === null || is_bool($value) || is_array($value) || is_object($value)) {
-            return null;
-        }
-
-        if (is_int($value) || is_float($value)) {
-            return (float) $value;
-        }
-
-        // Normalise the various space characters spreadsheets use for thousands.
-        $raw = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x89"], ' ', (string) $value);
-        $raw = trim($raw);
-
-        if ($raw === '') {
-            return null;
-        }
-
-        $negative = false;
-
-        // Accounting negatives: (1,250.50)
-        if (preg_match('/^\((.*)\)$/s', $raw, $matches) === 1) {
-            $negative = true;
-            $raw = trim($matches[1]);
-        } elseif (str_ends_with($raw, '-')) {
-            $negative = true;
-            $raw = rtrim(substr($raw, 0, -1));
-        }
-
-        if (str_starts_with($raw, '-')) {
-            $negative = !$negative;
-        }
-
-        // Keep only digits and separators — this drops currency codes and symbols.
-        $clean = preg_replace('/[^0-9.,]/', '', $raw);
-
-        if ($clean === null || trim($clean, '.,') === '') {
-            return null;
-        }
-
-        $lastComma = strrpos($clean, ',');
-        $lastDot = strrpos($clean, '.');
-        $commaCount = substr_count($clean, ',');
-        $dotCount = substr_count($clean, '.');
-
-        if ($lastComma !== false && $lastDot !== false) {
-            // Both present: whichever comes last is the decimal separator.
-            $decimal = $lastComma > $lastDot ? ',' : '.';
-            $thousands = $decimal === ',' ? '.' : ',';
-            $clean = str_replace($thousands, '', $clean);
-            $clean = str_replace($decimal, '.', $clean);
-        } elseif ($commaCount > 1 || $dotCount > 1) {
-            // Repeated separators of one kind are always thousands grouping.
-            $clean = str_replace([',', '.'], '', $clean);
-        } elseif ($lastComma !== false) {
-            // A single comma is a decimal point only when exactly 1-2 digits follow it.
-            $clean = preg_match('/^\d+,\d{1,2}$/', $clean) === 1
-                ? str_replace(',', '.', $clean)
-                : str_replace(',', '', $clean);
-        }
-
-        if (preg_match('/^\d+(\.\d+)?$/', $clean) !== 1) {
-            return null;
-        }
-
-        return ($negative ? -1 : 1) * (float) $clean;
+        return SpreadsheetValue::decimal($value);
     }
 
     /**

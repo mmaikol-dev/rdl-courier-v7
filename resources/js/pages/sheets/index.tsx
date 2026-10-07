@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import AppLayout from '@/layouts/app-layout';
@@ -13,9 +13,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
-import { ChevronLeft, ChevronRight, Edit, EyeIcon, Loader2, Maximize2, Minimize2, Plus, Trash2, X } from 'lucide-react';
+import { csrfHeaders } from '@/lib/csrf';
+import { ChevronLeft, ChevronRight, Download, Edit, EyeIcon, Loader2, Maximize2, Minimize2, Plus, Search, Trash2, X } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -30,10 +32,37 @@ interface Sheet {
     sheet_name: string;
     store_name: string;
     shopify_name: string;
-    access_token: string;
     country: string;
     cc_agents: string;
     sku: string;
+}
+
+/** Counts returned by POST /sheets/{id}/import-orders. */
+interface ImportSummary {
+    tab: string;
+    scanned: number;
+    eligible: number;
+    queued: number;
+    requeued: number;
+    already_staged: number;
+    remaining: number;
+    truncated: boolean;
+    skipped: {
+        has_status: number;
+        existing_order: number;
+        duplicate_in_sheet: number;
+        blank_order_no: number;
+    };
+    skipped_total: number;
+    errors: { row: number; order_no: string | null; reason: string }[];
+    errors_total: number;
+    order_nos: string[];
+}
+
+interface ImportResult {
+    success: boolean;
+    message: string;
+    summary?: ImportSummary;
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -243,6 +272,25 @@ function parseCcAgentsMap(ccAgentsRaw: string | undefined): Record<string, strin
     return {};
 }
 
+function ccAgentsSummary(ccAgentsRaw: string | undefined): string {
+    const map = parseCcAgentsMap(ccAgentsRaw);
+    const entries = Object.entries(map);
+
+    if (!entries.length) return '-';
+
+    const uniqueAgents = new Set(entries.flatMap(([, agents]) => agents.map((agent) => agent.trim()))).size;
+    const tabLabel = `${entries.length} tab${entries.length === 1 ? '' : 's'}`;
+    const agentLabel = `${uniqueAgents} agent${uniqueAgents === 1 ? '' : 's'}`;
+
+    if (uniqueAgents === 0) return tabLabel;
+
+    return `${tabLabel} · ${agentLabel}`;
+}
+
+function humanizeField(field: string): string {
+    return field.replaceAll('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
 function buildCcAgentsJson(existingRaw: string | undefined, selections: Record<string, string[]>): string {
     const base: Record<string, string[]> = {};
 
@@ -266,6 +314,257 @@ function buildCcAgentsJson(existingRaw: string | undefined, selections: Record<s
     return JSON.stringify(base, null, 2);
 }
 
+interface ImportOrdersDialogProps {
+    sheet: Sheet | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * Pulls new orders out of a merchant's Google Sheet on demand.
+ *
+ * Two rules are stated up front because they decide what the button actually
+ * does: only rows with a blank status are taken, and only order numbers that do
+ * not already exist are accepted. Everything left behind is counted and shown,
+ * so a run that "imported nothing" is never ambiguous.
+ */
+function ImportOrdersDialog({ sheet, open, onOpenChange }: ImportOrdersDialogProps) {
+    const [tabs, setTabs] = React.useState<string[]>([]);
+    const [tab, setTab] = React.useState('');
+    const [loadingTabs, setLoadingTabs] = React.useState(false);
+    const [importing, setImporting] = React.useState(false);
+    const [result, setResult] = React.useState<ImportResult | null>(null);
+
+    // Pulled out of the object so the effect depends on values, not identity —
+    // the dialog is handed a fresh Sheet reference on every parent render.
+    const sheetId = sheet?.id;
+    const registeredTab = sheet?.sheet_name;
+
+    // Reset per sheet so a previous run's numbers are never attributed to a
+    // different spreadsheet.
+    React.useEffect(() => {
+        if (!open || !sheetId || !registeredTab) return;
+
+        setResult(null);
+        setTab('');
+        setTabs([]);
+        setLoadingTabs(true);
+
+        fetch(`/sheets/${sheetId}/tabs`)
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || 'Could not read the spreadsheet.');
+                }
+
+                return data.tabs as string[];
+            })
+            .then((list) => {
+                setTabs(list);
+                // Prefer the tab this sheet is registered against, so the common
+                // case needs no interaction at all.
+                setTab(list.includes(registeredTab) ? registeredTab : (list[0] ?? ''));
+            })
+            .catch((error: Error) => {
+                // Non-fatal: the server falls back to the sheet's own tab name.
+                setTab(registeredTab);
+                toast.error(error.message);
+            })
+            .finally(() => setLoadingTabs(false));
+    }, [open, sheetId, registeredTab]);
+
+    const runImport = () => {
+        if (!sheet || importing) return;
+
+        setImporting(true);
+        setResult(null);
+
+        fetch(`/sheets/${sheet.id}/import-orders`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                ...csrfHeaders(),
+            },
+            body: JSON.stringify(tab ? { tab } : {}),
+        })
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || 'The import could not be completed.');
+                }
+
+                return data as ImportResult;
+            })
+            .then((data) => {
+                setResult(data);
+
+                if (data.summary && data.summary.errors_total > 0) {
+                    toast.warning(data.message);
+                } else {
+                    toast.success(data.message);
+                }
+            })
+            .catch((error: Error) => {
+                setResult({ success: false, message: error.message });
+                toast.error(error.message);
+            })
+            .finally(() => setImporting(false));
+    };
+
+    const summary = result?.summary;
+
+    return (
+        <Dialog
+            open={open}
+            onOpenChange={(next) => {
+                if (!importing) onOpenChange(next);
+            }}
+        >
+            <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Import Orders</DialogTitle>
+                    <DialogDescription>
+                        Pull new orders from the Google Sheet for{' '}
+                        <span className="font-medium">{sheet?.sheet_name}</span>.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                    <ul className="space-y-1 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                        <li>• Only rows whose status is blank are imported.</li>
+                        <li>• Order numbers that already exist are skipped, never duplicated.</li>
+                        <li>• Rows are read from the top each run, so running it twice is safe.</li>
+                    </ul>
+
+                    <div className="flex flex-wrap items-end gap-2">
+                        <div className="min-w-[200px] flex-1 space-y-1.5">
+                            <Label htmlFor="import-tab">Sheet tab</Label>
+                            {loadingTabs ? (
+                                <div className="flex h-9 items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Reading spreadsheet…
+                                </div>
+                            ) : tabs.length > 0 ? (
+                                <Select value={tab} onValueChange={setTab}>
+                                    <SelectTrigger id="import-tab">
+                                        <SelectValue placeholder="Select a tab" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {tabs.map((name) => (
+                                            <SelectItem key={name} value={name}>
+                                                {name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <Input
+                                    id="import-tab"
+                                    value={tab}
+                                    onChange={(e) => setTab(e.target.value)}
+                                    placeholder={sheet?.sheet_name ?? 'Sheet name'}
+                                />
+                            )}
+                        </div>
+
+                        <Button onClick={runImport} disabled={importing}>
+                            {importing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing…
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={16} className="mr-2" /> Import orders
+                                </>
+                            )}
+                        </Button>
+                    </div>
+
+                    {result && (
+                        <div
+                            className={`space-y-3 rounded-md border p-3 text-sm ${
+                                result.success ? 'bg-green-50/50' : 'bg-destructive/10'
+                            }`}
+                        >
+                            <p className={result.success ? 'text-green-700' : 'text-destructive'}>{result.message}</p>
+
+                            {summary && (
+                                <>
+                                    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                                        {[
+                                            { label: 'Rows read', value: summary.scanned },
+                                            { label: 'Imported', value: summary.queued + summary.requeued },
+                                            { label: 'Skipped', value: summary.skipped_total },
+                                            { label: 'Needs fixing', value: summary.errors_total },
+                                        ].map((stat) => (
+                                            <div key={stat.label} className="rounded border bg-background p-2">
+                                                <div className="text-muted-foreground">{stat.label}</div>
+                                                <div className="text-lg font-semibold">{stat.value}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {summary.skipped_total > 0 && (
+                                        <ul className="space-y-0.5 text-xs text-muted-foreground">
+                                            <li>• {summary.skipped.has_status} skipped — already have a status</li>
+                                            <li>• {summary.skipped.existing_order} skipped — order number already exists</li>
+                                            <li>• {summary.skipped.duplicate_in_sheet} skipped — repeated order number in the sheet</li>
+                                            <li>• {summary.skipped.blank_order_no} skipped — no order number</li>
+                                        </ul>
+                                    )}
+
+                                    {summary.errors.length > 0 && (
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-medium">
+                                                Rows that could not be imported:
+                                            </p>
+                                            <div className="max-h-40 overflow-y-auto rounded border bg-background">
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="sticky top-0 bg-muted">
+                                                        <tr>
+                                                            <th className="px-2 py-1">Row</th>
+                                                            <th className="px-2 py-1">Order No</th>
+                                                            <th className="px-2 py-1">Reason</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {summary.errors.map((error) => (
+                                                            <tr key={`${error.row}-${error.order_no ?? ''}`} className="border-t">
+                                                                <td className="px-2 py-1">{error.row}</td>
+                                                                <td className="px-2 py-1">{error.order_no ?? '—'}</td>
+                                                                <td className="px-2 py-1">{error.reason}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {summary.errors_total > summary.errors.length && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    Showing {summary.errors.length} of {summary.errors_total}.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {summary.order_nos.length > 0 && (
+                                        <p className="break-all text-xs text-muted-foreground">
+                                            Imported: {summary.order_nos.join(', ')}
+                                            {summary.order_nos.length >= 50 ? ' …' : ''}
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function SheetsView() {
     const { sheets, flash, ccUsers, filters } = usePage<PageProps>().props;
 
@@ -284,7 +583,12 @@ export default function SheetsView() {
     const [viewDrawerOpen, setViewDrawerOpen] = React.useState(false);
     const [viewSheetId, setViewSheetId] = React.useState<string | null>(null);
     const [ccSelectOpen, setCcSelectOpen] = React.useState<string | null>(null);
+    const [importSheet, setImportSheet] = React.useState<Sheet | null>(null);
+    const [importOpen, setImportOpen] = React.useState(false);
     const [createCcSelectOpen, setCreateCcSelectOpen] = React.useState<string | null>(null);
+    const [isCreating, setIsCreating] = React.useState(false);
+    const [page, setPage] = React.useState(1);
+    const PAGE_SIZE = 12;
 
     React.useEffect(() => {
         if (flash?.success) toast.success(flash.success);
@@ -301,6 +605,19 @@ export default function SheetsView() {
                 (selectedCountry === 'all' || (sheet.country || '').toLowerCase() === selectedCountry.toLowerCase()),
         );
     }, [sheets, filter, selectedCountry]);
+
+    const pageCount = Math.max(1, Math.ceil(filteredSheets.length / PAGE_SIZE));
+    const safePage = Math.min(page, pageCount);
+    const visibleSheets = filteredSheets.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const rangeStart = filteredSheets.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+    const rangeEnd = Math.min(safePage * PAGE_SIZE, filteredSheets.length);
+
+    const clearFilters = () => {
+        setFilter('');
+        setSelectedCountry('all');
+        setPage(1);
+        router.get('/sheets', {}, { preserveState: true, preserveScroll: true, replace: true });
+    };
 
     const toggleEditCcAgent = (key: string, agent: string) => {
         setEditCcAgents((current) => {
@@ -410,6 +727,7 @@ export default function SheetsView() {
     };
 
     const handleCreateSave = () => {
+        setIsCreating(true);
         const ccAgentsPayload = buildCcAgentsJson(createValues.cc_agents as string | undefined, createCcAgents);
         router.post(
             `/sheets`,
@@ -428,6 +746,9 @@ export default function SheetsView() {
                 onError: () => {
                     toast.error('Failed to create sheet');
                 },
+                onFinish: () => {
+                    setIsCreating(false);
+                },
             },
         );
     };
@@ -435,6 +756,11 @@ export default function SheetsView() {
     const openSheetView = (sheetId: string) => {
         setViewSheetId(sheetId);
         setViewDrawerOpen(true);
+    };
+
+    const openImport = (sheet: Sheet) => {
+        setImportSheet(sheet);
+        setImportOpen(true);
     };
 
     return (
@@ -445,16 +771,36 @@ export default function SheetsView() {
                 {/* Top Controls */}
                 <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-                        <Input
-                            placeholder="Filter sheets by name, Shopify, or country"
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
-                            className="flex-1"
-                        />
+                        <div className="relative flex-1">
+                            <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                placeholder="Filter by name, Shopify, or country"
+                                value={filter}
+                                onChange={(e) => {
+                                    setFilter(e.target.value);
+                                    setPage(1);
+                                }}
+                                className="pl-8"
+                            />
+                            {filter && (
+                                <button
+                                    type="button"
+                                    aria-label="Clear search"
+                                    onClick={() => {
+                                        setFilter('');
+                                        setPage(1);
+                                    }}
+                                    className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
                         <Select
                             value={selectedCountry}
                             onValueChange={(value) => {
                                 setSelectedCountry(value);
+                                setPage(1);
                                 router.get('/sheets', value === 'all' ? {} : { country: value }, {
                                     preserveState: true,
                                     preserveScroll: true,
@@ -482,66 +828,103 @@ export default function SheetsView() {
 
                 {/* Sheets Grid */}
                 {filteredSheets.length === 0 ? (
-                    <div className="py-20 text-center text-muted-foreground">No sheets available.</div>
+                    <div className="rounded-xl border border-dashed py-20 text-center">
+                        <p className="text-muted-foreground">
+                            {sheets?.length ? 'No sheets match your filters.' : 'No sheets available.'}
+                        </p>
+                        {(filter || selectedCountry !== 'all') && (
+                            <Button variant="outline" size="sm" onClick={clearFilters} className="mt-3">
+                                Clear filters
+                            </Button>
+                        )}
+                    </div>
                 ) : (
-                    <div className="grid auto-rows-min grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-                        {filteredSheets.map((sheet) => (
+                    <div className="grid auto-rows-min grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                        {visibleSheets.map((sheet) => (
                             <Card
                                 key={sheet.id}
-                                className="flex flex-col justify-between rounded-lg border p-2 shadow transition-all duration-150 hover:shadow-md"
+                                className="flex flex-col justify-between gap-3 rounded-lg border p-4 shadow-sm transition-shadow hover:shadow-md"
                             >
-                                <CardHeader>
-                                    <CardDescription className="truncate text-xs text-muted-foreground" title={sheet.sheet_id}>
-                                        Sheet ID: {sheet.sheet_id}
-                                    </CardDescription>
+                                <CardHeader className="gap-2 px-0 pt-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <Badge variant="secondary" className="text-[11px]">
+                                            {sheet.country || '—'}
+                                        </Badge>
+                                        <span className="truncate text-xs text-muted-foreground" title={sheet.store_name}>
+                                            Store: {sheet.store_name || '-'}
+                                        </span>
+                                    </div>
                                     <CardTitle className="truncate text-sm" title={sheet.sheet_name}>
                                         {sheet.sheet_name}
                                     </CardTitle>
-                                    <CardDescription className="truncate text-xs text-muted-foreground" title={sheet.store_name}>
-                                        Store: {sheet.store_name || '-'}
-                                    </CardDescription>
-                                    <CardDescription className="truncate text-xs text-muted-foreground" title={sheet.shopify_name}>
-                                        Shopify: {sheet.shopify_name}
+                                    <CardDescription className="truncate text-xs" title={sheet.shopify_name}>
+                                        Shopify: {sheet.shopify_name || '-'}
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="flex flex-col gap-1 overflow-hidden text-xs">
-                                    {[
-                                        { label: 'Country', value: sheet.country },
-                                        { label: 'CC Agents', value: sheet.cc_agents },
-                                        { label: 'SKU', value: sheet.sku },
-                                        { label: 'Access Token', value: sheet.access_token, isTruncate: true },
-                                    ].map((item, index) => (
-                                        <div key={`${sheet.id}-info-${index}`} className="truncate">
-                                            <strong>{item.label}:</strong>{' '}
-                                            {item.isTruncate ? (
-                                                <span className="truncate" title={item.value}>
-                                                    {item.value}
-                                                </span>
-                                            ) : (
-                                                item.value || '-'
-                                            )}
-                                        </div>
-                                    ))}
+                                <CardContent className="flex flex-col gap-1.5 px-0 pb-0 text-xs text-muted-foreground">
+                                    <div className="truncate" title={sheet.sheet_id}>
+                                        <span className="font-mono text-[11px]">{sheet.sheet_id}</span>
+                                    </div>
+                                    <div className="truncate">
+                                        <strong className="font-medium text-foreground">CC:</strong> {ccAgentsSummary(sheet.cc_agents)}
+                                    </div>
+                                    <div className="truncate">
+                                        <strong className="font-medium text-foreground">SKU:</strong> {sheet.sku || '-'}
+                                    </div>
                                 </CardContent>
-                                <div className="flex flex-wrap justify-end gap-2 p-2">
-                                    <Button size="sm" variant="outline" onClick={() => handleEditOpen(sheet)}>
-                                        <Edit size={16} />
+                                <CardFooter className="grid grid-cols-[1fr_auto] gap-2 px-0">
+                                    <Button size="sm" onClick={() => openImport(sheet)} className="flex items-center gap-1">
+                                        <Download size={16} />
+                                        Import Orders
                                     </Button>
-                                    <Button size="sm" variant="destructive" onClick={() => setDeletingSheet(sheet)}>
-                                        <Trash2 size={16} />
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => openSheetView(sheet.sheet_id)}
-                                        className="flex items-center gap-1"
-                                    >
-                                        <EyeIcon size={16} />
-                                        View Data
-                                    </Button>
-                                </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button size="sm" variant="outline" aria-label="View sheet data" onClick={() => openSheetView(sheet.sheet_id)}>
+                                            <EyeIcon size={16} />
+                                        </Button>
+                                        <Button size="sm" variant="outline" aria-label="Edit sheet" onClick={() => handleEditOpen(sheet)}>
+                                            <Edit size={16} />
+                                        </Button>
+                                        <Button size="sm" variant="outline" aria-label="Delete sheet" onClick={() => setDeletingSheet(sheet)}>
+                                            <Trash2 size={16} />
+                                        </Button>
+                                    </div>
+                                </CardFooter>
                             </Card>
                         ))}
+                    </div>
+                )}
+
+                {/* Pagination */}
+                {filteredSheets.length > PAGE_SIZE && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
+                        <span>
+                            Showing <strong className="font-medium text-foreground">{rangeStart}</strong>–
+                            <strong className="font-medium text-foreground">{rangeEnd}</strong> of{' '}
+                            <strong className="font-medium text-foreground">{filteredSheets.length}</strong>
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={safePage <= 1}
+                                onClick={() => setPage(safePage - 1)}
+                                className="flex items-center gap-1"
+                            >
+                                <ChevronLeft className="h-4 w-4" /> Previous
+                            </Button>
+                            <span>
+                                Page <strong className="font-medium text-foreground">{safePage}</strong> of {pageCount}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={safePage >= pageCount}
+                                onClick={() => setPage(safePage + 1)}
+                                className="flex items-center gap-1"
+                            >
+                                Next <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -563,13 +946,16 @@ export default function SheetsView() {
                     </DialogHeader>
                     <div className="mt-2 space-y-3">
                         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                            {['sheet_id', 'sheet_name', 'store_name', 'shopify_name', 'country', 'sku', 'access_token'].map((field) => (
-                                <Input
-                                    key={field}
-                                    value={(createValues as any)[field] || ''}
-                                    onChange={(e) => setCreateValues({ ...createValues, [field]: e.target.value })}
-                                    placeholder={field.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                                />
+                            {(['sheet_id', 'sheet_name', 'store_name', 'shopify_name', 'country', 'sku'] as const).map((field) => (
+                                <div key={field} className="space-y-1.5">
+                                    <Label htmlFor={`create-${field}`}>{humanizeField(field)}</Label>
+                                    <Input
+                                        id={`create-${field}`}
+                                        value={createValues[field] ?? ''}
+                                        onChange={(e) => setCreateValues({ ...createValues, [field]: e.target.value })}
+                                        placeholder={humanizeField(field)}
+                                    />
+                                </div>
                             ))}
                         </div>
                         <div className="space-y-3">
@@ -649,10 +1035,13 @@ export default function SheetsView() {
                         </div>
                     </div>
                     <div className="mt-4 flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setCreatingSheet(false)}>
+                        <Button variant="outline" onClick={() => setCreatingSheet(false)} disabled={isCreating}>
                             Cancel
                         </Button>
-                        <Button onClick={handleCreateSave}>Create</Button>
+                        <Button onClick={handleCreateSave} disabled={isCreating}>
+                            {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isCreating ? 'Creating...' : 'Create'}
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -675,13 +1064,16 @@ export default function SheetsView() {
                     </DialogHeader>
                     <div className="mt-2 space-y-3">
                         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                            {['sheet_id', 'sheet_name', 'store_name', 'shopify_name', 'country', 'sku', 'access_token'].map((field) => (
-                                <Input
-                                    key={field}
-                                    value={(editValues as any)[field] || ''}
-                                    onChange={(e) => setEditValues({ ...editValues, [field]: e.target.value })}
-                                    placeholder={field.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                                />
+                            {(['sheet_id', 'sheet_name', 'store_name', 'shopify_name', 'country', 'sku'] as const).map((field) => (
+                                <div key={field} className="space-y-1.5">
+                                    <Label htmlFor={`edit-${field}`}>{humanizeField(field)}</Label>
+                                    <Input
+                                        id={`edit-${field}`}
+                                        value={editValues[field] ?? ''}
+                                        onChange={(e) => setEditValues({ ...editValues, [field]: e.target.value })}
+                                        placeholder={humanizeField(field)}
+                                    />
+                                </div>
                             ))}
                         </div>
                         <div className="space-y-3">
@@ -791,6 +1183,9 @@ export default function SheetsView() {
 
             {/* View Sheet Data Drawer */}
             {viewSheetId && <SheetDataDrawer open={viewDrawerOpen} onOpenChange={setViewDrawerOpen} sheetId={viewSheetId} />}
+
+            {/* Pull new orders from the sheet's Google Sheet */}
+            <ImportOrdersDialog sheet={importSheet} open={importOpen} onOpenChange={setImportOpen} />
         </AppLayout>
     );
 }
