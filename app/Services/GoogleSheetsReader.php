@@ -40,7 +40,7 @@ class GoogleSheetsReader
 
         $client = new Google_Client;
         $client->setAuthConfig($path);
-        $client->addScope(Google_Service_Sheets::SPREADSHEETS);
+        $client->addScope(Google_Service_Sheets::SPREADSHEETS_READONLY);
 
         return $this->service = new Google_Service_Sheets($client);
     }
@@ -76,10 +76,28 @@ class GoogleSheetsReader
      *
      * @return array<int, array<int, mixed>>
      */
-    public function rows(string $spreadsheetId, string $tabName, ?string $columns = 'A:R', ?int $maxRows = null): array
+    public function rows(
+        string $spreadsheetId,
+        string $tabName,
+        ?string $columns = 'A:R',
+        ?int $maxRows = null,
+        int $startRow = 1
+    ): array
     {
-        $range = $columns
-            ? $this->quoteTab($tabName).'!'.$columns
+        $rangeColumns = $columns ?: '';
+
+        if ($startRow > 1 && preg_match('/^([A-Z]+):([A-Z]+)$/i', $rangeColumns, $matches) === 1) {
+            $firstRow = max(1, $startRow);
+            $lastRow = $maxRows === null ? '' : (string) ($firstRow + $maxRows - 1);
+            $rangeColumns = $matches[1].$firstRow.':'.$matches[2].$lastRow;
+        } elseif ($startRow > 1) {
+            throw new RuntimeException('A start row can only be used with a whole-column range such as A:R.');
+        } elseif ($maxRows !== null && preg_match('/^([A-Z]+):([A-Z]+)$/i', $rangeColumns, $matches) === 1) {
+            $rangeColumns = $matches[1].'1:'.$matches[2].$maxRows;
+        }
+
+        $range = $rangeColumns !== ''
+            ? $this->quoteTab($tabName).'!'.$rangeColumns
             : $this->quoteTab($tabName);
 
         try {

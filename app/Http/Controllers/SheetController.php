@@ -33,7 +33,9 @@ class SheetController extends Controller
             'shopify_name',
             'country',
             'cc_agents',
-            'sku'
+            'sku',
+            'auto_pickup_enabled',
+            'auto_pickup_tabs',
         ), $user);
 
         // If logged-in user is a merchant, filter sheets by matching user name with sheet_name
@@ -284,7 +286,7 @@ class SheetController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'sheet_id'      => 'required|string|unique:sheets,sheet_id',
             'sheet_name'    => 'required|string',
             'store_name'    => 'nullable|string',
@@ -293,10 +295,16 @@ class SheetController extends Controller
             'country'       => 'nullable|string',
             'cc_agents'     => 'nullable|string',
             'sku'           => 'nullable|string',
+            'auto_pickup_enabled' => 'sometimes|boolean',
+            'auto_pickup_tabs' => 'sometimes|array',
+            'auto_pickup_tabs.*' => 'string|max:255',
         ]);
 
-        $validated = $request->all();
         $validated['cc_agents'] = $this->normalizeCcAgents($validated['cc_agents'] ?? null);
+        $validated['auto_pickup_tabs'] = array_values(array_unique(array_filter(
+            array_map(static fn (string $tab): string => trim($tab), $validated['auto_pickup_tabs'] ?? []),
+            static fn (string $tab): bool => $tab !== ''
+        )));
         $validated['country'] = CountryAccess::resolveCountryNameForWrite(
             $request->user()?->loadMissing('country'),
             $request->country
@@ -343,7 +351,17 @@ class SheetController extends Controller
             'country' => 'nullable|string|max:100',
             'cc_agents' => 'nullable|string',
             'sku' => 'nullable|string|max:255',
+            'auto_pickup_enabled' => 'sometimes|boolean',
+            'auto_pickup_tabs' => 'sometimes|array',
+            'auto_pickup_tabs.*' => 'string|max:255',
         ]);
+
+        if (array_key_exists('auto_pickup_tabs', $validated)) {
+            $validated['auto_pickup_tabs'] = array_values(array_unique(array_filter(
+                array_map(static fn (string $tab): string => trim($tab), $validated['auto_pickup_tabs']),
+                static fn (string $tab): bool => $tab !== ''
+            )));
+        }
 
         $validated['cc_agents'] = $this->normalizeCcAgents($validated['cc_agents'] ?? null);
         $validated['country'] = CountryAccess::resolveCountryNameForWrite(

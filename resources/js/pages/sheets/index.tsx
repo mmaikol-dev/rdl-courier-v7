@@ -35,6 +35,16 @@ interface Sheet {
     country: string;
     cc_agents: string;
     sku: string;
+    auto_pickup_enabled: boolean;
+    auto_pickup_tabs: string[] | null;
+}
+
+/** One column the importer read, and where its meaning came from. */
+interface ImportColumn {
+    column: string;
+    field: string;
+    label: string;
+    source: 'header' | 'position';
 }
 
 /** Counts returned by POST /sheets/{id}/import-orders. */
@@ -52,11 +62,13 @@ interface ImportSummary {
         existing_order: number;
         duplicate_in_sheet: number;
         blank_order_no: number;
+        missing_priority: number;
     };
     skipped_total: number;
     errors: { row: number; order_no: string | null; reason: string }[];
     errors_total: number;
     order_nos: string[];
+    columns?: ImportColumn[];
 }
 
 interface ImportResult {
@@ -438,6 +450,7 @@ function ImportOrdersDialog({ sheet, open, onOpenChange }: ImportOrdersDialogPro
                         <li>• Only rows whose status is blank are imported.</li>
                         <li>• Order numbers that already exist are skipped, never duplicated.</li>
                         <li>• Rows are read from the top each run, so running it twice is safe.</li>
+                        <li>• Columns are read by position, so a missing header cell is not a problem.</li>
                     </ul>
 
                     <div className="flex flex-wrap items-end gap-2">
@@ -507,9 +520,43 @@ function ImportOrdersDialog({ sheet, open, onOpenChange }: ImportOrdersDialogPro
                                         ))}
                                     </div>
 
+                                    {summary.columns && summary.columns.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs font-medium">Columns that were read</p>
+                                            <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                                                {summary.columns.map((column) => (
+                                                    <div
+                                                        key={column.field}
+                                                        className="flex items-center gap-1.5 rounded border bg-background px-1.5 py-1 text-[11px]"
+                                                    >
+                                                        <span className="font-mono font-semibold" title={`Spreadsheet column ${column.column}`}>
+                                                            {column.column}
+                                                        </span>
+                                                        <span className="truncate" title={column.label}>
+                                                            {column.label}
+                                                        </span>
+                                                        <span
+                                                            className="ml-auto shrink-0 text-[10px] text-muted-foreground"
+                                                            title={
+                                                                column.source === 'header'
+                                                                    ? 'Matched to this column by its header text'
+                                                                    : 'Matched to this column by its position, the header cell was blank or missing'
+                                                            }
+                                                        >
+                                                            {column.source === 'header' ? 'header' : 'position'}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {summary.skipped_total > 0 && (
                                         <ul className="space-y-0.5 text-xs text-muted-foreground">
                                             <li>• {summary.skipped.has_status} skipped — already have a status</li>
+                                            {summary.skipped.missing_priority > 0 && (
+                                                <li>• {summary.skipped.missing_priority} skipped — column C is blank (automatic pickup eligibility)</li>
+                                            )}
                                             <li>• {summary.skipped.existing_order} skipped — order number already exists</li>
                                             <li>• {summary.skipped.duplicate_in_sheet} skipped — repeated order number in the sheet</li>
                                             <li>• {summary.skipped.blank_order_no} skipped — no order number</li>
@@ -573,6 +620,8 @@ export default function SheetsView() {
     const [editingSheet, setEditingSheet] = React.useState<Sheet | null>(null);
     const [editValues, setEditValues] = React.useState<Partial<Sheet>>({});
     const [editCcAgents, setEditCcAgents] = React.useState<Record<string, string[]>>({});
+    const [editTabOptions, setEditTabOptions] = React.useState<string[]>([]);
+    const [loadingEditTabs, setLoadingEditTabs] = React.useState(false);
     const [editKeyInput, setEditKeyInput] = React.useState('');
     const [isUpdating, setIsUpdating] = React.useState(false);
     const [deletingSheet, setDeletingSheet] = React.useState<Sheet | null>(null);
@@ -588,7 +637,7 @@ export default function SheetsView() {
     const [createCcSelectOpen, setCreateCcSelectOpen] = React.useState<string | null>(null);
     const [isCreating, setIsCreating] = React.useState(false);
     const [page, setPage] = React.useState(1);
-    const PAGE_SIZE = 12;
+    const PAGE_SIZE = 50;
 
     React.useEffect(() => {
         if (flash?.success) toast.success(flash.success);
@@ -681,9 +730,26 @@ export default function SheetsView() {
 
     const handleEditOpen = (sheet: Sheet) => {
         setEditingSheet(sheet);
-        setEditValues(sheet);
+        setEditValues({
+            ...sheet,
+            auto_pickup_enabled: Boolean(sheet.auto_pickup_enabled),
+            auto_pickup_tabs: sheet.auto_pickup_tabs ?? [],
+        });
         setEditCcAgents(parseCcAgentsMap(sheet.cc_agents));
         setEditKeyInput('');
+        setEditTabOptions([]);
+        setLoadingEditTabs(true);
+
+        fetch(`/sheets/${sheet.id}/tabs`)
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || 'Could not load spreadsheet tabs.');
+                }
+                setEditTabOptions(data.tabs as string[]);
+            })
+            .catch((error: Error) => toast.error(error.message))
+            .finally(() => setLoadingEditTabs(false));
     };
 
     const handleEditSave = () => {
@@ -767,9 +833,9 @@ export default function SheetsView() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Sheets" />
 
-            <div className="flex flex-col gap-4 p-4">
+            <div className="flex w-full flex-col gap-4 p-4">
                 {/* Top Controls */}
-                <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div className="flex flex-1 flex-col gap-2 sm:flex-row">
                         <div className="relative flex-1">
                             <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -839,58 +905,95 @@ export default function SheetsView() {
                         )}
                     </div>
                 ) : (
-                    <div className="grid auto-rows-min grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                        {visibleSheets.map((sheet) => (
-                            <Card
-                                key={sheet.id}
-                                className="flex flex-col justify-between gap-3 rounded-lg border p-4 shadow-sm transition-shadow hover:shadow-md"
-                            >
-                                <CardHeader className="gap-2 px-0 pt-0">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <Badge variant="secondary" className="text-[11px]">
-                                            {sheet.country || '—'}
-                                        </Badge>
-                                        <span className="truncate text-xs text-muted-foreground" title={sheet.store_name}>
-                                            Store: {sheet.store_name || '-'}
-                                        </span>
-                                    </div>
-                                    <CardTitle className="truncate text-sm" title={sheet.sheet_name}>
-                                        {sheet.sheet_name}
-                                    </CardTitle>
-                                    <CardDescription className="truncate text-xs" title={sheet.shopify_name}>
-                                        Shopify: {sheet.shopify_name || '-'}
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex flex-col gap-1.5 px-0 pb-0 text-xs text-muted-foreground">
-                                    <div className="truncate" title={sheet.sheet_id}>
-                                        <span className="font-mono text-[11px]">{sheet.sheet_id}</span>
-                                    </div>
-                                    <div className="truncate">
-                                        <strong className="font-medium text-foreground">CC:</strong> {ccAgentsSummary(sheet.cc_agents)}
-                                    </div>
-                                    <div className="truncate">
-                                        <strong className="font-medium text-foreground">SKU:</strong> {sheet.sku || '-'}
-                                    </div>
-                                </CardContent>
-                                <CardFooter className="grid grid-cols-[1fr_auto] gap-2 px-0">
-                                    <Button size="sm" onClick={() => openImport(sheet)} className="flex items-center gap-1">
-                                        <Download size={16} />
-                                        Import Orders
-                                    </Button>
-                                    <div className="flex items-center gap-1">
-                                        <Button size="sm" variant="outline" aria-label="View sheet data" onClick={() => openSheetView(sheet.sheet_id)}>
-                                            <EyeIcon size={16} />
+                    // Container queries, not viewport breakpoints: the sidebar is
+                    // collapsible, so the usable width of this column changes
+                    // independently of the window. Sizing off the container keeps
+                    // the cards a predictable ~220-240px wide either way, and the
+                    // grid always fills the width available instead of sitting
+                    // in a centred column of fixed maximum width.
+                    <div className="@container">
+                        <div className="grid auto-rows-min grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[46rem]:grid-cols-3 @[60rem]:grid-cols-4 @[72rem]:grid-cols-5 @[86rem]:grid-cols-6 @[100rem]:grid-cols-7 @[112rem]:grid-cols-8">
+                            {visibleSheets.map((sheet) => (
+                                <Card
+                                    key={sheet.id}
+                                    className="min-w-0 gap-2.5 rounded-lg border p-3.5 shadow-sm transition-shadow hover:shadow-md"
+                                >
+                                    <CardHeader className="gap-1.5 px-0 pt-0">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <Badge variant="secondary" className="shrink-0 text-[11px]">
+                                                {sheet.country || '—'}
+                                            </Badge>
+                                            <span className="truncate text-[11px] text-muted-foreground" title={sheet.store_name}>
+                                                {sheet.store_name || '—'}
+                                            </span>
+                                        </div>
+                                        <CardTitle className="truncate text-sm" title={sheet.sheet_name}>
+                                            {sheet.sheet_name}
+                                        </CardTitle>
+                                        <CardDescription className="truncate text-xs" title={sheet.shopify_name}>
+                                            Shopify: {sheet.shopify_name || '-'}
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="px-0 pb-0">
+                                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px]">
+                                            <span className="text-muted-foreground">ID</span>
+                                            <span className="truncate font-mono" title={sheet.sheet_id}>
+                                                {sheet.sheet_id}
+                                            </span>
+                                            <span className="text-muted-foreground">CC</span>
+                                            <span className="truncate" title={ccAgentsSummary(sheet.cc_agents)}>
+                                                {ccAgentsSummary(sheet.cc_agents)}
+                                            </span>
+                                            <span className="text-muted-foreground">SKU</span>
+                                            <span className="truncate">{sheet.sku || '-'}</span>
+                                            <span className="text-muted-foreground">Auto pickup</span>
+                                            <span>
+                                                {sheet.auto_pickup_enabled && (sheet.auto_pickup_tabs?.length ?? 0) > 0
+                                                    ? `On · ${sheet.auto_pickup_tabs?.length} tab(s)`
+                                                    : sheet.auto_pickup_enabled
+                                                      ? 'On · no tabs selected'
+                                                      : 'Off'}
+                                            </span>
+                                        </div>
+                                    </CardContent>
+                                    <CardFooter className="mt-auto flex flex-col items-stretch gap-2 px-0">
+                                        <Button size="sm" onClick={() => openImport(sheet)} className="w-full">
+                                            <Download size={16} />
+                                            Import Orders
                                         </Button>
-                                        <Button size="sm" variant="outline" aria-label="Edit sheet" onClick={() => handleEditOpen(sheet)}>
-                                            <Edit size={16} />
-                                        </Button>
-                                        <Button size="sm" variant="outline" aria-label="Delete sheet" onClick={() => setDeletingSheet(sheet)}>
-                                            <Trash2 size={16} />
-                                        </Button>
-                                    </div>
-                                </CardFooter>
-                            </Card>
-                        ))}
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <Button
+                                                size="icon-sm"
+                                                variant="outline"
+                                                className="w-full"
+                                                aria-label="View sheet data"
+                                                onClick={() => openSheetView(sheet.sheet_id)}
+                                            >
+                                                <EyeIcon size={16} />
+                                            </Button>
+                                            <Button
+                                                size="icon-sm"
+                                                variant="outline"
+                                                className="w-full"
+                                                aria-label="Edit sheet"
+                                                onClick={() => handleEditOpen(sheet)}
+                                            >
+                                                <Edit size={16} />
+                                            </Button>
+                                            <Button
+                                                size="icon-sm"
+                                                variant="outline"
+                                                className="w-full"
+                                                aria-label="Delete sheet"
+                                                onClick={() => setDeletingSheet(sheet)}
+                                            >
+                                                <Trash2 size={16} />
+                                            </Button>
+                                        </div>
+                                    </CardFooter>
+                                </Card>
+                            ))}
+                        </div>
                     </div>
                 )}
 
@@ -1063,6 +1166,55 @@ export default function SheetsView() {
                         <DialogDescription>Update the sheet information below.</DialogDescription>
                     </DialogHeader>
                     <div className="mt-2 space-y-3">
+                        <div className="rounded-md border p-3">
+                            <label className="flex items-start gap-2">
+                                <Checkbox
+                                    checked={Boolean(editValues.auto_pickup_enabled)}
+                                    onCheckedChange={(checked) =>
+                                        setEditValues({ ...editValues, auto_pickup_enabled: checked === true })
+                                    }
+                                />
+                                <span>
+                                    <span className="block text-sm font-medium">Enable automatic order pickup</span>
+                                    <span className="block text-xs text-muted-foreground">
+                                        Disabled spreadsheets and tabs that are not selected are skipped by the scheduled picker.
+                                    </span>
+                                </span>
+                            </label>
+                            <div className="mt-3 space-y-2">
+                                <p className="text-sm font-medium">Tabs to poll</p>
+                                {loadingEditTabs ? (
+                                    <p className="text-xs text-muted-foreground">Loading spreadsheet tabs…</p>
+                                ) : editTabOptions.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No tabs were found. Automatic pickup will skip this spreadsheet.</p>
+                                ) : (
+                                    <div className="grid max-h-40 gap-2 overflow-y-auto sm:grid-cols-2">
+                                        {editTabOptions.map((tab) => {
+                                            const selectedTabs = editValues.auto_pickup_tabs ?? [];
+                                            return (
+                                                <label key={tab} className="flex items-center gap-2 text-sm">
+                                                    <Checkbox
+                                                        checked={selectedTabs.includes(tab)}
+                                                        onCheckedChange={(checked) =>
+                                                            setEditValues({
+                                                                ...editValues,
+                                                                auto_pickup_tabs: checked
+                                                                    ? [...selectedTabs, tab]
+                                                                    : selectedTabs.filter((selectedTab) => selectedTab !== tab),
+                                                            })
+                                                        }
+                                                    />
+                                                    <span className="truncate" title={tab}>{tab}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                    The poller also requires a blank status and a filled physical column C. Manual imports are unchanged.
+                                </p>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                             {(['sheet_id', 'sheet_name', 'store_name', 'shopify_name', 'country', 'sku'] as const).map((field) => (
                                 <div key={field} className="space-y-1.5">

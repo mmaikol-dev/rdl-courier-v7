@@ -15,6 +15,10 @@ Schedule::command('orders:update-sheets', ['--limit' => 250])
     ->everyFiveMinutes()
     ->withoutOverlapping(30);
 
+Schedule::command('orders:pull-sheets')
+    ->everyMinute()
+    ->withoutOverlapping(5);
+
 
 Schedule::command('whatsapp:send-meta')
     ->dailyAt('06:00')

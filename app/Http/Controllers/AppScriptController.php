@@ -20,6 +20,8 @@ class AppScriptController extends Controller
         try {
             $payload = $request->all();
             $sourceHash = $this->sourceHash($payload);
+            $entryDate = now()->toDateString();
+            $payload['order_date'] = $entryDate;
 
             $incoming = IncomingSheetOrder::firstOrCreate(
                 ['source_hash' => $sourceHash],
@@ -45,6 +47,8 @@ class AppScriptController extends Controller
 
                 // Re-process if the payload changed, regardless of current status
                 $oldPayload = $incoming->payload ?? [];
+                $payload['order_date'] = $oldPayload['order_date'] ?? $entryDate;
+
                 if ($payload !== $oldPayload) {
                     $updates['status'] = 'pending';
                     $updates['error_message'] = null;

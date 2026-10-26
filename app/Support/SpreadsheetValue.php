@@ -4,6 +4,8 @@ namespace App\Support;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use Throwable;
 
 /**
  * Value coercion for spreadsheet-sourced cells.
@@ -119,6 +121,22 @@ final class SpreadsheetValue
     {
         if ($value instanceof DateTimeInterface) {
             return $value->format('Y-m-d');
+        }
+
+        // Excel stores dates as serial day numbers (e.g. 46000 => 2025-12-09)
+        // and hands them back as int/float rather than text. A whole 8-digit
+        // number is far more likely a compact Ymd, so that stays on the string
+        // path below. Excel's 1900 epoch tops out at 2958465 (9999-12-31).
+        if ((is_int($value) || is_float($value)) && ! (is_int($value) && strlen((string) $value) === 8)) {
+            if ($value < 1 || $value > 2958465) {
+                return null;
+            }
+
+            try {
+                return ExcelDate::excelToDateTimeObject((float) $value)->format('Y-m-d');
+            } catch (Throwable) {
+                return null;
+            }
         }
 
         if ($value === null || is_bool($value) || is_array($value) || is_object($value)) {

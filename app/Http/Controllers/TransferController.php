@@ -12,6 +12,7 @@ use App\Support\CountryAccess;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class TransferController extends Controller
@@ -497,15 +498,305 @@ class TransferController extends Controller
 
         return redirect()->back()->with('success', 'Deduction recorded successfully!');
     }
-
     public function destroyDeduction($id)
     {
         $deduction = CountryAccess::scopeByCountryName(
             Deduction::query(),
             request()->user()?->loadMissing('country')
         )->findOrFail($id);
+
         $deduction->delete();
 
         return redirect()->back()->with('success', 'Deduction deleted successfully!');
+    }
+
+    /**
+     * Products that agents still hold stock of, for the "Returned quantities"
+     * flow (an agent sending products back to the main office).
+     */
+    public function returnableProducts(Request $request)
+    {
+        $user = $request->user()?->loadMissing('country');
+        $search = trim((string) $request->string('search'));
+
+        $products = CountryAccess::scopeProducts(Product::query(), $user)
+            ->select('id', 'name', 'code', 'merchant')
+            ->orderBy('name')
+            ->get()
+            ->filter(function (Product $product) use ($search) {
+                if ($search === '') {
+                    return true;
+                }
+
+                $haystack = Str::lower(implode(' ', array_filter([
+                    $product->name,
+                    $product->code,
+                    $product->merchant,
+                ])));
+
+                return Str::contains($haystack, Str::lower($search));
+            })
+            ->map(function (Product $product) use ($user) {
+                $holdings = $this->productHoldings($user, (int) $product->id);
+
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'code' => $product->code,
+                    'merchant' => $product->merchant,
+                    'agents' => $holdings->count(),
+                    'remaining' => $holdings->sum('remaining'),
+                ];
+            })
+            ->filter(fn (array $product) => $product['remaining'] > 0)
+            ->take(25)
+            ->values();
+
+        return response()->json($products);
+    }
+
+    /**
+     * Every agent holding a given product, with what they still have left.
+     */
+    public function productHolders(Request $request)
+    {
+        $user = $request->user()?->loadMissing('country');
+
+        $product = CountryAccess::scopeProducts(Product::query(), $user)
+            ->findOrFail((int) $request->integer('product_id'));
+
+        $holdings = $this->productHoldings($user, (int) $product->id)
+            ->filter(fn (array $holding) => $holding['remaining'] > 0)
+            ->values();
+
+        return response()->json([
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'code' => $product->code,
+                'merchant' => $product->merchant,
+            ],
+            'agents' => $holdings,
+        ]);
+    }
+
+    /**
+     * Deduct a product from several agents at once, each agent giving back
+     * what they still hold. Every row of one return shares a code
+     * (RET-001-2026-04-24, RET-001-2026-04-24-02, ...) so the return can be
+     * traced as a single event.
+     */
+    public function bulkDeduct(Request $request)
+    {
+        $user = $request->user()?->loadMissing('country');
+        $country = $this->resolveCountryOrFail($user);
+
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+            'agent_ids' => 'required|array|min:1',
+            'agent_ids.*' => 'required|integer',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $product = CountryAccess::scopeProducts(Product::query(), $user)
+            ->findOrFail($validated['product_id']);
+
+        $agentIds = array_values(array_unique(array_map('intval', $validated['agent_ids'])));
+
+        $agents = CountryAccess::scopeUsers(
+            User::query()->where('roles', 'agent'),
+            $user
+        )->whereIn('id', $agentIds)->get();
+
+        if ($agents->count() !== count($agentIds)) {
+            return response()->json([
+                'message' => 'One or more selected agents are not available for your country.',
+            ], 422);
+        }
+
+        $holdings = $this->productHoldings($user, (int) $product->id)->keyBy('agent_id');
+
+        $rows = [];
+        foreach ($agents as $agent) {
+            $remaining = (int) ($holdings->get($agent->id)['remaining'] ?? 0);
+
+            if ($remaining <= 0) {
+                continue;
+            }
+
+            $rows[] = ['agent' => $agent, 'quantity' => $remaining];
+        }
+
+        if ($rows === []) {
+            return response()->json([
+                'message' => 'None of the selected agents currently hold this product.',
+            ], 422);
+        }
+
+        $reason = $validated['reason'] ?? 'Product returned to main office';
+        $baseCode = null;
+
+        DB::transaction(function () use (&$baseCode, $rows, $product, $country, $reason) {
+            $baseCode = $this->nextReturnCode();
+
+            foreach ($rows as $index => $row) {
+                Deduction::create([
+                    'code' => $index === 0
+                        ? $baseCode
+                        : $baseCode . '-' . str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT),
+                    'product_id' => $product->id,
+                    'agent_id' => $row['agent']->id,
+                    'quantity' => $row['quantity'],
+                    'reason' => $reason,
+                    'deducted_by' => auth()->user()->name ?? 'System',
+                    'country' => $country,
+                ]);
+            }
+        });
+
+        try {
+            $this->sendBulkReturnNotification($product, $rows, (string) $baseCode, $country, $reason);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send bulk return WhatsApp notification: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'ok' => true,
+            'code' => $baseCode,
+            'agents' => count($rows),
+            'units' => array_sum(array_column($rows, 'quantity')),
+            'message' => 'Returned ' . $product->name . ' from ' . count($rows) . ' agent(s) — code ' . $baseCode . '.',
+        ]);
+    }
+
+    /**
+     * What every agent holds of a product: transferred, deducted and left.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function productHoldings(?\App\Models\User $user, int $productId)
+    {
+        $countryName = null;
+        if (!CountryAccess::hasGlobalAccess($user)) {
+            $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
+        }
+
+        $deductionSubquery = '(SELECT COALESCE(SUM(quantity), 0) FROM deductions WHERE product_id = transfers.product_id AND agent_id = transfers.agent_id';
+        $bindings = [];
+        if ($countryName) {
+            $deductionSubquery .= ' AND LOWER(TRIM(country)) = ?';
+            $bindings[] = $countryName;
+        }
+        $deductionSubquery .= ')';
+
+        return CountryAccess::scopeByCountryName(Transfer::query(), $user)
+            ->where('product_id', $productId)
+            ->select('product_id', 'agent_id', DB::raw('SUM(quantity) as transferred'))
+            ->selectRaw($deductionSubquery . ' as deducted', $bindings)
+            ->with(['agent:id,name,store_name,store_phone'])
+            ->groupBy('product_id', 'agent_id')
+            ->get()
+            ->map(function ($row) {
+                $transferred = (int) $row->transferred;
+                $deducted = (int) $row->deducted;
+
+                return [
+                    'agent_id' => (int) $row->agent_id,
+                    'agent_name' => $row->agent?->name,
+                    'store_name' => $row->agent?->store_name,
+                    'transferred' => $transferred,
+                    'deducted' => $deducted,
+                    'remaining' => $transferred - $deducted,
+                ];
+            })
+            ->sortByDesc('remaining')
+            ->values();
+    }
+
+    /**
+     * Next return code for today, e.g. RET-001-2026-04-24. The number is
+     * serialised with a MySQL advisory lock because deductions.code is unique
+     * and two returns could otherwise claim the same number.
+     */
+    private function nextReturnCode(): string
+    {
+        $date = now()->format('Y-m-d');
+        $lockName = 'rd_return_code_' . $date;
+
+        $lock = DB::selectOne('SELECT GET_LOCK(?, 5) as acquired', [$lockName]);
+
+        try {
+            $existing = Deduction::query()
+                ->where('code', 'like', 'RET-%-' . $date)
+                ->lockForUpdate()
+                ->pluck('code');
+
+            $highest = 0;
+            foreach ($existing as $code) {
+                if (preg_match('/^RET-(\d+)-' . preg_quote($date, '/') . '$/', (string) $code, $matches)) {
+                    $highest = max($highest, (int) $matches[1]);
+                }
+            }
+
+            return sprintf('RET-%03d-%s', $highest + 1, $date);
+        } finally {
+            if ($lock && (int) $lock->acquired === 1) {
+                DB::selectOne('SELECT RELEASE_LOCK(?)', [$lockName]);
+            }
+        }
+    }
+
+    /**
+     * One message for the whole return instead of one per agent.
+     */
+    private function sendBulkReturnNotification(Product $product, array $rows, string $code, string $country, string $reason): void
+    {
+        $totalUnits = array_sum(array_column($rows, 'quantity'));
+
+        $message = "*STOCK RETURN NOTIFICATION* 📦\n\n";
+        $message .= "*Country:* {$country}\n";
+        $message .= "*Date:* " . now()->format('d M Y, H:i') . "\n";
+        $message .= "*Returned By:* " . (auth()->user()->name ?? 'System') . "\n\n";
+        $message .= "*Return Details:*\n";
+        $message .= "📦 Product: {$product->name}\n";
+        $message .= "🏷️ Code: {$product->code}\n";
+        $message .= "🧾 Return Code: {$code}\n";
+        $message .= "👥 Agents: " . count($rows) . "\n";
+        $message .= "📊 Total Units Returned: {$totalUnits}\n\n";
+
+        foreach ($rows as $index => $row) {
+            $message .= ($index + 1) . ". *{$row['agent']->name}* — {$row['quantity']} units\n";
+        }
+
+        if ($reason) {
+            $message .= "\n💬 Reason: {$reason}\n";
+        }
+
+        $message .= "\n_Automated notification from Inventory System_";
+
+        try {
+            $result = $this->openwa->sendToGroup($country, $message);
+
+            Whatsapp::create([
+                'to' => $result['to'],
+                'client_name' => 'Stock Return',
+                'store_name' => $country,
+                'cc_agents' => null,
+                'message' => $message,
+                'status' => 'sent',
+                'sid' => $result['message_id'],
+            ]);
+
+            Log::info('Bulk return notification sent to group.', [
+                'country' => $country,
+                'code' => $code,
+                'agents' => count($rows),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send bulk return notification to group.', [
+                'country' => $country,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

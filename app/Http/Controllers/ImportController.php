@@ -7,6 +7,7 @@ use App\Models\SheetOrder;
 use App\Services\ProductAutoMatchService;
 use App\Support\CountryAccess;
 use App\Support\SpreadsheetValue;
+use DateTimeInterface;
 use Generator;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -120,9 +121,10 @@ class ImportController extends Controller
             return $row[$positionalFallback] ?? $default;
         };
 
-        // Helper: convert empty string to null date
+        // Helper: parse a date cell strictly so an unreadable value becomes null
+        // instead of being coerced by strtotime() into 1970-01-01.
         $cleanDate = function ($value) {
-            return ! empty($value) ? date('Y-m-d', strtotime($value)) : null;
+            return SpreadsheetValue::date($value);
         };
 
         $isHeaderRow = true;
@@ -154,9 +156,11 @@ class ImportController extends Controller
                 ->first();
 
             $quantity = $this->parseDecimal($col('quantity', 10));
+            $importedOrderDate = $cleanDate($col('order_date', 0));
 
             $data = [
-                'order_date' => $cleanDate($col('order_date', 0)),
+                // Fall back to the upload date when the file leaves it blank.
+                'order_date' => $importedOrderDate ?? now()->toDateString(),
                 'order_no' => $col('order_no', 1, 'error'),
                 'amount' => $this->parseDecimal($col('amount', 2)),
                 'client_name' => $col('client_name', 3),
@@ -181,6 +185,12 @@ class ImportController extends Controller
             ];
 
             if ($existingOrder) {
+                // Keep an existing order date when the incoming cell is blank
+                // rather than replacing it with the upload date.
+                if ($importedOrderDate === null && $existingOrder->order_date !== null) {
+                    unset($data['order_date']);
+                }
+
                 // Keep imported rows out of the update sync queue.
                 SheetOrder::withoutTimestamps(function () use ($existingOrder, $data): void {
                     $existingOrder->forceFill($data)->save();

@@ -111,6 +111,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/transfers/{productId}/{agentId}/deductions', [TransferController::class, 'storeDeduction'])->name('transfers.deductions.store');
     Route::delete('/deductions/{id}', [TransferController::class, 'destroyDeduction'])->name('deductions.destroy');
 
+    // Returned quantities — an agent sending products back to the main office
+    Route::get('/transfers/returnable-products', [TransferController::class, 'returnableProducts'])->name('transfers.returnable-products');
+    Route::get('/transfers/product-holders', [TransferController::class, 'productHolders'])->name('transfers.product-holders');
+    Route::post('/transfers/bulk-deduct', [TransferController::class, 'bulkDeduct'])->name('transfers.bulk-deduct');
+
     // sheets
     Route::resource('sheets', SheetController::class);
     Route::get('/sheets/{sheetId}/view', [SheetController::class, 'viewSheetData']);

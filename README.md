@@ -539,15 +539,11 @@ The system runs automated tasks via Laravel's scheduler and queue workers:
 
 | Command | Schedule | Purpose |
 |---------|----------|---------|
-| `NotifyOverdueOrders` | Daily | Overdue order alerts |
-| `SendOverdueOrdersAlert` | Daily | Overdue summary to groups |
-| `SendUpcomingOrdersReminder` | Daily | Upcoming delivery reminders |
-| `SendScheduledOrders` | Varies | Scheduled order notifications |
-| `ProcessC2BTransactions` | Every minute | Handle M-Pesa callback data |
-| `ProcessSyncedOrders` | Varies | Process shopify-synced orders |
-| `ImportShopifyOrders` | Hourly | Sync orders from Shopify |
-| `SendWhatsAppMessage` | Varies | Queue-based WhatsApp delivery |
-| `UpdateSheetOrders` | Varies | Merchant sheet sync |
+| `orders:pull-sheets` | Every minute | Poll selected tabs on enabled spreadsheets and queue eligible orders |
+| `orders:update-sheets --limit=250` | Every 5 minutes | Write order updates back to merchant spreadsheets |
+| `storeep:sync-orders` | Every 5 minutes | Reconcile orders from enabled Storeep integrations |
+| `whatsapp:send-meta` | Daily at 06:00 | Send scheduled WhatsApp messages |
+| `whatsapp:notify-overdue` | Daily at 07:00 | Send overdue-order notifications |
 
 ---
 
@@ -570,6 +566,61 @@ composer run dev
 ```
 
 > `composer run dev` starts the Laravel server, queue worker, and Vite dev server concurrently.
+
+### Automatic Google Sheets Order Pickup
+
+#### Configuration and eligibility
+
+On the **Sheets** page, edit a spreadsheet to enable automatic pickup and select the tabs to poll. Both the spreadsheet toggle and selected tab list are required; existing spreadsheets are disabled by default. Settings are stored on the spreadsheet record by the migration `2026_10_26_120000_add_automatic_order_pickup_to_sheets_table`.
+
+Automatic pickup accepts a row only when its status is blank, the physical third column (C) is nonblank, and its order data passes validation and duplicate checks. For automatically polled rows and Apps Script submissions, `order_date` is the date the order first enters the system. Manual Google Sheets pulls and CSV/Excel imports retain their previous date behavior.
+
+#### Scheduling, cursors, and queue processing
+
+Laravel schedules `orders:pull-sheets` every minute. Each run rotates through configured spreadsheet-tab pairs, reading at most 20 tabs and staging at most 250 orders by default. These limits can be changed with `--tab-limit` and `--order-limit`. A command lock prevents overlapping poller runs; it does not prevent other scheduled commands from running at the same time.
+
+The poller keeps two positions in Laravel's configured cache:
+
+- A global tab cursor selects where to resume in the ordered list of enabled tabs on the next run, then wraps around to the start.
+- A separate row-window cursor for each spreadsheet and tab starts at row 1, advances by 5,000 rows after a completed window, and cycles back to row 1 after reaching the end. Cycling allows older rows to be rechecked for later edits. These positions are cache entries, not a visible per-order processing history; clearing the cache resets them.
+
+When a tab read fails (for example, because its service account lacks access or Google rejects a request), that tab's row cursor is not advanced. The command logs the error and retries with exponential backoff capped at approximately 64 seconds (plus jitter); a successful poll clears the retry state. Check `storage/logs/laravel.log` for poll success/error entries. A persistent access error must be fixed by granting the configured read-only service account access to that spreadsheet.
+
+Eligible rows are staged in `incoming_sheet_orders` and dispatched as jobs to the `imports` queue. The scheduler only discovers and stages orders; a queue worker must be running to create the corresponding application orders. Review pending/failed incoming rows in the application's incoming sheet orders workflow.
+
+The poller uses the read-only Google Sheets reader service account configured by `GoogleSheetsReader`. The separate `orders:update-sheets` command writes updates using its existing write credential. These tasks can be scheduled near each other; their individual locks prevent duplicate concurrent runs of the same command, not all cross-command API activity.
+
+#### Capacity planning for hundreds of sheets
+
+Capacity is determined by the number of **enabled tabs**, not just the number of spreadsheet records. With 500 active tabs and the default limit of 20 tabs per run:
+
+- At the current one-minute schedule, one pass takes about 25 runs (approximately 25 minutes), assuming runs finish, the order cap is not reached, and no tabs are repeatedly failing.
+- At a seven-minute schedule, one pass takes about 25 runs (approximately 175 minutes). A new order can wait up to roughly one full pass to be discovered.
+- A poll of a tab can use one Sheets read for its current 5,000-row window; windows after the first also read the first five rows for header detection. Other integrations and outbound writes consume quota too, so these estimates are not a quota guarantee.
+
+Keep the one-minute schedule as the initial setting if order pickup latency matters, and monitor API errors, runtime, queue depth, and pickup delay as enabled tabs increase. The existing 20-tab batch is a pacing control; simply increasing it can increase API pressure. If 500 tabs need lower latency than a roughly 25-minute sweep, the polling design and request budget should be load-tested and tuned rather than just changing the schedule interval.
+
+#### Known limitation before broad rollout
+
+The row-window cursor advances only when the importer reports no more eligible orders in the current window. If a single window contains more new eligible orders than the run's remaining order budget, the cursor stays on that window. On a later run the same window can be revisited and pending staged rows can be requeued, potentially consuming the limit repeatedly before later rows are reached. This edge case has not been fixed or verified for high-volume tabs; validate/fix cursor advancement and add command-level regression coverage before relying on the poller at large scale.
+
+#### Operations and targeted test
+
+The production scheduler must invoke `php artisan schedule:run` every minute (or use `php artisan schedule:work` for local testing). Keep a queue worker listening to `imports`.
+
+Run one poll immediately:
+
+```bash
+php artisan orders:pull-sheets
+```
+
+Restrict a test to one spreadsheet and use low limits:
+
+```bash
+php artisan orders:pull-sheets --sheet-id=<spreadsheet-id> --tab-limit=4 --order-limit=5
+```
+
+The command prints per-run tab/order totals. Detailed per-tab counts and errors are written to the Laravel log; it does not currently provide a UI view of the saved cursor or last scanned row. A targeted test run in this implementation session scanned four configured OPULYNIX tabs, staged five orders (one from `GALAXY PROJECTOR2026`, four from `TORLAM MATHS BOOK2026`), and reported no tab failures. Those orders were pending queue processing at the time of verification.
 
 ### Linting & Type Checking
 

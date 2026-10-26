@@ -21,6 +21,13 @@ class Sheet extends Model
         'access_token',
         'country',
         'cc_agents',
-        'sku'
+        'sku',
+        'auto_pickup_enabled',
+        'auto_pickup_tabs',
+    ];
+
+    protected $casts = [
+        'auto_pickup_enabled' => 'boolean',
+        'auto_pickup_tabs' => 'array',
     ];
 }

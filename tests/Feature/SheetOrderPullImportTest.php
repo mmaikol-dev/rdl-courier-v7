@@ -9,6 +9,7 @@ use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Models\User;
 use App\Services\GoogleSheetsReader;
+use App\Services\SheetOrderImportService;
 use App\Services\SheetOrderPullImporter;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Queue;
@@ -74,9 +75,15 @@ class SheetOrderPullImportTest extends TestCase
                 return $this->fakeTabs;
             }
 
-            public function rows(string $spreadsheetId, string $tabName, ?string $columns = 'A:R', ?int $maxRows = null): array
+            public function rows(
+                string $spreadsheetId,
+                string $tabName,
+                ?string $columns = 'A:R',
+                ?int $maxRows = null,
+                int $startRow = 1
+            ): array
             {
-                return $maxRows !== null ? array_slice($this->fakeRows, 0, $maxRows) : $this->fakeRows;
+                return $maxRows !== null ? array_slice($this->fakeRows, $startRow - 1, $maxRows) : $this->fakeRows;
             }
         };
 
@@ -173,11 +180,11 @@ class SheetOrderPullImportTest extends TestCase
         $this->assertSame(['ORD-2'], $summary['order_nos']);
     }
 
-    public function test_an_existing_order_number_from_a_different_sheet_is_still_a_duplicate(): void
+    public function test_an_existing_order_number_from_a_different_sheet_is_not_a_duplicate(): void
     {
         Queue::fake();
 
-        // Same number, different merchant: still a duplicate order number.
+        // The identity is scoped to a spreadsheet and tab.
         $this->existingOrder('ORD-1', ['sheet_id' => 'other-sheet', 'sheet_name' => 'Other', 'merchant' => 'Zebra']);
 
         $summary = $this->fakeImporter([
@@ -185,8 +192,121 @@ class SheetOrderPullImportTest extends TestCase
             $this->regularRow('ORD-1'),
         ])->import($this->makeSheet());
 
-        $this->assertSame(0, $summary['queued']);
-        $this->assertSame(1, $summary['skipped']['existing_order']);
+        $this->assertSame(1, $summary['queued']);
+        $this->assertSame(0, $summary['skipped']['existing_order']);
+    }
+
+    public function test_automatic_pickup_requires_column_c_and_stamps_the_system_entry_date(): void
+    {
+        Queue::fake();
+
+        $rows = [
+            $this->headerRow(),
+            $this->regularRow('ORD-READY'),
+            array_replace($this->regularRow('ORD-WAIT'), [2 => '']),
+        ];
+
+        $summary = $this->fakeImporter($rows)->importForAutomaticPickup($this->makeSheet(), 'Sheet1');
+
+        $this->assertSame(1, $summary['queued']);
+        $this->assertSame(1, $summary['skipped']['missing_priority']);
+        $this->assertSame(0, $summary['errors_total']);
+
+        $incoming = IncomingSheetOrder::where('order_no', 'ORD-READY')->firstOrFail();
+        $this->assertSame(now()->toDateString(), $incoming->payload['order_date']);
+    }
+
+    public function test_automatic_pickup_preserves_the_first_entry_date_when_requeued(): void
+    {
+        Queue::fake();
+
+        try {
+            \Illuminate\Support\Carbon::setTestNow('2026-10-25 23:59:00');
+            $sheet = $this->makeSheet();
+            $rows = [$this->headerRow(), $this->regularRow('ORD-STABLE-DATE')];
+
+            $this->fakeImporter($rows)->importForAutomaticPickup($sheet, 'Sheet1');
+
+            \Illuminate\Support\Carbon::setTestNow('2026-10-26 00:01:00');
+            $this->fakeImporter($rows)->importForAutomaticPickup($sheet, 'Sheet1');
+
+            $incoming = IncomingSheetOrder::where('order_no', 'ORD-STABLE-DATE')->firstOrFail();
+            $this->assertSame('2026-10-25', $incoming->payload['order_date']);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
+    public function test_manual_sheet_pull_keeps_the_order_date_from_the_sheet(): void
+    {
+        Queue::fake();
+
+        $this->fakeImporter([
+            $this->headerRow(),
+            $this->regularRow('ORD-MANUAL'),
+        ])->import($this->makeSheet());
+
+        $incoming = IncomingSheetOrder::where('order_no', 'ORD-MANUAL')->firstOrFail();
+        $this->assertSame('2026-01-15', $incoming->payload['order_date']);
+    }
+
+    public function test_automatic_pickup_can_continue_from_a_later_row_window(): void
+    {
+        Queue::fake();
+
+        $rows = [
+            $this->headerRow(),
+            $this->regularRow('ORD-1'),
+            $this->regularRow('ORD-2'),
+            $this->regularRow('ORD-3'),
+        ];
+
+        $summary = $this->fakeImporter($rows)->importForAutomaticPickup(
+            $this->makeSheet(),
+            'Sheet1',
+            25,
+            4
+        );
+
+        $this->assertSame(1, $summary['queued']);
+        $this->assertSame(1, $summary['rows_read']);
+        $this->assertSame(['ORD-3'], $summary['order_nos']);
+    }
+
+    public function test_app_script_intake_uses_and_preserves_the_first_system_entry_date(): void
+    {
+        Queue::fake();
+
+        try {
+            \Illuminate\Support\Carbon::setTestNow('2026-10-25 23:59:00');
+            $payload = [
+                'order_no' => 'ORD-APPSCRIPT',
+                'sheet_id' => self::SPREADSHEET_ID,
+                'sheet_name' => 'Sheet1',
+                'order_date' => '2020-01-01',
+                'client_name' => 'First',
+            ];
+
+            $this->postJson('/api/sheet-orders', $payload)->assertAccepted();
+
+            \Illuminate\Support\Carbon::setTestNow('2026-10-26 00:01:00');
+            $payload['client_name'] = 'Updated';
+            $payload['order_date'] = '2020-02-02';
+
+            $this->postJson('/api/sheet-orders', $payload)->assertAccepted();
+
+            $summary = $this->fakeImporter([
+                $this->headerRow(),
+                $this->regularRow('ORD-APPSCRIPT'),
+            ])->importForAutomaticPickup($this->makeSheet(), 'Sheet1');
+
+            $incoming = IncomingSheetOrder::where('order_no', 'ORD-APPSCRIPT')->firstOrFail();
+            $this->assertSame(1, IncomingSheetOrder::where('order_no', 'ORD-APPSCRIPT')->count());
+            $this->assertSame(1, $summary['requeued']);
+            $this->assertSame('2026-10-25', $incoming->payload['order_date']);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
     }
 
     public function test_a_duplicate_order_number_inside_one_sheet_is_imported_once(): void
@@ -328,19 +448,103 @@ class SheetOrderPullImportTest extends TestCase
         $this->assertSame('ORD-1', $summary['order_nos'][0]);
     }
 
-    public function test_an_incomplete_header_aborts_instead_of_guessing_columns(): void
+    public function test_a_header_with_missing_cells_still_imports_using_the_column_positions(): void
     {
         Queue::fake();
 
-        $this->expectException(SheetImportException::class);
-        $this->expectExceptionMessageMatches('/Status/');
+        // The merchant left the order number, status, amount and date header
+        // cells blank. The data underneath is still in the columns the layout
+        // describes, so the import must read it from there.
+        $header = $this->headerRow();
+        $header[0] = '';  // A order date
+        $header[1] = '';  // B order number
+        $header[2] = '';  // C amount
+        $header[11] = ''; // L status
 
-        // Order No is recognised but Status is not, so the blank-status rule
-        // cannot be applied safely.
-        $this->fakeImporter([
+        $summary = $this->fakeImporter([
+            $header,
+            $this->regularRow('ORD-1'),
+            $this->regularRow('ORD-2', status: 'Scheduled'),
+        ])->import($this->makeSheet());
+
+        $this->assertSame(1, $summary['queued'], 'The blank status cell still means column L holds the status.');
+        $this->assertSame(['ORD-1'], $summary['order_nos']);
+        $this->assertSame(1, $summary['skipped']['has_status']);
+    }
+
+    public function test_a_partly_named_header_keeps_the_named_columns_and_falls_back_to_positions(): void
+    {
+        Queue::fake();
+
+        // Order No is named but Status is not. There is no way to apply the
+        // blank-status rule from the header alone, so the columns that were
+        // not named are read from their position instead of aborting the run.
+        $summary = $this->fakeImporter([
             ['Order No', 'Amount', 'Quantity'],
             ['ORD-1', '100', '1'],
         ])->import($this->makeSheet());
+
+        $this->assertSame(1, $summary['queued']);
+        $this->assertSame(['ORD-1'], $summary['order_nos']);
+
+        $columns = array_column($summary['columns'], null, 'field');
+
+        $this->assertSame('A', $columns['order_no']['column']);
+        $this->assertSame('header', $columns['order_no']['source']);
+        $this->assertSame('L', $columns['status']['column'], 'Status keeps its canonical column.');
+        $this->assertSame('position', $columns['status']['source']);
+    }
+
+    public function test_the_summary_reports_which_column_letter_held_each_field(): void
+    {
+        Queue::fake();
+
+        $summary = $this->fakeImporter([
+            $this->headerRow(),
+            $this->regularRow('ORD-1'),
+        ])->import($this->makeSheet());
+
+        $columns = array_column($summary['columns'], null, 'field');
+
+        $this->assertSame('A', $columns['order_date']['column']);
+        $this->assertSame('Order Date', $columns['order_date']['label']);
+        $this->assertSame('B', $columns['order_no']['column']);
+        $this->assertSame('Order Number', $columns['order_no']['label']);
+        $this->assertSame('L', $columns['status']['column']);
+        $this->assertSame('header', $columns['status']['source']);
+    }
+
+    public function test_the_special_spreadsheet_is_read_from_its_own_columns(): void
+    {
+        Queue::fake();
+
+        // This one spreadsheet keeps the order number in column N and the
+        // status in column I, so its own layout has to be used.
+        $row = array_fill(0, 18, '');
+        $row[0] = '2026-01-15';  // A  order date
+        $row[1] = 'Jane Doe';    // B  client name
+        $row[2] = 'Nairobi';     // C  address
+        $row[3] = 'Nairobi';     // D  city
+        $row[4] = '0712345678';  // E  phone
+        $row[5] = 'Shoes';       // F  product
+        $row[6] = '4,399.00';    // G  amount
+        $row[7] = '2';           // H  quantity
+        $row[8] = '';            // I  status
+        $row[13] = 'ORD-SPECIAL';// N  order number
+        $row[16] = '2026-01-20'; // Q  pending delivery
+
+        $summary = $this->fakeImporter([$row])->import(
+            $this->makeSheet(['sheet_id' => '1x1Rntb-_BbXe5gvWIKN3Zr2Tnbyi9rSmbaieYzUryzU'])
+        );
+
+        $this->assertSame(1, $summary['queued']);
+        $this->assertSame(['ORD-SPECIAL'], $summary['order_nos']);
+
+        $columns = array_column($summary['columns'], null, 'field');
+
+        $this->assertSame('N', $columns['order_no']['column']);
+        $this->assertSame('I', $columns['status']['column']);
+        $this->assertSame('G', $columns['amount']['column']);
     }
 
     public function test_a_missing_tab_aborts_with_the_available_tabs(): void
@@ -460,6 +664,66 @@ class SheetOrderPullImportTest extends TestCase
         $this->assertSame(2, $summary['queued']);
         $this->assertSame(3, $summary['remaining']);
         $this->assertSame(5, $summary['eligible']);
+    }
+
+    // -----------------------------------------------------------------
+    //  Order date
+    // -----------------------------------------------------------------
+
+    public function test_a_blank_imported_order_date_falls_back_to_the_current_date(): void
+    {
+        $result = app(SheetOrderImportService::class)->import([
+            'order_no' => 'ORD-NO-DATE',
+            'store_name' => 'RDL1',
+            'sheet_id' => 'test-sheet',
+            'sheet_name' => 'Sheet1',
+            'amount' => 100,
+            'quantity' => 1,
+            'country' => 'Kenya',
+            'merchant' => 'Acme',
+        ]);
+
+        $this->assertTrue($result['created']);
+        $this->assertSame(now()->toDateString(), $result['order']->order_date?->format('Y-m-d'));
+    }
+
+    public function test_an_imported_order_date_is_preserved_when_supplied(): void
+    {
+        $result = app(SheetOrderImportService::class)->import([
+            'order_no' => 'ORD-WITH-DATE',
+            'store_name' => 'RDL1',
+            'sheet_id' => 'test-sheet',
+            'sheet_name' => 'Sheet1',
+            'order_date' => '2026-01-15',
+            'amount' => 100,
+            'quantity' => 1,
+            'country' => 'Kenya',
+            'merchant' => 'Acme',
+        ]);
+
+        $this->assertTrue($result['created']);
+        $this->assertSame('2026-01-15', $result['order']->order_date?->format('Y-m-d'));
+    }
+
+    public function test_import_service_scopes_duplicate_order_numbers_to_the_source_tab(): void
+    {
+        $this->existingOrder('ORD-SAME-NUMBER', [
+            'sheet_id' => self::SPREADSHEET_ID,
+            'sheet_name' => 'OtherTab',
+        ]);
+
+        $result = app(SheetOrderImportService::class)->import([
+            'order_no' => 'ORD-SAME-NUMBER',
+            'store_name' => 'RDL1',
+            'sheet_id' => self::SPREADSHEET_ID,
+            'sheet_name' => 'Sheet1',
+            'amount' => 100,
+            'quantity' => 1,
+            'country' => 'Kenya',
+            'merchant' => 'Acme',
+        ]);
+
+        $this->assertTrue($result['created']);
     }
 
     // -----------------------------------------------------------------

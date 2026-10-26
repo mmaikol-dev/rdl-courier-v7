@@ -37,6 +37,7 @@ class SheetOrderPullImporter
      * truncated rather than silently truncated.
      */
     private const MAX_ROWS_READ = 5000;
+    public const AUTOMATIC_ROWS_PER_SCAN = 5000;
 
     /**
      * Orders staged per click. Keeps one mis-click from flooding the queue; the
@@ -59,24 +60,91 @@ class SheetOrderPullImporter
 
     /**
      * Regular layout, matching what the outbound sync writes.
+     *
+     * Written as column letters so it can be read straight off the sheet:
+     *
+     *   A order date · B order number · C amount · D client name · E address
+     *   F phone · G alt phone · H country · I city · J product · K quantity
+     *   L status · M delivery date · N agent · O instructions · P cc email
+     *   Q merchant · R code
+     *
+     * The data sits in this order whether or not the header above it is
+     * complete — merchants routinely leave a header cell blank — so the column
+     * position is the primary signal and the header text is only used to
+     * correct a sheet that was arranged differently.
      */
     private const REGULAR_LAYOUT = [
-        'order_date' => 0, 'order_no' => 1, 'amount' => 2, 'client_name' => 3,
-        'address' => 4, 'phone' => 5, 'alt_no' => 6, 'country' => 7, 'city' => 8,
-        'product_name' => 9, 'quantity' => 10, 'status' => 11, 'delivery_date' => 12,
-        'agent' => 13, 'instructions' => 14, 'cc_email' => 15, 'merchant' => 16, 'code' => 17,
+        'A' => 'order_date',
+        'B' => 'order_no',
+        'C' => 'amount',
+        'D' => 'client_name',
+        'E' => 'address',
+        'F' => 'phone',
+        'G' => 'alt_no',
+        'H' => 'country',
+        'I' => 'city',
+        'J' => 'product_name',
+        'K' => 'quantity',
+        'L' => 'status',
+        'M' => 'delivery_date',
+        'N' => 'agent',
+        'O' => 'instructions',
+        'P' => 'cc_email',
+        'Q' => 'merchant',
+        'R' => 'code',
     ];
 
     /**
      * Special layout. Column J carries the delivery date once an order is
      * Delivered and column Q carries it while it is still pending, so either may
-     * hold the value.
+     * hold the value. Column K is unused.
      */
     private const SPECIAL_LAYOUT = [
-        'order_date' => 0, 'client_name' => 1, 'address' => 2, 'city' => 3, 'phone' => 4,
-        'product_name' => 5, 'amount' => 6, 'quantity' => 7, 'status' => 8,
-        'delivered_date' => 9, 'instructions' => 11, 'cc_email' => 12, 'order_no' => 13,
-        'merchant' => 14, 'code' => 15, 'pending_delivery' => 16, 'agent' => 17,
+        'A' => 'order_date',
+        'B' => 'client_name',
+        'C' => 'address',
+        'D' => 'city',
+        'E' => 'phone',
+        'F' => 'product_name',
+        'G' => 'amount',
+        'H' => 'quantity',
+        'I' => 'status',
+        'J' => 'delivered_date',
+        'K' => null,
+        'L' => 'instructions',
+        'M' => 'cc_email',
+        'N' => 'order_no',
+        'O' => 'merchant',
+        'P' => 'code',
+        'Q' => 'pending_delivery',
+        'R' => 'agent',
+    ];
+
+    /**
+     * Human labels for the columns, so the import report can say what each
+     * letter was taken for.
+     */
+    private const FIELD_LABELS = [
+        'order_date' => 'Order Date',
+        'order_no' => 'Order Number',
+        'amount' => 'Amount',
+        'client_name' => 'Client Name',
+        'address' => 'Address',
+        'phone' => 'Phone',
+        'alt_no' => 'Alt Phone',
+        'country' => 'Country',
+        'city' => 'City',
+        'product_name' => 'Product',
+        'quantity' => 'Quantity',
+        'status' => 'Status',
+        'delivery_date' => 'Delivery Date',
+        'delivered_date' => 'Delivered Date',
+        'pending_delivery' => 'Pending Delivery',
+        'agent' => 'Agent',
+        'instructions' => 'Instructions',
+        'cc_email' => 'CC Email',
+        'merchant' => 'Merchant',
+        'code' => 'Code',
     ];
 
     /**
@@ -131,42 +199,93 @@ class SheetOrderPullImporter
      */
     public function import(Sheet $sheet, ?string $tab = null, ?int $maxImports = null): array
     {
+        return $this->importRows($sheet, $tab, $maxImports, false);
+    }
+
+    /**
+     * Poll one configured tab using the automatic pickup eligibility rules.
+     *
+     * @return array<string, mixed>
+     */
+    public function importForAutomaticPickup(
+        Sheet $sheet,
+        string $tab,
+        ?int $maxImports = null,
+        int $startRow = 1
+    ): array
+    {
+        return $this->importRows($sheet, $tab, $maxImports, true, $startRow);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function importRows(
+        Sheet $sheet,
+        ?string $tab,
+        ?int $maxImports,
+        bool $automaticPickup,
+        int $startRow = 1
+    ): array
+    {
         $spreadsheetId = trim((string) $sheet->sheet_id);
 
         if ($spreadsheetId === '') {
             throw new SheetImportException("Sheet [{$sheet->sheet_name}] has no spreadsheet ID configured.");
         }
 
-        $tabs = $this->reader->tabNames($spreadsheetId);
+        if ($automaticPickup) {
+            $tabName = trim((string) $tab);
 
-        if ($tabs === []) {
-            throw new SheetImportException("Spreadsheet for [{$sheet->sheet_name}] contains no tabs.");
+            if ($tabName === '') {
+                throw new SheetImportException('Automatic pickup requires a configured tab name.');
+            }
+        } else {
+            $tabs = $this->reader->tabNames($spreadsheetId);
+
+            if ($tabs === []) {
+                throw new SheetImportException("Spreadsheet for [{$sheet->sheet_name}] contains no tabs.");
+            }
+
+            $tabName = $this->resolveTab($tab, $sheet, $tabs);
         }
 
-        $tabName = $this->resolveTab($tab, $sheet, $tabs);
+        $rows = $this->reader->rows(
+            $spreadsheetId,
+            $tabName,
+            'A:R',
+            $automaticPickup ? self::AUTOMATIC_ROWS_PER_SCAN : self::MAX_ROWS_READ,
+            $startRow
+        );
 
-        $rows = $this->reader->rows($spreadsheetId, $tabName, 'A:R', self::MAX_ROWS_READ);
-
-        $summary = $this->blankSummary($tabName, count($rows) >= self::MAX_ROWS_READ);
+        $summary = $this->blankSummary(
+            $tabName,
+            count($rows) >= ($automaticPickup ? self::AUTOMATIC_ROWS_PER_SCAN : self::MAX_ROWS_READ)
+        );
+        $summary['rows_read'] = count($rows);
 
         if ($rows === []) {
             return $summary;
         }
 
-        $headerRowIndex = $this->detectHeaderRow($rows);
+        $canonical = $this->canonicalLayoutFor($spreadsheetId);
 
-        if ($headerRowIndex === null && $this->hasPartialHeader($rows)) {
-            throw new SheetImportException(
-                'This tab has a header row but no column could be identified for the order number '
-                .'and status. Rename the headers to include "Order No" and "Status", then try again. '
-                .'Nothing was imported, because orders that already have a status cannot be told apart '
-                .'from new ones.'
-            );
-        }
+        $headerRows = $automaticPickup && $startRow > 1
+            ? $this->reader->rows($spreadsheetId, $tabName, 'A:R', 5)
+            : $rows;
+        $detectedHeaderIndex = $this->detectHeaderRow($headerRows, $canonical);
+        $headerRowIndex = $startRow > 1 ? null : $detectedHeaderIndex;
 
-        $map = $headerRowIndex !== null
-            ? $this->mapHeaderRow($rows[$headerRowIndex])
-            : ($spreadsheetId === self::SPECIAL_SPREADSHEET_ID ? self::SPECIAL_LAYOUT : self::REGULAR_LAYOUT);
+        // The canonical column order is the base. A header name only corrects
+        // it, so a header with missing cells still resolves to the right
+        // columns instead of aborting the run.
+        $named = $detectedHeaderIndex !== null
+            ? $this->mapHeaderRow($headerRows[$detectedHeaderIndex])
+            : [];
+
+        $map = $this->resolveColumnMap($canonical, $named);
+
+        $summary['columns'] = $this->describeColumns($map, $named);
 
         $country = trim((string) ($sheet->country ?? '')) ?: null;
 
@@ -177,14 +296,26 @@ class SheetOrderPullImporter
             $sheet,
             $tabName,
             $country,
-            $summary
+            $summary,
+            $automaticPickup,
+            $startRow
         );
+
+        if ($automaticPickup) {
+            $entryDate = now()->toDateString();
+            foreach ($candidates as &$candidate) {
+                $candidate['payload']['order_date'] = $entryDate;
+            }
+            unset($candidate);
+        }
 
         // One query for the whole batch beats a lookup per row.
         $existing = $candidates === []
             ? []
             : SheetOrder::query()
                 ->whereIn('order_no', array_column($candidates, 'order_no'))
+                ->where('sheet_id', $sheet->sheet_id)
+                ->where('sheet_name', $tabName)
                 ->pluck('order_no')
                 ->all();
 
@@ -242,13 +373,12 @@ class SheetOrderPullImporter
      * is looked for rather than assumed to be row 1.
      *
      * @param  array<int, array<int, mixed>>  $rows
+     * @param  array<string, int>  $canonical
      */
-    private function detectHeaderRow(array $rows): ?int
+    private function detectHeaderRow(array $rows, array $canonical): ?int
     {
         foreach (array_slice($rows, 0, 5, true) as $index => $row) {
-            $map = $this->mapHeaderRow($row);
-
-            if (isset($map['order_no'], $map['status'])) {
+            if ($this->looksLikeHeaderRow($row, $canonical)) {
                 return $index;
             }
         }
@@ -257,23 +387,223 @@ class SheetOrderPullImporter
     }
 
     /**
-     * True when a header row is recognisable but incomplete. Importing anyway
-     * would apply positional guesses on top of real column names, which is how
-     * the wrong rows get imported.
+     * Decide whether a row is the header.
      *
-     * @param  array<int, array<int, mixed>>  $rows
+     * Three signals, any one of which settles it:
+     *
+     * 1. A cell literally reads "Order No" or "Status". No data row ever does,
+     *    so this also catches a sheet whose columns were rearranged.
+     * 2. Every populated cell in the row reads like a column label. A header
+     *    with some cells left blank still qualifies, because the blank ones
+     *    are simply not there to disagree.
+     * 3. The row lines up with the canonical column order and holds no values
+     *    in the positions where a data row always has them.
+     *
+     * @param  array<int, mixed>  $row
+     * @param  array<string, int>  $canonical
      */
-    private function hasPartialHeader(array $rows): bool
+    private function looksLikeHeaderRow(array $row, array $canonical): bool
     {
-        foreach (array_slice($rows, 0, 5) as $row) {
-            $map = $this->mapHeaderRow($row);
+        $named = $this->mapHeaderRow($row);
 
-            if ($map !== [] && (isset($map['order_no']) || isset($map['status']))) {
-                return true;
+        if (isset($named['order_no']) || isset($named['status'])) {
+            return true;
+        }
+
+        $populated = 0;
+        $labels = 0;
+
+        foreach ($row as $cell) {
+            $text = SpreadsheetValue::text($cell);
+
+            if ($text === null) {
+                continue;
+            }
+
+            $populated++;
+
+            $key = $this->normaliseHeader($text);
+
+            if ($key !== '' && isset($this->headerLookup[$key])) {
+                $labels++;
             }
         }
 
-        return false;
+        if ($populated >= 2 && $labels === $populated) {
+            return true;
+        }
+
+        return $this->positionalHeaderMatches($row, $canonical) >= 2
+            && ! $this->looksLikeDataRow($row, $canonical);
+    }
+
+    /**
+     * Count the cells that sit in their canonical position and carry a label
+     * for that column.
+     *
+     * @param  array<int, mixed>  $row
+     * @param  array<string, int>  $canonical
+     */
+    private function positionalHeaderMatches(array $row, array $canonical): int
+    {
+        $matches = 0;
+
+        foreach ($canonical as $field => $index) {
+            $text = SpreadsheetValue::text($row[$index] ?? null);
+
+            if ($text === null) {
+                continue;
+            }
+
+            $key = $this->normaliseHeader($text);
+
+            if ($key !== '' && ($this->headerLookup[$key] ?? null) === $field) {
+                $matches++;
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
+     * True when the row carries real values in the columns a data row always
+     * fills. Used to tell a header that happens to sit in the canonical order
+     * apart from a data row whose cells happen to be words.
+     *
+     * @param  array<int, mixed>  $row
+     * @param  array<string, int>  $canonical
+     */
+    private function looksLikeDataRow(array $row, array $canonical): bool
+    {
+        $amount = SpreadsheetValue::decimal($row[$canonical['amount'] ?? null] ?? null);
+        $quantity = SpreadsheetValue::integer($row[$canonical['quantity'] ?? null] ?? null);
+        $orderDate = SpreadsheetValue::date($row[$canonical['order_date'] ?? null] ?? null);
+
+        return $amount !== null || $quantity !== null || $orderDate !== null;
+    }
+
+    /**
+     * Build the column map.
+     *
+     * The canonical position is the starting point — the data is in that order
+     * whether or not the header says so — and a header name overrides it, so a
+     * sheet that was arranged differently is still read correctly. When a
+     * header name takes over a column, whatever the position had claimed for
+     * that column is dropped, and the named field gives up the position it was
+     * given by default.
+     *
+     * @param  array<string, int>  $canonical  field => column index
+     * @param  array<string, int>  $named      field => column index, from the header
+     * @return array<string, int>
+     */
+    private function resolveColumnMap(array $canonical, array $named): array
+    {
+        // column index => field
+        $columns = [];
+
+        foreach ($canonical as $field => $index) {
+            $columns[$index] = $field;
+        }
+
+        foreach ($named as $field => $index) {
+            if (isset($columns[$index]) && $columns[$index] !== $field) {
+                unset($columns[$index]);
+            }
+
+            foreach ($columns as $columnIndex => $columnField) {
+                if ($columnField === $field && $columnIndex !== $index) {
+                    unset($columns[$columnIndex]);
+                }
+            }
+
+            $columns[$index] = $field;
+        }
+
+        $map = [];
+
+        foreach ($columns as $index => $field) {
+            $map[$field] = $index;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Describe the columns that were read, so the operator can see which
+     * letter was taken for what.
+     *
+     * @param  array<string, int>  $map
+     * @param  array<string, int>  $named
+     * @return array<int, array<string, string>>
+     */
+    private function describeColumns(array $map, array $named): array
+    {
+        $columns = [];
+
+        foreach ($map as $field => $index) {
+            $columns[] = [
+                'column' => $this->columnLetter($index),
+                'field' => $field,
+                'label' => self::FIELD_LABELS[$field] ?? ucwords(str_replace('_', ' ', $field)),
+                'source' => isset($named[$field]) && $named[$field] === $index ? 'header' : 'position',
+            ];
+        }
+
+        usort($columns, fn (array $a, array $b) => strcmp($a['column'], $b['column']));
+
+        return $columns;
+    }
+
+    /**
+     * The canonical field order for a spreadsheet, as field => column index.
+     *
+     * @return array<string, int>
+     */
+    private function canonicalLayoutFor(string $spreadsheetId): array
+    {
+        $layout = $spreadsheetId === self::SPECIAL_SPREADSHEET_ID
+            ? self::SPECIAL_LAYOUT
+            : self::REGULAR_LAYOUT;
+
+        $canonical = [];
+
+        foreach ($layout as $letter => $field) {
+            if ($field === null) {
+                continue;
+            }
+
+            $canonical[$field] = $this->columnIndex($letter);
+        }
+
+        return $canonical;
+    }
+
+    /**
+     * Spreadsheet column letter to its zero-based index: A is 0, R is 17.
+     */
+    private function columnIndex(string $letter): int
+    {
+        $index = 0;
+
+        foreach (str_split(strtoupper($letter)) as $character) {
+            $index = $index * 26 + (ord($character) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    /**
+     * Zero-based column index back to its letter: 0 is A, 17 is R.
+     */
+    private function columnLetter(int $index): string
+    {
+        $letter = '';
+
+        for ($i = $index; $i >= 0; $i = intdiv($i, 26) - 1) {
+            $letter = chr(65 + ($i % 26)).$letter;
+        }
+
+        return $letter;
     }
 
     /**
@@ -324,7 +654,9 @@ class SheetOrderPullImporter
         Sheet $sheet,
         string $tabName,
         ?string $country,
-        array $summary
+        array $summary,
+        bool $requireColumnC,
+        int $startRow
     ): array {
         $candidates = [];
         $seenInBatch = [];
@@ -343,13 +675,18 @@ class SheetOrderPullImporter
 
             $summary['scanned']++;
 
-            $rowNumber = $rowIndex + 1;
+            $rowNumber = $startRow + $rowIndex;
 
             // Rule 1: a status means the row has already been triaged.
             $status = $this->cell($row, $map, 'status');
 
             if (SpreadsheetValue::text($status) !== null) {
                 $summary['skipped']['has_status']++;
+                continue;
+            }
+
+            if ($requireColumnC && SpreadsheetValue::text($row[2] ?? null) === null) {
+                $summary['skipped']['missing_priority']++;
                 continue;
             }
 
@@ -453,16 +790,22 @@ class SheetOrderPullImporter
      * @param  array<string, mixed>  $candidate
      * @param  array<string, mixed>  $summary
      */
-    private function stage(Sheet $sheet, string $tabName, array $candidate, array &$summary): void
+    private function stage(
+        Sheet $sheet,
+        string $tabName,
+        array $candidate,
+        array &$summary
+    ): void
     {
         $orderNo = $candidate['order_no'];
 
         // Scoped to the spreadsheet and tab as well as the order number, so the
-        // same number in two stores never collapses into one staged row.
+        // same number in two stores never collapses into one staged row. This
+        // identity intentionally matches AppScriptController so both intake
+        // paths share one incoming row.
         $sourceHash = hash('sha256', json_encode([
-            'provider' => 'google-sheet',
             'sheet_id' => (string) $sheet->sheet_id,
-            'tab' => $tabName,
+            'sheet_name' => $tabName,
             'order_no' => $orderNo,
         ]));
 
@@ -485,6 +828,9 @@ class SheetOrderPullImporter
 
                 return;
             }
+
+            $candidate['payload']['order_date'] = $incoming->payload['order_date']
+                ?? $candidate['payload']['order_date'];
 
             // Already staged but not yet finished: re-arm it so a second click
             // can push a stuck or failed row through without duplicating it.
@@ -556,8 +902,10 @@ class SheetOrderPullImporter
             'already_staged' => 0,
             'remaining' => 0,
             'truncated' => $truncated,
+            'rows_read' => 0,
             'skipped' => [
                 'has_status' => 0,
+                'missing_priority' => 0,
                 'existing_order' => 0,
                 'duplicate_in_sheet' => 0,
                 'blank_order_no' => 0,
@@ -566,6 +914,7 @@ class SheetOrderPullImporter
             'errors' => [],
             'errors_total' => 0,
             'order_nos' => [],
+            'columns' => [],
         ];
     }
 

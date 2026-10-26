@@ -44,6 +44,7 @@ class SheetOrderImportService
             'product_name' => 'nullable|string|max:255',
             'status' => 'nullable|string',
             'delivery_date' => 'nullable|date',
+            'order_date' => 'nullable|date',
             'agent' => 'nullable|string',
             'sheet_id' => 'nullable|string',
             'sheet_name' => 'nullable|string',
@@ -52,7 +53,9 @@ class SheetOrderImportService
 
         $validatedData['store_name'] = $validatedData['store_name'] ?: 'RDL1';
         $validatedData['cc_email'] = null;
-        $validatedData['order_date'] = now()->toDateString();
+        // Keep the imported date when present; otherwise stamp it with the
+        // current date at the time the order is processed.
+        $validatedData['order_date'] = $validatedData['order_date'] ?? now()->toDateString();
 
         if (! empty($validatedData['sheet_id']) && ! empty($validatedData['sheet_name'])) {
             $validatedData['cc_email'] = $this->resolveCcEmail($sheet, $validatedData);
@@ -119,6 +122,7 @@ class SheetOrderImportService
             ...$payload,
             'order_no' => trim((string) ($payload['order_no'] ?? '')),
             'delivery_date' => $payload['delivery_date'] ?? null,
+            'order_date' => $this->nullIfBlank($payload['order_date'] ?? null),
             'amount' => $cleanAmount,
             'client_name' => $this->nullIfBlank($payload['client_name'] ?? null),
             'quantity' => $cleanQuantity,
@@ -193,34 +197,25 @@ class SheetOrderImportService
 
         $orderNoMatches = SheetOrder::query()
             ->where('order_no', $orderNo)
+            ->when($sheetId !== null, fn ($query) => $query->where('sheet_id', $sheetId))
+            ->when($sheetName !== null, fn ($query) => $query->where('sheet_name', $sheetName))
             ->orderBy('id')
             ->get();
 
         if ($orderNoMatches->count() > 1) {
-            Log::error('Duplicate order_no detected in database - data integrity violation.', [
+            Log::error('Duplicate order identity detected in database - data integrity violation.', [
                 'order_no' => $validatedData['order_no'],
+                'sheet_id' => $sheetId,
+                'sheet_name' => $sheetName,
                 'matched_ids' => $orderNoMatches->pluck('id')->all(),
             ]);
 
             throw ValidationException::withMessages([
-                'order_no' => "Duplicate order_no [{$validatedData['order_no']}] found in database. Manual intervention required.",
+                'order_no' => "Duplicate order [{$validatedData['order_no']}] for this spreadsheet tab found in database. Manual intervention required.",
             ]);
         }
 
-        return $orderNoMatches->first(function (SheetOrder $order) use ($sheetId, $sheetName) {
-            $existingSheetId = $this->normalizeIdentityValue($order->sheet_id);
-            $existingSheetName = $this->normalizeIdentityValue($order->sheet_name);
-
-            if ($sheetId !== null && $existingSheetId !== $sheetId) {
-                return false;
-            }
-
-            if ($sheetName !== null && $existingSheetName !== $sheetName) {
-                return false;
-            }
-
-            return true;
-        });
+        return $orderNoMatches->first();
     }
 
     private function shouldBackfillValue(mixed $existingValue, mixed $incomingValue): bool
