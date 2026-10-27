@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Sheet;
 use App\Models\StoreepIntegration;
+use App\Models\IncomingSheetOrder;
 use App\Services\StoreepApiService;
 use App\Services\StoreepCountryResolver;
 use App\Services\StoreepOrderNumberPrefix;
@@ -17,8 +18,7 @@ use Illuminate\Validation\Rule;
  * Manage Storeep store connections.
  *
  * Credentials live in the database rather than `.env` because there is one
- * store per merchant, and a merchant trading in several countries has one row
- * per market. Tokens are encrypted at rest by the model cast and are never sent
+ * store per merchant, and each connection can allow several markets. Tokens are encrypted at rest by the model cast and are never sent
  * to the browser.
  */
 class StoreepIntegrationController extends Controller
@@ -35,12 +35,13 @@ class StoreepIntegrationController extends Controller
             $query->whereHas('sheet', fn ($sheet) => $sheet->where('sheet_name', $user->name));
         }
 
-        $integrations = $query->get()->map(fn (StoreepIntegration $integration) => [
+        $integrations = Inertia::defer(fn () => $query->get()->map(fn (StoreepIntegration $integration) => [
             'id' => $integration->id,
             'store_name' => $integration->store_name,
             'merchant' => $integration->merchantName(),
             'sheets_id' => $integration->sheets_id,
             'country' => $integration->country,
+            'allowed_countries' => $integration->allowed_countries ?? [$integration->country],
             'order_no_prefix' => $integration->order_no_prefix,
             'is_enabled' => $integration->is_enabled,
             'last_synced_at' => $integration->last_synced_at?->toDateTimeString(),
@@ -49,7 +50,7 @@ class StoreepIntegrationController extends Controller
             'last_error_at' => $integration->last_error_at?->toDateTimeString(),
             // Never the token itself, only enough to identify which one is set.
             'token_hint' => $this->tokenHint($integration),
-        ]);
+        ]));
 
         $sheetQuery = Sheet::query()->select('id', 'sheet_name', 'country')->orderBy('sheet_name');
 
@@ -92,7 +93,7 @@ class StoreepIntegrationController extends Controller
         $sheet = Sheet::find($data['sheets_id']);
 
         if (! $sheet || $sheet->sheet_name === null || $sheet->sheet_name === '') {
-            return back()->with('error', 'Select a merchant sheet with a name.');
+            return back()->withErrors(['sheets_id' => 'Select a merchant sheet with a name.']);
         }
 
         // Derive the prefix from the sheet name. sheet_orders.merchant is the
@@ -103,7 +104,7 @@ class StoreepIntegrationController extends Controller
             : app(StoreepOrderNumberPrefix::class)->allocate($sheet->sheet_name);
 
         if ($prefix === null || $prefix === '') {
-            return back()->with('error', 'Could not allocate an order number prefix for that merchant sheet.');
+            return back()->withErrors(['order_no_prefix' => 'Could not allocate an order number prefix for that merchant sheet.']);
         }
 
         StoreepIntegration::create([
@@ -111,6 +112,7 @@ class StoreepIntegrationController extends Controller
             'store_name' => $data['store_name'],
             'access_token' => $data['access_token'],
             'country' => $data['country'],
+            'allowed_countries' => $data['allowed_countries'],
             'order_no_prefix' => $prefix,
             'is_enabled' => true,
         ]);
@@ -128,6 +130,7 @@ class StoreepIntegrationController extends Controller
             'sheets_id' => $data['sheets_id'],
             'store_name' => $data['store_name'],
             'country' => $data['country'],
+            'allowed_countries' => $data['allowed_countries'],
         ];
 
         // Only overwrite the token when a new one is supplied, so editing a
@@ -172,6 +175,38 @@ class StoreepIntegrationController extends Controller
         );
     }
 
+    public function orders(Request $request, StoreepIntegration $integration)
+    {
+        $integration->loadMissing('sheet');
+        $user = $request->user();
+
+        if ($user?->roles === 'merchant' && $integration->sheet?->sheet_name !== $user->name) {
+            abort(403);
+        }
+
+        $orders = IncomingSheetOrder::query()
+            ->where('payload->_storeep_integration_id', $integration->id)
+            ->orderByDesc('id')
+            ->limit(25)
+            ->get();
+
+        return response()->json([
+            'orders' => $orders->map(fn (IncomingSheetOrder $order) => [
+                'id' => $order->id,
+                'order_no' => $order->order_no,
+                'client_name' => $order->payload['client_name'] ?? null,
+                'country' => $order->payload['country'] ?? null,
+                'product_name' => $order->payload['product_name'] ?? null,
+                'quantity' => $order->payload['quantity'] ?? null,
+                'amount' => $order->payload['amount'] ?? null,
+                'status' => $order->payload['status'] ?? null,
+                'created_at' => $order->created_at?->toDateTimeString(),
+                'import_state' => $order->status,
+                'error_message' => $order->error_message,
+            ])->values(),
+        ]);
+    }
+
     public function syncNow(StoreepIntegration $integration)
     {
         $exit = \Artisan::call('storeep:sync-orders', [
@@ -199,6 +234,30 @@ class StoreepIntegrationController extends Controller
             $uniqueStore = $uniqueStore->ignore($integration->id);
         }
 
+        // Sheet country names may use different capitalization from the
+        // canonical countries table (for example, "ZAMBIA" vs "Zambia").
+        // Normalize selected markets before applying the strict allow-list.
+        $marketLookup = [];
+        foreach (app(StoreepCountryResolver::class)->supportedMarkets() as $market) {
+            $marketLookup[mb_strtolower(trim($market))] = $market;
+        }
+
+        $allowedCountries = $request->input('allowed_countries');
+        if (is_array($allowedCountries)) {
+            $request->merge([
+                'allowed_countries' => array_map(
+                    static function ($country) use ($marketLookup) {
+                        if (! is_string($country)) {
+                            return $country;
+                        }
+
+                        return $marketLookup[mb_strtolower(trim($country))] ?? $country;
+                    },
+                    $allowedCountries,
+                ),
+            ]);
+        }
+
         return $request->validate([
             'store_name' => ['required', 'string', 'max:255', $uniqueStore],
             // Required on create; optional on update so a token is not retyped.
@@ -207,7 +266,9 @@ class StoreepIntegrationController extends Controller
                 : ['nullable', 'string', 'max:255'],
             'sheets_id' => ['required', 'integer', 'exists:sheets,id'],
             'country' => ['required', 'string', 'max:255'],
-            'order_no_prefix' => ['nullable', 'string', 'max:8'],
+            'allowed_countries' => ['present', 'array'],
+            'allowed_countries.*' => ['required', 'string', Rule::in(array_values(app(StoreepCountryResolver::class)->supportedMarkets()))],
+            'order_no_prefix' => ['nullable', 'string', 'max:8', 'regex:/^[A-Z0-9]+$/i'],
         ]);
     }
 

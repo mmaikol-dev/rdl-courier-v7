@@ -80,4 +80,20 @@ class StoreepCountryResolver
             ? $integration->country
             : null;
     }
+
+    /** @param array<int, string>|null $allowedCountries */
+    public function isAllowed(?string $country, ?array $allowedCountries): bool
+    {
+        if ($country === null || trim($country) === '') {
+            return false;
+        }
+
+        foreach ($allowedCountries ?? [] as $allowedCountry) {
+            if (mb_strtolower(trim($allowedCountry)) === mb_strtolower(trim($country))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

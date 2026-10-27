@@ -78,13 +78,17 @@ class SyncStoreepOrders extends Command
             : $integration->last_synced_at_remote?->format('Y-m-d H:i:s');
 
         $staged = 0;
+        $skipped = 0;
         $newestRemote = null;
         $seenIds = [];
 
         try {
             foreach ($api->ordersSince($integration, $cursor, $seenIds) as $order) {
-                $importer->stage($integration, $order);
-                $staged++;
+                if ($importer->stage($integration, $order) !== null) {
+                    $staged++;
+                } else {
+                    $skipped++;
+                }
 
                 $remote = $order['updated_at_remote'] ?? null;
 
@@ -105,10 +109,11 @@ class SyncStoreepOrders extends Command
                 'last_error_at' => null,
             ])->save();
 
-            $this->line("[{$integration->store_name}] staged {$staged} order(s).");
+            $this->line("[{$integration->store_name}] staged {$staged} order(s), skipped {$skipped} outside the selected countries.");
             Log::info('✓ Storeep sync completed', [
                 'store' => $integration->store_name,
                 'staged' => $staged,
+                'skipped_country' => $skipped,
                 'cursor' => $newestRemote,
             ]);
         } catch (\Throwable $exception) {

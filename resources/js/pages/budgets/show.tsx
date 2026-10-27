@@ -22,11 +22,11 @@ export default function BudgetShow() {
         switch (type) {
             case 'initial':
             case 'topup':
-                return <TrendingUp className="w-4 h-4 text-green-600" />;
+                return <TrendingUp className="w-4 h-4 text-success" />;
             case 'deduction':
-                return <TrendingDown className="w-4 h-4 text-red-600" />;
+                return <TrendingDown className="w-4 h-4 text-destructive" />;
             default:
-                return <DollarSign className="w-4 h-4 text-gray-600" />;
+                return <DollarSign className="w-4 h-4 text-muted-foreground" />;
         }
     };
 
@@ -34,11 +34,11 @@ export default function BudgetShow() {
         switch (type) {
             case 'initial':
             case 'topup':
-                return 'text-green-600';
+                return 'text-success';
             case 'deduction':
-                return 'text-red-600';
+                return 'text-destructive';
             default:
-                return 'text-gray-600';
+                return 'text-muted-foreground';
         }
     };
 
@@ -61,35 +61,35 @@ export default function BudgetShow() {
                         <ArrowLeft className="w-4 h-4" />
                         Back
                     </Button>
-                    <h1 className="text-2xl font-bold text-gray-800">
+                    <h1 className="text-2xl font-bold text-foreground">
                         Budget for {new Date(budget.budget_date).toLocaleDateString()}
                     </h1>
                 </div>
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="shadow-sm bg-blue-50 border-blue-200">
+                    <Card className="shadow-sm bg-accent border-border">
                         <CardContent className="p-6">
-                            <p className="text-sm text-blue-700 mb-1">Initial Budget</p>
-                            <p className="text-3xl font-bold text-blue-900">
+                            <p className="text-sm text-foreground mb-1">Initial Budget</p>
+                            <p className="text-3xl font-bold text-foreground">
                                 KES{parseFloat(budget.initial_amount).toFixed(2)}
                             </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="shadow-sm bg-red-50 border-red-200">
+                    <Card className="shadow-sm bg-destructive/10 border-destructive/30">
                         <CardContent className="p-6">
-                            <p className="text-sm text-red-700 mb-1">Spent Amount</p>
-                            <p className="text-3xl font-bold text-red-900">
+                            <p className="text-sm text-destructive mb-1">Spent Amount</p>
+                            <p className="text-3xl font-bold text-destructive">
                                 KES{parseFloat(budget.spent_amount).toFixed(2)}
                             </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="shadow-sm bg-green-50 border-green-200">
+                    <Card className="shadow-sm bg-success/10 border-success/30">
                         <CardContent className="p-6">
-                            <p className="text-sm text-green-700 mb-1">Current Balance</p>
-                            <p className="text-3xl font-bold text-green-900">
+                            <p className="text-sm text-success mb-1">Current Balance</p>
+                            <p className="text-3xl font-bold text-success">
                                 KES{parseFloat(budget.current_amount).toFixed(2)}
                             </p>
                         </CardContent>
@@ -118,7 +118,7 @@ export default function BudgetShow() {
                             <TableBody>
                                 {budget.transactions?.length > 0 ? (
                                     budget.transactions.map((transaction: any, index: number) => (
-                                        <TableRow key={transaction.id} className="hover:bg-gray-50">
+                                        <TableRow key={transaction.id} className="hover:bg-muted">
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-2">
@@ -147,7 +147,7 @@ export default function BudgetShow() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center text-gray-500 py-6">
+                                        <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                                             No transactions found.
                                         </TableCell>
                                     </TableRow>
@@ -178,7 +178,7 @@ export default function BudgetShow() {
                                     {budget.top_ups.map((topUp: any, index: number) => (
                                         <TableRow key={topUp.id}>
                                             <TableCell>{index + 1}</TableCell>
-                                            <TableCell className="font-semibold text-green-600">
+                                            <TableCell className="font-semibold text-success">
                                                 +KES{parseFloat(topUp.amount).toFixed(2)}
                                             </TableCell>
                                             <TableCell>{topUp.reason || '-'}</TableCell>
@@ -217,7 +217,7 @@ export default function BudgetShow() {
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell className="font-medium">{req.requisition_number}</TableCell>
                                             <TableCell>{req.title}</TableCell>
-                                            <TableCell className="font-semibold text-red-600">
+                                            <TableCell className="font-semibold text-destructive">
                                                 -KES{parseFloat(req.total_amount).toFixed(2)}
                                             </TableCell>
                                             <TableCell className="text-sm">

@@ -63,17 +63,15 @@ class C2BTransactionController extends Controller
 
     $summaryQuery = clone $query;
 
-    // ✅ Pagination + keep filters across pages
-    $transactions = $query->orderBy('created_at', 'desc')
-        ->paginate(100)
-        ->withQueryString();
-
     return Inertia::render('transactions/index', [
-        'transactions' => $transactions,
-        'summary' => [
-            'totalAmount' => (float) $summaryQuery->sum('amount'),
-            'totalRecords' => $summaryQuery->count(),
-        ],
+        'transactionReport' => Inertia::defer(fn () => [
+            // Pagination + summary stay together so the page can show one loading state.
+            'transactions' => (clone $query)->orderBy('created_at', 'desc')->paginate(100)->withQueryString(),
+            'summary' => [
+                'totalAmount' => (float) (clone $summaryQuery)->sum('amount'),
+                'totalRecords' => (clone $summaryQuery)->count(),
+            ],
+        ]),
         'filters' => $request->only(['search', 'status', 'start_date', 'end_date']),
     ]);
 }

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,7 +19,7 @@ import AppLayout from '@/layouts/app-layout';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { format } from 'date-fns';
 import {
     AlertCircle,
@@ -42,6 +43,26 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Dispatch', href: '/dispatch' },
 ];
+
+function DispatchTableSkeleton() {
+    return (
+        <div className="space-y-4" role="status" aria-label="Loading dispatch orders" aria-live="polite">
+            <div className="rounded-xl border bg-card p-4">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                    <div className="space-y-2"><Skeleton className="h-5 w-40" /><Skeleton className="h-4 w-56" /></div>
+                    <Skeleton className="h-9 w-32" />
+                </div>
+                <div className="space-y-3">
+                    {Array.from({ length: 7 }).map((_, row) => (
+                        <div key={row} className="grid grid-cols-4 gap-3 border-t py-3 md:grid-cols-8">
+                            {Array.from({ length: 8 }).map((__, column) => <Skeleton key={column} className="h-4 w-full" />)}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
 
 function getCsrfToken() {
     return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || '';
@@ -79,6 +100,122 @@ interface SheetOrder {
     agent?: string;
     created_at?: string;
     confirmed?: number;
+}
+
+interface EditOrderDialogProps {
+    order: SheetOrder | null;
+    isUpdating: boolean;
+    onClose: () => void;
+    onSave: (order: SheetOrder, values: Partial<SheetOrder>) => void;
+}
+
+function EditOrderDialog({ order, isUpdating, onClose, onSave }: EditOrderDialogProps) {
+    const [values, setValues] = React.useState<Partial<SheetOrder>>(order ?? {});
+
+    React.useEffect(() => {
+        setValues(order ?? {});
+    }, [order]);
+
+    const updateValue = <K extends keyof SheetOrder>(key: K, value: SheetOrder[K]) => {
+        setValues((current) => ({ ...current, [key]: value }));
+    };
+
+    return (
+        <Dialog open={!!order} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-xl">
+                        <Edit className="h-5 w-5" />
+                        Edit Order: {order?.order_no}
+                    </DialogTitle>
+                    <DialogDescription>Update order details. Changes will be reflected immediately.</DialogDescription>
+                </DialogHeader>
+                {order && (
+                    <div className="space-y-4 py-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_order_no">Order Number</Label>
+                                <Input id="edit_order_no" value={values.order_no || ''} onChange={(e) => updateValue('order_no', e.target.value)} className="h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_client_name">Client Name</Label>
+                                <Input id="edit_client_name" value={values.client_name || ''} onChange={(e) => updateValue('client_name', e.target.value)} className="h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_product_name">Product Name</Label>
+                                <Input id="edit_product_name" value={values.product_name || ''} onChange={(e) => updateValue('product_name', e.target.value)} className="h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_quantity">Quantity</Label>
+                                <Input
+                                    id="edit_quantity"
+                                    type="number"
+                                    value={values.quantity || ''}
+                                    onChange={(e) => updateValue('quantity', parseInt(e.target.value) || 0)}
+                                    className="h-10"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_amount">Amount</Label>
+                                <Input id="edit_amount" value={values.amount || ''} onChange={(e) => updateValue('amount', e.target.value)} className="h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_phone">Phone</Label>
+                                <Input id="edit_phone" value={values.phone || ''} onChange={(e) => updateValue('phone', e.target.value)} className="h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_status">Status</Label>
+                                <Select value={values.status || 'scheduled'} onValueChange={(value) => updateValue('status', value)}>
+                                    <SelectTrigger id="edit_status" className="h-10">
+                                        <SelectValue placeholder="Select status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                                        <SelectItem value="dispatched">Dispatched</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_delivery_date">Delivery Date</Label>
+                                <Input
+                                    id="edit_delivery_date"
+                                    type="date"
+                                    value={values.delivery_date?.substring(0, 10) || ''}
+                                    onChange={(e) => updateValue('delivery_date', e.target.value)}
+                                    className="h-10"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="edit_instructions">Instructions</Label>
+                            <Textarea
+                                id="edit_instructions"
+                                value={values.instructions || ''}
+                                onChange={(e) => updateValue('instructions', e.target.value)}
+                                className="min-h-[80px]"
+                                placeholder="Any special delivery instructions..."
+                            />
+                        </div>
+                    </div>
+                )}
+                <DialogFooter className="gap-2">
+                    <Button variant="outline" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button onClick={() => order && onSave(order, values)} disabled={isUpdating || !order}>
+                        {isUpdating ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            'Save Changes'
+                        )}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 }
 
 interface Agent {
@@ -211,7 +348,7 @@ const OrdersTable = React.memo(function OrdersTable({
                                 {isFiltering ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter size={16} className="mr-2" />}
                                 Filters
                                 {hasActiveFilters && !isFiltering && (
-                                    <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-blue-500" />
+                                    <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary" />
                                 )}
                             </Button>
                         </div>
@@ -309,7 +446,7 @@ const OrdersTable = React.memo(function OrdersTable({
                                                                 checked={!!order.agent}
                                                                 onCheckedChange={(checked) => onAgentToggle(order, checked)}
                                                                 disabled={togglingAgentId === order.id || readOnly}
-                                                                className="data-[state=checked]:bg-green-500"
+                                                                className="data-[state=checked]:bg-success"
                                                             />
                                                         )}
                                                     </div>
@@ -323,12 +460,12 @@ const OrdersTable = React.memo(function OrdersTable({
                                                 {order.status === 'scheduled' ? (
                                                     <Badge
                                                         variant="outline"
-                                                        className="whitespace-nowrap border-yellow-300 bg-yellow-50 text-yellow-800"
+                                                        className="whitespace-nowrap border-warning/30 bg-warning/10 text-warning-foreground"
                                                     >
                                                         Scheduled
                                                     </Badge>
                                                 ) : (
-                                                    <Badge className="whitespace-nowrap border-green-200 bg-green-100 text-green-800 hover:bg-green-100">
+                                                    <Badge className="whitespace-nowrap border-success/30 bg-success/10 text-success hover:bg-success/10">
                                                         Dispatched
                                                     </Badge>
                                                 )}
@@ -430,6 +567,7 @@ export default function DispatchView() {
     const readOnly = userRole === 'callcenter1';
 
     const [searchTerm, setSearchTerm] = React.useState(filters?.search || '');
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
     const [dateRange, setDateRange] = React.useState<{
         from: Date | undefined;
         to: Date | undefined;
@@ -453,7 +591,6 @@ export default function DispatchView() {
         to: Date | undefined;
     }>({ from: undefined, to: undefined });
     const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
-    const [editValues, setEditValues] = React.useState<Partial<SheetOrder>>({});
     const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
     const [showAccessDenied, setShowAccessDenied] = React.useState(false);
 
@@ -479,11 +616,13 @@ export default function DispatchView() {
 
     // Handle server-side filtering
     const handleApplyFilters = () => {
+        const search = searchInputRef.current?.value ?? searchTerm;
+        setSearchTerm(search);
         setIsFiltering(true);
         router.get(
             '/dispatch',
             {
-                search: searchTerm,
+                search,
                 start_date: dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '',
                 end_date: dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '',
                 agent: selectedAgent === 'all' ? '' : selectedAgent,
@@ -501,6 +640,7 @@ export default function DispatchView() {
     };
 
     const handleClearFilters = () => {
+        if (searchInputRef.current) searchInputRef.current.value = '';
         setSearchTerm('');
         setDateRange({ from: undefined, to: undefined });
         setSelectedAgent('all');
@@ -691,7 +831,6 @@ export default function DispatchView() {
     const handleEditOpen = React.useCallback((order: SheetOrder) => {
         if (restricted) return handleRestrictedAction();
         setEditingOrder(order);
-        setEditValues(order);
     }, [restricted]);
 
     const handleDeleteOpen = React.useCallback((order: SheetOrder) => {
@@ -699,11 +838,10 @@ export default function DispatchView() {
         setDeletingOrder(order);
     }, [restricted]);
 
-    const handleEditSave = () => {
+    const handleEditSave = (order: SheetOrder, values: Partial<SheetOrder>) => {
         if (readOnly) return handleRestrictedAction();
-        if (!editingOrder) return;
         setIsUpdating(true);
-        router.put(`/sheet_orders/${editingOrder.id}`, editValues, {
+        router.put(`/sheet_orders/${order.id}`, values, {
             onSuccess: () => {
                 setEditingOrder(null);
                 toast.success('Order updated successfully!');
@@ -833,9 +971,9 @@ export default function DispatchView() {
             <div className="flex flex-col gap-6 p-4 md:p-6">
                 {/* Flash Messages */}
                 {flash?.success && (
-                    <Alert className="border-green-200 bg-green-50 duration-300 animate-in fade-in slide-in-from-top-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-800">{flash.success}</AlertDescription>
+                    <Alert className="border-success/30 bg-success/10 duration-300 animate-in fade-in slide-in-from-top-2">
+                        <CheckCircle2 className="h-4 w-4 text-success" />
+                        <AlertDescription className="text-success">{flash.success}</AlertDescription>
                     </Alert>
                 )}
 
@@ -846,7 +984,8 @@ export default function DispatchView() {
                     </Alert>
                 )}
 
-                <OrdersTable
+                <Deferred data="orders" fallback={<DispatchTableSkeleton />}>
+                {() => <OrdersTable
                     orders={orders}
                     agents={agents}
                     readOnly={readOnly}
@@ -867,7 +1006,8 @@ export default function DispatchView() {
                     onEdit={handleEditOpen}
                     onDelete={handleDeleteOpen}
                     onDownload={handleDownload}
-                />
+                />}
+                </Deferred>
             </div>
 
             {/* Print Agent Orders Modal */}
@@ -884,9 +1024,9 @@ export default function DispatchView() {
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <Label className="text-base font-semibold">
-                                    Select Agents <span className="text-red-500">*</span>
+                                    Select Agents <span className="text-destructive">*</span>
                                 </Label>
-                                <button type="button" onClick={handlePrintSelectAllAgents} className="text-xs text-blue-600 hover:underline">
+                                <button type="button" onClick={handlePrintSelectAllAgents} className="text-xs text-muted-foreground hover:underline">
                                     {printAgents.length === agents.length ? 'Deselect All' : 'Select All'}
                                 </button>
                             </div>
@@ -955,20 +1095,20 @@ export default function DispatchView() {
                         </div>
 
                         {printAgents.length > 0 && (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                            <div className="rounded-lg border border-border bg-accent p-4">
                                 <div className="flex items-start gap-2">
-                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
                                     <div className="space-y-1">
-                                        <p className="text-sm font-medium text-blue-900">
+                                        <p className="text-sm font-medium text-foreground">
                                             Ready to print orders for: <strong>{printAgents.join(', ')}</strong>
                                         </p>
                                         {printDateRange.from && printDateRange.to && (
-                                            <p className="text-xs text-blue-700">
+                                            <p className="text-xs text-foreground">
                                                 Delivery dates: {format(printDateRange.from, 'MMM dd')} - {format(printDateRange.to, 'MMM dd, yyyy')}
                                             </p>
                                         )}
                                         {(!printDateRange.from || !printDateRange.to) && (
-                                            <p className="text-xs text-blue-700">All orders (no date filter)</p>
+                                            <p className="text-xs text-foreground">All orders (no date filter)</p>
                                         )}
                                     </div>
                                 </div>
@@ -1118,12 +1258,12 @@ export default function DispatchView() {
                         )}
 
                         {parsedDownloadOrders.length === 0 && (bulkDownloadAgent !== 'all' || bulkDownloadDateRange.from) && (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                            <div className="rounded-lg border border-border bg-accent p-4">
                                 <div className="flex items-start gap-2">
-                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
                                     <div className="space-y-1">
-                                        <p className="text-sm font-medium text-blue-900">Download waybills with filters:</p>
-                                        <ul className="space-y-1 text-xs text-blue-700">
+                                        <p className="text-sm font-medium text-foreground">Download waybills with filters:</p>
+                                        <ul className="space-y-1 text-xs text-foreground">
                                             {bulkDownloadAgent && bulkDownloadAgent !== 'all' && (
                                                 <li>
                                                     • Agent: <strong>{bulkDownloadAgent}</strong>
@@ -1186,7 +1326,7 @@ export default function DispatchView() {
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label htmlFor="bulk_order_numbers" className="text-base font-semibold">
-                                Order Numbers <span className="text-red-500">*</span>
+                                Order Numbers <span className="text-destructive">*</span>
                             </Label>
                             <Textarea
                                 id="bulk_order_numbers"
@@ -1200,7 +1340,7 @@ export default function DispatchView() {
 
                         <div className="space-y-2">
                             <Label htmlFor="bulk_agent" className="text-base font-semibold">
-                                Select Agent <span className="text-red-500">*</span>
+                                Select Agent <span className="text-destructive">*</span>
                             </Label>
                             <Select value={bulkSelectedAgent} onValueChange={setBulkSelectedAgent}>
                                 <SelectTrigger id="bulk_agent" className="h-11">
@@ -1219,7 +1359,7 @@ export default function DispatchView() {
 
                         <div className="space-y-2">
                             <Label htmlFor="bulk_order_type" className="text-base font-semibold">
-                                Order Type <span className="text-red-500">*</span>
+                                Order Type <span className="text-destructive">*</span>
                             </Label>
                             <Select value={bulkOrderType} onValueChange={setBulkOrderType}>
                                 <SelectTrigger id="bulk_order_type" className="h-11">
@@ -1234,30 +1374,30 @@ export default function DispatchView() {
                         </div>
 
                         {parsedOrders.length > 0 && bulkSelectedAgent && bulkOrderType && (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                            <div className="rounded-lg border border-border bg-accent p-4">
                                 <div className="flex items-start gap-2">
-                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+                                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
                                     <div className="space-y-1">
-                                        <p className="text-sm font-medium text-blue-900">
+                                        <p className="text-sm font-medium text-foreground">
                                             Ready to assign {parsedOrders.length} order(s) to <strong>{bulkSelectedAgent}</strong>
                                         </p>
                                         <div className="mt-2 flex flex-wrap gap-1">
                                             {parsedOrders.slice(0, 10).map((order, idx) => (
                                                 <span
                                                     key={idx}
-                                                    className="truncate rounded border border-blue-300 bg-white px-2 py-1 text-xs"
+                                                    className="truncate rounded border border-border bg-card px-2 py-1 text-xs"
                                                     title={order}
                                                 >
                                                     {order}
                                                 </span>
                                             ))}
                                             {parsedOrders.length > 10 && (
-                                                <span className="rounded border border-blue-300 bg-white px-2 py-1 text-xs">
+                                                <span className="rounded border border-border bg-card px-2 py-1 text-xs">
                                                     +{parsedOrders.length - 10} more
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="mt-2 text-xs text-blue-700">
+                                        <p className="mt-2 text-xs text-foreground">
                                             A consolidated PDF waybill will automatically download after assignment.
                                         </p>
                                     </div>
@@ -1312,8 +1452,8 @@ export default function DispatchView() {
                             <Input
                                 id="search"
                                 placeholder="Search by order number, client, product..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                defaultValue={searchTerm}
+                                ref={searchInputRef}
                                 className="h-11"
                             />
                             <p className="text-xs text-muted-foreground">Searches across order number, client name, product name, and phone</p>
@@ -1396,12 +1536,12 @@ export default function DispatchView() {
                         </div>
 
                         {hasActiveFilters && (
-                            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                            <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
                                 <div className="flex items-start gap-2">
-                                    <Filter className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-600" />
+                                    <Filter className="mt-0.5 h-5 w-5 flex-shrink-0 text-warning-foreground" />
                                     <div>
-                                        <p className="text-sm font-medium text-orange-900">Active Filters:</p>
-                                        <ul className="mt-1 space-y-1 text-xs text-orange-700">
+                                        <p className="text-sm font-medium text-warning-foreground">Active Filters:</p>
+                                        <ul className="mt-1 space-y-1 text-xs text-warning-foreground">
                                             {searchTerm && <li>Search: "{searchTerm}"</li>}
                                             {dateRange.from && dateRange.to && (
                                                 <li>
@@ -1434,137 +1574,21 @@ export default function DispatchView() {
                 </DialogContent>
             </Dialog>
 
-            {/* Edit Order Modal */}
-            <Dialog open={!!editingOrder} onOpenChange={(open) => !open && setEditingOrder(null)}>
-                <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-xl">
-                            <Edit className="h-5 w-5" />
-                            Edit Order: {editingOrder?.order_no}
-                        </DialogTitle>
-                        <DialogDescription>Update order details. Changes will be reflected immediately.</DialogDescription>
-                    </DialogHeader>
-                    {editingOrder && (
-                        <div className="space-y-4 py-4">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_order_no">Order Number</Label>
-                                    <Input
-                                        id="edit_order_no"
-                                        value={editValues.order_no || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, order_no: e.target.value })}
-                                        className="h-10"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_client_name">Client Name</Label>
-                                    <Input
-                                        id="edit_client_name"
-                                        value={editValues.client_name || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, client_name: e.target.value })}
-                                        className="h-10"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_product_name">Product Name</Label>
-                                    <Input
-                                        id="edit_product_name"
-                                        value={editValues.product_name || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, product_name: e.target.value })}
-                                        className="h-10"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_quantity">Quantity</Label>
-                                    <Input
-                                        id="edit_quantity"
-                                        type="number"
-                                        value={editValues.quantity || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, quantity: parseInt(e.target.value) || 0 })}
-                                        className="h-10"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_amount">Amount</Label>
-                                    <Input
-                                        id="edit_amount"
-                                        value={editValues.amount || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })}
-                                        className="h-10"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_phone">Phone</Label>
-                                    <Input
-                                        id="edit_phone"
-                                        value={editValues.phone || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, phone: e.target.value })}
-                                        className="h-10"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_status">Status</Label>
-                                    <Select
-                                        value={editValues.status || 'scheduled'}
-                                        onValueChange={(value) => setEditValues({ ...editValues, status: value })}
-                                    >
-                                        <SelectTrigger id="edit_status" className="h-10">
-                                            <SelectValue placeholder="Select status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="scheduled">Scheduled</SelectItem>
-                                            <SelectItem value="dispatched">Dispatched</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_delivery_date">Delivery Date</Label>
-                                    <Input
-                                        id="edit_delivery_date"
-                                        type="date"
-                                        value={editValues.delivery_date?.substring(0, 10) || ''}
-                                        onChange={(e) => setEditValues({ ...editValues, delivery_date: e.target.value })}
-                                        className="h-10"
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="edit_instructions">Instructions</Label>
-                                <Textarea
-                                    id="edit_instructions"
-                                    value={editValues.instructions || ''}
-                                    onChange={(e) => setEditValues({ ...editValues, instructions: e.target.value })}
-                                    className="min-h-[80px]"
-                                    placeholder="Any special delivery instructions..."
-                                />
-                            </div>
-                        </div>
-                    )}
-                    <DialogFooter className="gap-2">
-                        <Button variant="outline" onClick={() => setEditingOrder(null)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleEditSave} disabled={isUpdating}>
-                            {isUpdating ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Saving...
-                                </>
-                            ) : (
-                                'Save Changes'
-                            )}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <EditOrderDialog
+                key={editingOrder?.id ?? 'closed'}
+                order={editingOrder}
+                isUpdating={isUpdating}
+                onClose={() => setEditingOrder(null)}
+                onSave={handleEditSave}
+            />
 
             {/* Delete Confirmation Modal */}
             <Dialog open={!!deletingOrder} onOpenChange={(open) => !open && setDeletingOrder(null)}>
                 <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto">
                     <DialogHeader>
                         <div className="flex flex-col items-center gap-3">
-                            <div className="rounded-full bg-red-100 p-3">
-                                <Trash2 className="h-8 w-8 text-red-600" />
+                            <div className="rounded-full bg-destructive/10 p-3">
+                                <Trash2 className="h-8 w-8 text-destructive" />
                             </div>
                             <DialogTitle className="text-center text-lg">Delete Order?</DialogTitle>
                         </div>
@@ -1603,8 +1627,8 @@ export default function DispatchView() {
                 <DialogContent className="max-h-[85vh] max-w-sm overflow-y-auto">
                     <DialogHeader>
                         <div className="flex flex-col items-center gap-3">
-                            <div className="rounded-full bg-yellow-100 p-3">
-                                <Lock className="h-8 w-8 text-yellow-600" />
+                            <div className="rounded-full bg-warning/10 p-3">
+                                <Lock className="h-8 w-8 text-warning-foreground" />
                             </div>
                             <DialogTitle className="text-center text-lg">Access Denied</DialogTitle>
                         </div>

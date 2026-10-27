@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
@@ -78,11 +79,33 @@ interface ImportResult {
 }
 
 interface PageProps extends Record<string, unknown> {
-    sheets: Sheet[];
+    sheets?: Sheet[];
     ccUsers: string[];
     auth: { user: { roles: string } };
     filters?: { country?: string };
     flash?: { success?: string; error?: string };
+}
+
+const EMPTY_SHEETS: Sheet[] = [];
+
+function SheetsGridSkeleton() {
+    return (
+        <div className="space-y-3" role="status" aria-label="Loading spreadsheets" aria-live="polite">
+            <div className="@container">
+                <div className="grid auto-rows-min grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[46rem]:grid-cols-3 @[60rem]:grid-cols-4 @[72rem]:grid-cols-5">
+                    {Array.from({ length: 8 }).map((_, index) => (
+                        <div key={index} className="space-y-3 rounded-lg border bg-card p-3.5">
+                            <div className="flex justify-between"><Skeleton className="h-5 w-16" /><Skeleton className="h-4 w-20" /></div>
+                            <Skeleton className="h-5 w-3/4" />
+                            <Skeleton className="h-4 w-1/2" />
+                            <Skeleton className="h-8 w-full" />
+                            <div className="flex gap-2"><Skeleton className="h-8 flex-1" /><Skeleton className="h-8 flex-1" /><Skeleton className="h-8 flex-1" /></div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 interface SheetDataDrawerProps {
@@ -159,7 +182,7 @@ function SheetDataDrawer({ open, onOpenChange, sheetId }: SheetDataDrawerProps) 
                 </div>
 
                 {/* Navigation Controls */}
-                <div className="border-b bg-gray-50 p-4">
+                <div className="border-b bg-muted p-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Button
@@ -213,7 +236,7 @@ function SheetDataDrawer({ open, onOpenChange, sheetId }: SheetDataDrawerProps) 
                     {loading ? (
                         <div className="flex h-full items-center justify-center">
                             <div className="text-center">
-                                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
+                                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-b-2 border-border"></div>
                                 <p className="text-muted-foreground">Loading sheet data...</p>
                             </div>
                         </div>
@@ -229,13 +252,13 @@ function SheetDataDrawer({ open, onOpenChange, sheetId }: SheetDataDrawerProps) 
                     ) : (
                         <div className="h-full overflow-auto p-2">
                             <div className="inline-block min-w-full align-middle">
-                                <table className="min-w-full divide-y divide-gray-200 border">
-                                    <thead className="sticky top-0 z-10 bg-gray-50">
+                                <table className="min-w-full divide-y divide-border border">
+                                    <thead className="sticky top-0 z-10 bg-muted">
                                         <tr>
                                             {sheetData[0].map((header, i) => (
                                                 <th
                                                     key={i}
-                                                    className="border px-3 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+                                                    className="border px-3 py-2 text-left text-xs font-medium tracking-wider text-muted-foreground uppercase"
                                                 >
                                                     <div className="max-w-[200px] truncate" title={header}>
                                                         {header}
@@ -244,9 +267,9 @@ function SheetDataDrawer({ open, onOpenChange, sheetId }: SheetDataDrawerProps) 
                                             ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-200 bg-white">
+                                    <tbody className="divide-y divide-border bg-card">
                                         {sheetData.slice(1).map((row, rowIndex) => (
-                                            <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                            <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted'}>
                                                 {row.map((cell, cellIndex) => (
                                                     <td key={cellIndex} className="border px-3 py-2 text-sm">
                                                         <div className="max-w-[200px] truncate" title={cell}>
@@ -499,10 +522,10 @@ function ImportOrdersDialog({ sheet, open, onOpenChange }: ImportOrdersDialogPro
                     {result && (
                         <div
                             className={`space-y-3 rounded-md border p-3 text-sm ${
-                                result.success ? 'bg-green-50/50' : 'bg-destructive/10'
+                                result.success ? 'bg-success/10' : 'bg-destructive/10'
                             }`}
                         >
-                            <p className={result.success ? 'text-green-700' : 'text-destructive'}>{result.message}</p>
+                            <p className={result.success ? 'text-success' : 'text-destructive'}>{result.message}</p>
 
                             {summary && (
                                 <>
@@ -613,7 +636,8 @@ function ImportOrdersDialog({ sheet, open, onOpenChange }: ImportOrdersDialogPro
 }
 
 export default function SheetsView() {
-    const { sheets, flash, ccUsers, filters } = usePage<PageProps>().props;
+    const { sheets: loadedSheets, flash, ccUsers, filters } = usePage<PageProps>().props;
+    const sheets = loadedSheets ?? EMPTY_SHEETS;
 
     const [filter, setFilter] = React.useState('');
     const [selectedCountry, setSelectedCountry] = React.useState(filters?.country || 'all');
@@ -892,6 +916,8 @@ export default function SheetsView() {
                     </Button>
                 </div>
 
+                <Deferred data="sheets" fallback={<SheetsGridSkeleton />}>
+                {() => <>
                 {/* Sheets Grid */}
                 {filteredSheets.length === 0 ? (
                     <div className="rounded-xl border border-dashed py-20 text-center">
@@ -1030,6 +1056,8 @@ export default function SheetsView() {
                         </div>
                     </div>
                 )}
+                </>}
+                </Deferred>
             </div>
 
             {/* Create Sheet Modal */}

@@ -44,7 +44,6 @@ export interface SharedData {
     countries?: CountryData[];
     selectedCountry?: string | null;
     selectedCurrency?: string;
-    productOptions?: string[];
     [key: string]: unknown;
 }
 

@@ -3,7 +3,6 @@
 namespace App\Http\Middleware;
 
 use App\Models\Country;
-use App\Models\SheetOrder;
 use App\Models\SidebarRolePermission;
 use App\Support\CountryAccess;
 use App\Support\SidebarRegistry;
@@ -77,25 +76,6 @@ class HandleInertiaRequests extends Middleware
             'countries' => $countries,
             'selectedCountry' => $canFilterCountry ? $selectedCountry : null,
             'selectedCurrency' => $selectedCurrency,
-            'productOptions' => SheetOrder::query()
-                ->when($canFilterCountry && $selectedCountry, function ($q) use ($selectedCountry) {
-                    $q->whereRaw('LOWER(TRIM(country)) = ?', [strtolower(trim($selectedCountry))]);
-                })
-                ->when($user && ! $canFilterCountry, function ($q) use ($user) {
-                    $country = CountryAccess::userCountryName($user);
-                    if ($country) {
-                        $q->whereRaw('LOWER(TRIM(country)) = ?', [strtolower(trim($country))]);
-                    }
-                })
-                ->when($user && strtolower(trim((string) $user->roles)) === 'merchant', function ($q) use ($user) {
-                    $q->where('merchant', $user->name);
-                })
-                ->whereNotNull('product_name')
-                ->where('product_name', '!=', '')
-                ->select('product_name')
-                ->distinct()
-                ->orderBy('product_name')
-                ->pluck('product_name'),
             'sidebar' => [
                 'role' => $role,
                 'visibleItems' => $visibleItems,

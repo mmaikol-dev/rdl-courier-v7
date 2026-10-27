@@ -2,7 +2,7 @@
 
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, usePage, router } from '@inertiajs/react';
+import { Deferred, Head, usePage, router } from '@inertiajs/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Command,
   CommandEmpty,
@@ -66,13 +67,34 @@ interface PaginationLinkData {
   active: boolean;
 }
 
+const EMPTY_ORDERS = { data: [] as SheetOrder[], links: [] as PaginationLinkData[] };
+
+function OrdersTableSkeleton() {
+  return (
+    <div className="mt-4 space-y-3" role="status" aria-label="Loading orders" aria-live="polite">
+      <div className="overflow-hidden rounded-xl border">
+        <div className="grid grid-cols-4 gap-3 border-b bg-muted/30 p-3 sm:grid-cols-8">
+          {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}
+        </div>
+        {Array.from({ length: 8 }).map((_, row) => (
+          <div key={row} className="grid grid-cols-4 gap-3 border-b p-3 last:border-0 sm:grid-cols-8">
+            {Array.from({ length: 8 }).map((__, column) => <Skeleton key={column} className="h-4 w-full" />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Index() {
   const isMobile = useIsMobile();
   const { props } = usePage();
-  const { orders, merchantUsers } = props as unknown as {
+  const pageData = props as unknown as {
     orders: { data: SheetOrder[], links: PaginationLinkData[] },
     merchantUsers: string[],
   };
+  const orders = pageData.orders ?? EMPTY_ORDERS;
+  const merchantUsers = pageData.merchantUsers ?? [];
 
   const [filters, setFilters] = React.useState<Record<string, string | string[]>>({});
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>();
@@ -191,11 +213,11 @@ export default function Index() {
 
   const statusPillClass = (status: string) => {
     const normalized = status?.trim() || "New Orders";
-    if (normalized === 'Delivered') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (normalized === 'Scheduled') return 'bg-sky-100 text-sky-700 border-sky-200';
-    if (normalized === 'Pending') return 'bg-amber-100 text-amber-700 border-amber-200';
-    if (normalized === 'Cancelled') return 'bg-rose-100 text-rose-700 border-rose-200';
-    return 'bg-slate-100 text-slate-700 border-slate-200';
+    if (normalized === 'Delivered') return 'bg-success/10 text-success border-success/30';
+    if (normalized === 'Scheduled') return 'bg-accent text-foreground border-border';
+    if (normalized === 'Pending') return 'bg-warning/10 text-warning-foreground border-warning/30';
+    if (normalized === 'Cancelled') return 'bg-destructive/10 text-destructive border-destructive/30';
+    return 'bg-muted text-foreground border-border';
   };
 
   return (
@@ -203,7 +225,7 @@ export default function Index() {
       <Head title="Undelivered Orders" />
 
       <div className="space-y-4 px-4 pt-4">
-        <div className="rounded-xl border bg-gradient-to-r from-slate-50 to-amber-50 p-4">
+        <div className="rounded-xl border bg-gradient-to-r from-muted to-warning/10 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Undelivered Orders</h1>
@@ -241,15 +263,17 @@ export default function Index() {
         </div>
       </div>
 
+      <Deferred data="orders" fallback={<OrdersTableSkeleton />}>
+      {() => <>
       <div className="mt-4 border rounded-xl shadow-sm">
         <div className="scrollbar-custom w-full overflow-x-auto">
-        <Table className="min-w-[980px] border border-slate-200">
-  <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
+        <Table className="min-w-[980px] border border-border">
+  <TableHeader className="sticky top-0 z-10 bg-muted backdrop-blur supports-[backdrop-filter]:bg-muted">
     <TableRow>
       {COLUMNS.map(col => (
         <TableHead
           key={col}
-          className="min-w-[120px] whitespace-nowrap border border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-600 sm:text-sm"
+          className="min-w-[120px] whitespace-nowrap border border-border text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm"
         >
           {col}
         </TableHead>
@@ -259,7 +283,7 @@ export default function Index() {
 
   <TableBody>
     {orders.data.map(order => (
-      <TableRow key={order.id} className="hover:bg-amber-50/40">
+      <TableRow key={order.id} className="hover:bg-warning/10">
         {COLUMNS.map(col => {
           const value =
             col === "status"
@@ -268,7 +292,7 @@ export default function Index() {
           return (
             <TableCell
               key={col}
-              className={`min-w-[120px] max-w-[180px] truncate whitespace-nowrap border border-slate-100 ${
+              className={`min-w-[120px] max-w-[180px] truncate whitespace-nowrap border border-border ${
                 col === "status" ? "cursor-pointer" : ""
               }`}
               onClick={col === 'status' ? () => handleEdit(order, col) : undefined}
@@ -309,6 +333,9 @@ export default function Index() {
           </PaginationContent>
         </Pagination>
       </div>
+
+      </>}
+      </Deferred>
 
       {/* Filter Dialog */}
       {filterDialogOpen && (

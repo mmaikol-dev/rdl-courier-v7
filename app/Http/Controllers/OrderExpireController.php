@@ -47,6 +47,7 @@ class OrderExpireController extends Controller
             ->pluck('merchant')
             ->values();
 
+        $hasPreviewed = $request->hasAny(['from_date', 'to_date', 'merchant', 'statuses']);
         $orders = null;
         $filters = [
             'from_date' => $request->input('from_date'),
@@ -55,7 +56,7 @@ class OrderExpireController extends Controller
             'statuses' => $request->input('statuses'),
         ];
 
-        if ($request->hasAny(['from_date', 'to_date', 'merchant', 'statuses'])) {
+        if ($hasPreviewed) {
             $request->validate([
                 'from_date' => ['required', 'date'],
                 'to_date' => ['required', 'date', 'after_or_equal:from_date'],
@@ -64,17 +65,19 @@ class OrderExpireController extends Controller
                 'statuses.*' => ['string', 'max:255'],
             ]);
 
-            $query = $this->buildQuery($request, $filters);
-
-            $orders = $query->orderBy('delivery_date')
-                ->select(['id', 'order_no', 'client_name', 'product_name', 'merchant', 'status', 'delivery_date', 'amount', 'quantity'])
-                ->paginate(25)
-                ->withQueryString();
+            $orders = Inertia::defer(function () use ($request, $filters) {
+                return $this->buildQuery($request, $filters)
+                    ->orderBy('delivery_date')
+                    ->select(['id', 'order_no', 'client_name', 'product_name', 'merchant', 'status', 'delivery_date', 'amount', 'quantity'])
+                    ->paginate(25)
+                    ->withQueryString();
+            });
         }
 
         return Inertia::render('orders/bulk-expire', [
             'merchants' => $merchants,
             'orders' => $orders,
+            'hasPreviewed' => $hasPreviewed,
             'filters' => $filters,
         ]);
     }

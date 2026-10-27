@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\Deduction;
+use App\Models\InventoryLog;
 use App\Models\Product;
 use App\Models\Transfer;
 use App\Models\User;
 use App\Services\OpenwaService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia as Assert;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -64,7 +66,25 @@ class TransferReturnTest extends TestCase
         ]);
     }
 
-    private function product(User $owner, string $name = 'Returnable Widget', string $country = 'Kenya'): Product
+    private function merchant(string $name): User
+    {
+        return User::create([
+            'name' => $name,
+            'email' => Str::lower(Str::random(12)) . '@example.test',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+            'roles' => 'merchant',
+            'store_address' => 'Kenya',
+            'store_name' => $name . ' store',
+        ]);
+    }
+
+    private function product(
+        User $owner,
+        string $name = 'Returnable Widget',
+        string $country = 'Kenya',
+        ?string $merchant = null
+    ): Product
     {
         return Product::create([
             'uuid' => (string) Str::uuid(),
@@ -78,7 +98,7 @@ class TransferReturnTest extends TestCase
             'quantity_alert' => 5,
             'unit_id' => DB::table('units')->value('id'),
             'country' => $country,
-            'merchant' => 'Test Merchant',
+            'merchant' => $merchant ?? 'Test Merchant',
         ]);
     }
 
@@ -280,5 +300,94 @@ class TransferReturnTest extends TestCase
         $this->assertSame(9, (int) $holders[0]['transferred']);
         $this->assertSame(2, (int) $holders[0]['deducted']);
         $this->assertSame(7, (int) $holders[0]['remaining']);
+    }
+
+    public function test_merchant_only_sees_transfers_for_products_assigned_to_them()
+    {
+        $merchant = $this->merchant('Merchant One');
+        $otherMerchant = $this->merchant('Merchant Two');
+        $ownedProduct = $this->product($merchant, 'Merchant One Product', 'Kenya', $merchant->name);
+        $otherProduct = $this->product($otherMerchant, 'Merchant Two Product', 'Kenya', $otherMerchant->name);
+        $agent = $this->agent('Shared Agent');
+
+        $this->transfer($ownedProduct, $agent, 5);
+        $this->transfer($otherProduct, $agent, 7);
+
+        $this->actingAs($merchant)
+            ->get('/transfer')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('products/transfer')
+                ->has('agents', 1)
+                ->where('agents.0.transfers_count', 1));
+
+        $this->actingAs($merchant)
+            ->get('/transfers/agent/' . $agent->id)
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('products/agent-transfers')
+                ->has('transfers.data', 1)
+                ->where('transfers.data.0.product_id', (string) $ownedProduct->id)
+                ->has('products', 1)
+                ->where('products.0.id', $ownedProduct->id));
+
+        $this->actingAs($merchant)
+            ->get('/transfers/' . $otherProduct->id . '/' . $agent->id)
+            ->assertNotFound();
+    }
+
+    public function test_product_overview_includes_owned_product_activity_and_hides_other_merchants()
+    {
+        $merchant = $this->merchant('Overview Merchant');
+        $otherMerchant = $this->merchant('Other Overview Merchant');
+        $product = $this->product($merchant, 'Overview Product', 'Kenya', $merchant->name);
+        $otherProduct = $this->product($otherMerchant, 'Private Product', 'Kenya', $otherMerchant->name);
+        $agent = $this->agent('Overview Agent');
+        $this->transfer($product, $agent, 6);
+
+        $this->actingAs($merchant)
+            ->getJson('/products/' . $product->slug . '/overview')
+            ->assertOk()
+            ->assertJsonPath('product.id', $product->id)
+            ->assertJsonPath('stock.quantity', 100)
+            ->assertJsonPath('transfers.count', 1)
+            ->assertJsonPath('transfers.quantity', 6);
+
+        $this->actingAs($merchant)
+            ->getJson('/products/' . $otherProduct->slug . '/overview')
+            ->assertNotFound();
+    }
+
+    public function test_product_edit_cannot_change_quantity_but_stock_update_is_logged_with_before_and_after_values()
+    {
+        $operator = $this->operator();
+        $product = $this->product($operator, 'Quantity Protected Product');
+
+        $this->actingAs($operator)
+            ->put('/products/' . $product->slug, [
+                'name' => $product->name,
+                'merchant' => $product->merchant,
+                'quantity' => 1,
+                'buying_price' => $product->buying_price,
+                'selling_price' => $product->selling_price,
+                'quantity_alert' => $product->quantity_alert,
+                'tax' => $product->tax,
+                'tax_type' => $product->tax_type,
+                'notes' => $product->notes,
+                'category_id' => $product->category_id,
+                'unit_id' => $product->unit_id,
+            ])
+            ->assertRedirect('/products');
+
+        $this->assertSame(100, (int) $product->fresh()->quantity);
+
+        $this->actingAs($operator)
+            ->post('/products/' . $product->id . '/update-quantity', ['quantity_change' => 5])
+            ->assertRedirect('/products');
+
+        $this->assertSame(105, (int) $product->fresh()->quantity);
+
+        $log = InventoryLog::query()->where('product_code', $product->code)->latest()->firstOrFail();
+        $this->assertSame(100.0, $log->previous_quantity);
+        $this->assertSame(5.0, $log->updated_quantity);
+        $this->assertSame(105.0, $log->current_quantity);
     }
 }

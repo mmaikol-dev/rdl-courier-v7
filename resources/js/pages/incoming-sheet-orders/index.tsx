@@ -8,12 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckCircle2, Clock3, Eye, LoaderCircle, Search, XCircle } from 'lucide-react';
 import * as React from 'react';
 
-type IncomingStatus = 'pending' | 'processing' | 'processed' | 'failed';
+type IncomingStatus = 'pending' | 'processing' | 'processed' | 'failed' | 'skipped';
 
 interface IncomingOrder {
     id: number;
@@ -50,19 +51,23 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 ];
 
 const statusStyles: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
-    processing: 'bg-sky-100 text-sky-800 hover:bg-sky-100',
-    processed: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100',
-    failed: 'bg-rose-100 text-rose-800 hover:bg-rose-100',
+    pending: 'bg-warning/10 text-warning-foreground hover:bg-warning/10',
+    processing: 'bg-accent text-foreground hover:bg-accent',
+    processed: 'bg-success/10 text-success hover:bg-success/10',
+    failed: 'bg-destructive/10 text-destructive hover:bg-destructive/10',
+    skipped: 'bg-muted text-muted-foreground hover:bg-muted',
 };
 
 export default function IncomingSheetOrdersIndex() {
     const { props } = usePage();
-    const { incomingOrders, filters, statusCounts } = props as unknown as {
+    const pageData = props as unknown as {
         incomingOrders: Paginated<IncomingOrder>;
         filters: { search?: string; status?: string };
         statusCounts: Record<string, number>;
     };
+    const incomingOrders = pageData.incomingOrders ?? { data: [], links: [], from: null, to: null, total: 0 };
+    const filters = pageData.filters;
+    const statusCounts = pageData.statusCounts;
 
     const [search, setSearch] = React.useState(filters.search ?? '');
     const [payloadOrder, setPayloadOrder] = React.useState<IncomingOrder | null>(null);
@@ -91,10 +96,11 @@ export default function IncomingSheetOrdersIndex() {
     };
 
     const statCards = [
-        { label: 'Pending', value: statusCounts.pending ?? 0, icon: Clock3, className: 'text-amber-700' },
-        { label: 'Processing', value: statusCounts.processing ?? 0, icon: LoaderCircle, className: 'text-sky-700' },
-        { label: 'Processed', value: statusCounts.processed ?? 0, icon: CheckCircle2, className: 'text-emerald-700' },
-        { label: 'Failed', value: statusCounts.failed ?? 0, icon: XCircle, className: 'text-rose-700' },
+        { label: 'Pending', value: statusCounts.pending ?? 0, icon: Clock3, className: 'text-warning-foreground' },
+        { label: 'Processing', value: statusCounts.processing ?? 0, icon: LoaderCircle, className: 'text-foreground' },
+        { label: 'Processed', value: statusCounts.processed ?? 0, icon: CheckCircle2, className: 'text-success' },
+        { label: 'Failed', value: statusCounts.failed ?? 0, icon: XCircle, className: 'text-destructive' },
+        { label: 'Skipped', value: statusCounts.skipped ?? 0, icon: XCircle, className: 'text-muted-foreground' },
     ];
 
     return (
@@ -102,7 +108,7 @@ export default function IncomingSheetOrdersIndex() {
             <Head title="Incoming Orders" />
 
             <div className="space-y-4 p-4 sm:p-6">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     {statCards.map((item) => {
                         const Icon = item.icon;
 
@@ -151,12 +157,20 @@ export default function IncomingSheetOrdersIndex() {
                                         <SelectItem value="processing">Processing</SelectItem>
                                         <SelectItem value="processed">Processed</SelectItem>
                                         <SelectItem value="failed">Failed</SelectItem>
+                                        <SelectItem value="skipped">Skipped</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                         </div>
                     </CardHeader>
 
+                    <Deferred data="incomingOrders" fallback={
+                        <CardContent className="space-y-3 p-4" role="status" aria-label="Loading incoming orders" aria-live="polite">
+                            <div className="grid grid-cols-4 gap-3">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}</div>
+                            {Array.from({ length: 7 }).map((_, row) => <div key={row} className="grid grid-cols-4 gap-3 border-t py-3 sm:grid-cols-8">{Array.from({ length: 8 }).map((__, col) => <Skeleton key={col} className="h-4 w-full" />)}</div>)}
+                        </CardContent>
+                    }>
+                    {() => <>
                     <CardContent className="p-0">
                         <div className="overflow-x-auto">
                             <Table>
@@ -198,7 +212,7 @@ export default function IncomingSheetOrdersIndex() {
                                             <TableCell className="text-sm text-muted-foreground">{order.processed_at || '-'}</TableCell>
                                             <TableCell>
                                                 {order.error_message ? (
-                                                    <div className="flex max-w-[360px] items-center gap-2 text-sm text-rose-700">
+                                                    <div className="flex max-w-[360px] items-center gap-2 text-sm text-destructive">
                                                         <AlertTriangle className="h-4 w-4 shrink-0" />
                                                         <span className="truncate" title={order.error_message}>
                                                             {order.error_message}
@@ -249,6 +263,8 @@ export default function IncomingSheetOrdersIndex() {
                             </div>
                         )}
                     </CardContent>
+                    </>}
+                    </Deferred>
                 </Card>
             </div>
 
@@ -257,7 +273,7 @@ export default function IncomingSheetOrdersIndex() {
                     <DialogHeader>
                         <DialogTitle>Payload {payloadOrder?.order_no ? `for ${payloadOrder.order_no}` : ''}</DialogTitle>
                     </DialogHeader>
-                    <pre className="max-h-[60vh] overflow-auto rounded-md bg-slate-950 p-4 text-xs whitespace-pre-wrap text-slate-50">
+                    <pre className="max-h-[60vh] overflow-auto rounded-md bg-primary p-4 text-xs whitespace-pre-wrap text-muted-foreground">
                         {payloadOrder ? JSON.stringify(payloadOrder.payload, null, 2) : ''}
                     </pre>
                 </DialogContent>

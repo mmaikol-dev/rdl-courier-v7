@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
-import { Head, router, usePage } from '@inertiajs/react';
-import { ArrowUpRight, Clock3, FileSpreadsheet, Hash, Layers3, LoaderCircle, RefreshCcw, Search } from 'lucide-react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
+import { Hash, Layers3, LoaderCircle, RefreshCcw, Search } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface SheetOrder {
     id: number;
@@ -23,12 +25,34 @@ interface SheetOrder {
     updated_at: string;
 }
 
+const EMPTY_UPDATES: SheetOrder[] = [];
+
+function UpdatesSkeleton() {
+    return (
+        <div className="overflow-x-auto" role="status" aria-label="Loading pending updates" aria-live="polite">
+            <div className="min-w-[760px]">
+                <div className="grid grid-cols-6 gap-4 border-b bg-muted/30 px-4 py-3">
+                    {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}
+                </div>
+                {Array.from({ length: 7 }).map((_, row) => (
+                    <div key={row} className="grid grid-cols-6 gap-4 border-b px-4 py-4 last:border-0">
+                        {Array.from({ length: 6 }).map((__, column) => <Skeleton key={column} className="h-4 w-full" />)}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function PendingUpdates() {
     const { props } = usePage();
-    const { updates, filters } = props as unknown as {
+    const pageData = props as unknown as {
         updates: SheetOrder[];
         filters: { search?: string; country?: string };
     };
+    const updates = pageData.updates ?? EMPTY_UPDATES;
+    const isUpdatesLoaded = pageData.updates !== undefined;
+    const filters = pageData.filters ?? {};
 
     const BREADCRUMBS: BreadcrumbItem[] = [
         { title: 'Dashboard', href: '/dashboard' },
@@ -76,155 +100,108 @@ export default function PendingUpdates() {
         <AppLayout breadcrumbs={BREADCRUMBS}>
             <Head title="Pending Sheet Updates" />
 
-            <div className="space-y-6 p-4 sm:p-6">
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                    <Card className="border-0 shadow-lg">
-                        <CardHeader className="border-b bg-slate-50/80 pb-4">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="p-3 sm:p-4">
+                <Card className="overflow-hidden">
+                    <CardHeader className="space-y-3 border-b p-3 sm:p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-2.5">
+                                <Layers3 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                                 <div>
-                                    <CardTitle className="text-lg">Search Queue</CardTitle>
-                                    <CardDescription>Search by order number, merchant, or destination sheet.</CardDescription>
+                                    <CardTitle className="text-base">Pending sheet updates</CardTitle>
+                                    <CardDescription className="text-xs">
+                                        {isUpdatesLoaded ? `${updates.length} queued · ${sheetCount} sheets · ${merchantCount} merchants` : <Skeleton className="mt-1 h-3 w-48" />}
+                                    </CardDescription>
                                 </div>
-                                <Button
-                                    onClick={runUpdateCommand}
-                                    disabled={isRunning}
-                                    className="h-10 shrink-0 rounded-full bg-slate-900 px-5 text-white hover:bg-slate-800"
-                                >
-                                    {isRunning ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                                    Run update command
-                                </Button>
                             </div>
-                        </CardHeader>
-                        <CardContent className="p-5">
+                            <Button onClick={runUpdateCommand} disabled={isRunning} className="h-9 gap-2 self-start sm:self-auto">
+                                {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                                Run update command
+                            </Button>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
                             <div className="relative">
-                                <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                                 <Input
                                     value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    placeholder="Search by order no, merchant, or sheet"
-                                    className="h-11 pl-9"
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    placeholder="Search order, merchant, or sheet"
+                                    className="h-9 pl-9"
                                 />
                             </div>
-                            <div className="mt-3">
-                                <Select
-                                    value={selectedCountry}
-                                    onValueChange={(value) => {
-                                        setSelectedCountry(value);
-                                        router.get('/updates', value === 'all' ? {} : { country: value }, {
-                                            preserveState: true,
-                                            preserveScroll: true,
-                                            replace: true,
-                                        });
-                                    }}
-                                >
-                                    <SelectTrigger className="h-11">
-                                        <SelectValue placeholder="Filter by country" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All countries</SelectItem>
-                                        {EAST_AFRICAN_COUNTRIES.map((country) => (
-                                            <SelectItem key={country} value={country}>
-                                                {country}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            <Select
+                                value={selectedCountry}
+                                onValueChange={(value) => {
+                                    setSelectedCountry(value);
+                                    router.get('/updates', value === 'all' ? {} : { country: value }, {
+                                        preserveState: true,
+                                        preserveScroll: true,
+                                        replace: true,
+                                    });
+                                }}
+                            >
+                                <SelectTrigger className="h-9">
+                                    <SelectValue placeholder="All countries" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All countries</SelectItem>
+                                    {EAST_AFRICAN_COUNTRIES.map((country) => (
+                                        <SelectItem key={country} value={country}>{country}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                    <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-3">
-                        <Card className="border-0 shadow-lg">
-                            <CardContent className="p-5">
-                                <div className="flex items-center justify-between">
-                                    <Layers3 className="h-5 w-5 text-sky-600" />
-                                    <Badge variant="secondary">{filtered.length}</Badge>
-                                </div>
-                                <p className="mt-4 text-xs tracking-[0.2em] text-muted-foreground uppercase">Pending Orders</p>
-                                <p className="mt-1 text-2xl font-semibold">{updates.length}</p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="border-0 shadow-lg">
-                            <CardContent className="p-5">
-                                <div className="flex items-center justify-between">
-                                    <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                                    <Badge variant="secondary">{sheetCount}</Badge>
-                                </div>
-                                <p className="mt-4 text-xs tracking-[0.2em] text-muted-foreground uppercase">Affected Sheets</p>
-                                <p className="mt-1 text-2xl font-semibold">{sheetCount}</p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="border-0 shadow-lg">
-                            <CardContent className="p-5">
-                                <div className="flex items-center justify-between">
-                                    <Clock3 className="h-5 w-5 text-amber-600" />
-                                    <Badge variant="secondary">{merchantCount}</Badge>
-                                </div>
-                                <p className="mt-4 text-xs tracking-[0.2em] text-muted-foreground uppercase">Merchants</p>
-                                <p className="mt-1 text-2xl font-semibold">{merchantCount}</p>
-                                <p className="mt-1 truncate text-xs text-slate-500">Oldest: {oldestUpdate}</p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </div>
-
-                <Card className="border-0 shadow-lg">
-                    <CardHeader className="border-b bg-slate-50/80">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <CardTitle className="text-xl">Pending Orders</CardTitle>
-                                <CardDescription>These records remain queued until the update command processes them.</CardDescription>
-                            </div>
-                            <Badge className="w-fit bg-slate-900 text-white hover:bg-slate-900">{filtered.length} visible</Badge>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                            <span>{isUpdatesLoaded ? `${filtered.length} visible of ${updates.length} queued` : <Skeleton className="h-3 w-36" />}</span>
+                            <span>{isUpdatesLoaded ? `Oldest update: ${oldestUpdate}` : <Skeleton className="h-3 w-40" />}</span>
                         </div>
                     </CardHeader>
-                    <CardContent className="p-4 sm:p-5">
-                        {filtered.length === 0 && (
-                            <div className="rounded-2xl border border-dashed py-12 text-center text-muted-foreground">No pending updates found</div>
-                        )}
 
-                        {filtered.length > 0 && (
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
-                                {filtered.map((order) => (
-                                    <div
-                                        key={order.id}
-                                        className="flex min-h-[230px] flex-col rounded-2xl border bg-white p-4 shadow-sm transition hover:border-sky-200 hover:bg-sky-50/20"
-                                    >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <Badge variant="outline" className="max-w-[70%] gap-1.5 overflow-hidden rounded-full px-3 py-1 text-xs">
-                                                <Hash className="h-3.5 w-3.5 shrink-0" />
-                                                <span className="truncate">{order.order_no}</span>
-                                            </Badge>
-                                            <Badge className="shrink-0 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-100">Pending</Badge>
-                                        </div>
-
-                                        <div className="mt-4 min-w-0 space-y-2">
-                                            <p className="line-clamp-2 min-h-[3rem] text-base leading-6 font-semibold text-slate-900">
-                                                {order.sheet_name}
-                                            </p>
-                                            <p className="truncate text-sm text-slate-500">{order.merchant}</p>
-                                        </div>
-
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                            <span className="max-w-full truncate rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
-                                                Sheet ID: {order.sheet_id}
-                                            </span>
-                                        </div>
-
-                                        <div className="mt-auto pt-4">
-                                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                <ArrowUpRight className="h-4 w-4 shrink-0" />
-                                                <span className="truncate">Waiting for sync</span>
-                                            </div>
-                                            <p className="mt-2 truncate text-xs text-slate-500">Updated: {order.updated_at}</p>
-                                        </div>
+                    <Deferred data="updates" fallback={<UpdatesSkeleton />}>
+                        {() => (
+                            <CardContent className="p-0">
+                                {filtered.length === 0 ? (
+                                    <div className="m-3 rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+                                        No pending updates found.
                                     </div>
-                                ))}
-                            </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <Table className="min-w-[760px]">
+                                            <TableHeader>
+                                                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                                                    <TableHead className="w-[180px]">Order</TableHead>
+                                                    <TableHead>Destination sheet</TableHead>
+                                                    <TableHead>Merchant</TableHead>
+                                                    <TableHead className="w-[140px]">Sheet ID</TableHead>
+                                                    <TableHead className="w-[130px]">Status</TableHead>
+                                                    <TableHead className="w-[190px]">Last updated</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {filtered.map((order) => (
+                                                    <TableRow key={order.id}>
+                                                        <TableCell className="font-medium">
+                                                            <span className="flex items-center gap-2"><Hash className="size-3.5 text-muted-foreground" />{order.order_no}</span>
+                                                        </TableCell>
+                                                        <TableCell className="max-w-[260px] truncate">{order.sheet_name}</TableCell>
+                                                        <TableCell className="max-w-[220px] truncate text-muted-foreground">{order.merchant}</TableCell>
+                                                        <TableCell className="font-mono text-xs text-muted-foreground">{order.sheet_id}</TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning-foreground dark:border-warning/30 dark:bg-primary dark:text-warning-foreground">
+                                                                Pending
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{order.updated_at}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                )}
+                            </CardContent>
                         )}
-                    </CardContent>
+                    </Deferred>
                 </Card>
             </div>
         </AppLayout>

@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\IncomingSheetOrder;
+use App\Models\StoreepIntegration;
+use App\Services\StoreepCountryResolver;
 use App\Services\SheetOrderImportService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -41,7 +43,7 @@ class ProcessIncomingSheetOrder implements ShouldQueue, ShouldBeUnique
         return (string) $this->incomingSheetOrderId;
     }
 
-    public function handle(SheetOrderImportService $importer): void
+    public function handle(SheetOrderImportService $importer, StoreepCountryResolver $countries): void
     {
         $incoming = IncomingSheetOrder::find($this->incomingSheetOrderId);
 
@@ -64,7 +66,31 @@ class ProcessIncomingSheetOrder implements ShouldQueue, ShouldBeUnique
                 'error_message' => null,
             ])->save();
 
-            $importer->import($incoming->payload ?? []);
+            $payload = $incoming->payload ?? [];
+
+            // Recheck at processing time too: an order may have waited in the
+            // queue while the integration's allowed-country list was changed.
+            if (isset($payload['_storeep_integration_id'])) {
+                $integration = StoreepIntegration::find($payload['_storeep_integration_id']);
+                $legacySelection = $integration?->allowed_countries === null;
+                $country = $integration
+                    ? $countries->resolve($payload['_storeep_market'] ?? null, $legacySelection ? $integration->country : null)
+                    : null;
+                $allowedCountries = $legacySelection ? [$integration?->country] : $integration?->allowed_countries;
+
+                if (! $countries->isAllowed($country, $allowedCountries)) {
+                    $incoming->forceFill([
+                        'status' => 'skipped',
+                        'error_message' => 'Skipped because this order country is not selected on its Storeep integration.',
+                        'processed_at' => now(),
+                        'available_at' => null,
+                    ])->save();
+
+                    return;
+                }
+            }
+
+            $importer->import($payload);
 
             // Verify the SheetOrder was actually persisted
             $orderNo = $this->nullIfBlank($incoming->payload['order_no'] ?? null);

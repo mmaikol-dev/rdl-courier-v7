@@ -2,10 +2,11 @@
 
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem, type User } from "@/types";
-import { Head, router, usePage } from "@inertiajs/react";
+import { Deferred, Head, router, usePage } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Map,
   MapControlContainer,
@@ -78,17 +79,34 @@ interface MapsPageProps {
     user: User;
     pendingLoginLocationCapture?: boolean;
   };
+  mapData?: MapsReport;
+}
+
+interface MapsReport {
   users: User[];
   activeLocations: TrackedLocationPoint[];
   loginLocations: LoginLocationPoint[];
-  selectedUserId?: number | null;
+  selectedUserId: number | null;
   selectedUserTrail: TrailPoint[];
   trailWindowHours: number;
-  trackingSummary: {
-    trackedUsers: number;
-    loginPins: number;
-    agentsOnline: number;
-  };
+  trackingSummary: { trackedUsers: number; loginPins: number; agentsOnline: number };
+}
+
+const EMPTY_MAPS_REPORT: MapsReport = {
+  users: [],
+  activeLocations: [],
+  loginLocations: [],
+  selectedUserId: null,
+  selectedUserTrail: [],
+  trailWindowHours: 6,
+  trackingSummary: { trackedUsers: 0, loginPins: 0, agentsOnline: 0 },
+};
+
+function MapsLoadingSkeleton() {
+  return <div className="grid gap-6 p-4 xl:grid-cols-[21rem_minmax(0,1fr)]" role="status" aria-label="Loading map data" aria-live="polite">
+    <div className="space-y-4"><Skeleton className="h-56 w-full rounded-xl" /><Skeleton className="h-48 w-full rounded-xl" /></div>
+    <div className="space-y-4"><Skeleton className="h-[520px] w-full rounded-xl" /><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}</div></div>
+  </div>;
 }
 
 function toRadians(value: number) {
@@ -182,7 +200,7 @@ function MarkerBadge({
   colorClass: string;
 }) {
   return (
-    <div className={`flex size-11 items-center justify-center rounded-full border-4 border-white text-[11px] font-bold text-white shadow-lg ${colorClass}`}>
+    <div className={`flex size-11 items-center justify-center rounded-full border-4 border-background text-[11px] font-bold text-primary-foreground shadow-lg ${colorClass}`}>
       {label}
     </div>
   );
@@ -245,8 +263,18 @@ function TrackingMapCanvas({
 
   return (
     <div className="overflow-hidden rounded-3xl border shadow-xl">
-      <Map center={[-1.286389, 36.817223]} zoom={6} className="h-[34rem] w-full">
-        <MapTileLayer name="Operations" />
+      <Map
+        center={[-1.286389, 36.817223]}
+        zoom={6}
+        maxZoom={19}
+        className="h-[34rem] w-full"
+      >
+        <MapTileLayer
+          name="Satellite"
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          attribution="Tiles &copy; Esri"
+          maxZoom={19}
+        />
         <MapViewportSync points={allPoints} />
         <MapZoomControl position="bottom-3 right-3" />
         <MapFullscreenControl position="top-3 right-64" />
@@ -254,7 +282,7 @@ function TrackingMapCanvas({
         <MapControlContainer
           className={`top-0 left-0 h-full w-full transition-opacity duration-200 ${isFilterPanelOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         >
-          <div className="absolute inset-0 bg-black/20" onClick={onCloseFilters} />
+          <div className="absolute inset-0 bg-foreground" onClick={onCloseFilters} />
           <div className="absolute top-0 left-0 h-full w-full max-w-sm border-r bg-background shadow-2xl">
             <div className="flex items-center justify-between border-b px-4 py-4">
               <div>
@@ -310,7 +338,7 @@ function TrackingMapCanvas({
           <MapPolyline
             positions={[...deliveryZone, deliveryZone[0]]}
             pathOptions={{
-              color: "#047857",
+              color: "var(--success)",
               weight: 4,
               opacity: 0.95,
               dashArray: "10 8",
@@ -329,7 +357,7 @@ function TrackingMapCanvas({
           <MapPolyline
             positions={selectedUserTrail.map((point) => [point.latitude, point.longitude] as LatLngTuple)}
             pathOptions={{
-              color: "#dc2626",
+              color: "var(--destructive)",
               weight: 6,
               opacity: 0.95,
               lineCap: "round",
@@ -342,12 +370,12 @@ function TrackingMapCanvas({
           <MapMarker
             key={`checkpoint-${point.id}`}
             position={[point.latitude, point.longitude]}
-            icon={<MarkerBadge label={`${index + 1}`} colorClass="bg-amber-500" />}
+            icon={<MarkerBadge label={`${index + 1}`} colorClass="bg-primary" />}
           >
             <MapPopup>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <Flag className="h-4 w-4 text-amber-600" />
+                  <Flag className="h-4 w-4 text-warning-foreground" />
                   <p className="font-semibold">Trail checkpoint {index + 1}</p>
                 </div>
                 <p className="text-xs text-muted-foreground">{formatRelativeTime(point.recorded_at)}</p>
@@ -363,7 +391,7 @@ function TrackingMapCanvas({
         {tripStart ? (
           <MapMarker
             position={[tripStart.latitude, tripStart.longitude]}
-            icon={<MarkerBadge label="ST" colorClass="bg-slate-700" />}
+            icon={<MarkerBadge label="ST" colorClass="bg-muted" />}
           >
             <MapPopup>
               <div className="space-y-1">
@@ -377,7 +405,7 @@ function TrackingMapCanvas({
         {tripEnd && selectedUserTrail.length > 1 ? (
           <MapMarker
             position={[tripEnd.latitude, tripEnd.longitude]}
-            icon={<MarkerBadge label="END" colorClass="bg-rose-600" />}
+            icon={<MarkerBadge label="END" colorClass="bg-destructive" />}
           >
             <MapPopup>
               <div className="space-y-1">
@@ -392,7 +420,7 @@ function TrackingMapCanvas({
           <MapMarker
             key={`login-${location.id}`}
             position={[location.latitude, location.longitude]}
-            icon={<MarkerBadge label="IN" colorClass="bg-blue-600" />}
+            icon={<MarkerBadge label="IN" colorClass="bg-primary" />}
           >
             <MapPopup>
               <div className="space-y-1">
@@ -413,7 +441,7 @@ function TrackingMapCanvas({
             <MapMarker
               key={`live-${location.id}`}
               position={[location.latitude, location.longitude]}
-              icon={<MarkerBadge label={isAgent ? "AG" : "US"} colorClass={isAgent ? "bg-emerald-600" : "bg-orange-500"} />}
+              icon={<MarkerBadge label={isAgent ? "AG" : "US"} colorClass={isAgent ? "bg-success" : "bg-primary"} />}
             >
               <MapPopup>
                 <div className="space-y-1">
@@ -435,8 +463,9 @@ function TrackingMapCanvas({
 }
 
 export default function MapsIndex() {
+  const { mapData } = usePage<MapsPageProps>().props;
   const { users, activeLocations, loginLocations, selectedUserId, selectedUserTrail, trailWindowHours, trackingSummary } =
-    usePage<MapsPageProps>().props;
+    mapData ?? EMPTY_MAPS_REPORT;
 
   const selectedUser = users.find((user) => user.id === selectedUserId);
   const isAllUsersView = !selectedUserId;
@@ -497,7 +526,7 @@ export default function MapsIndex() {
 
     const timer = window.setInterval(() => {
       router.reload({
-        only: ["activeLocations", "loginLocations", "selectedUserTrail", "trackingSummary", "selectedUserId"],
+        only: ["mapData"],
         preserveScroll: true,
         preserveState: true,
         onFinish: () => setLastUpdatedAt(new Date()),
@@ -509,7 +538,7 @@ export default function MapsIndex() {
 
   const refreshNow = () => {
     router.reload({
-      only: ["activeLocations", "loginLocations", "selectedUserTrail", "trackingSummary", "selectedUserId"],
+      only: ["mapData"],
       preserveScroll: true,
       preserveState: true,
       onFinish: () => setLastUpdatedAt(new Date()),
@@ -551,7 +580,7 @@ export default function MapsIndex() {
           filterByUser(event.target.value);
           setIsFilterPanelOpen(false);
         }}
-        className="flex h-11 w-full rounded-xl border bg-card px-3 text-sm text-foreground shadow-sm outline-none ring-0 transition focus:border-emerald-500"
+        className="flex h-11 w-full rounded-xl border bg-card px-3 text-sm text-foreground shadow-sm outline-none ring-0 transition focus:border-success/30"
       >
         <option value="">All users</option>
         {users.map((user) => (
@@ -564,7 +593,7 @@ export default function MapsIndex() {
       <select
         value={trailWindowHours}
         onChange={(event) => filterByTrailWindow(event.target.value)}
-        className="flex h-11 w-full rounded-xl border bg-card px-3 text-sm text-foreground shadow-sm outline-none ring-0 transition focus:border-emerald-500"
+        className="flex h-11 w-full rounded-xl border bg-card px-3 text-sm text-foreground shadow-sm outline-none ring-0 transition focus:border-success/30"
       >
         <option value="1">Last 1 hour</option>
         <option value="3">Last 3 hours</option>
@@ -633,6 +662,8 @@ export default function MapsIndex() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Maps" />
 
+      <Deferred data="mapData" fallback={<MapsLoadingSkeleton />}>
+      {() => <>
       <div className="space-y-6 p-4 sm:p-6">
         <div className="grid gap-6 xl:grid-cols-[21rem_minmax(0,1fr)]">
           <div className="space-y-6">
@@ -642,14 +673,14 @@ export default function MapsIndex() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <div className="flex items-start gap-3 rounded-2xl border bg-card p-3">
-                  <Navigation className="mt-0.5 h-4 w-4 text-emerald-600" />
+                  <Navigation className="mt-0.5 h-4 w-4 text-success" />
                   <div>
                     <p className="font-medium text-foreground">Green live markers</p>
                     <p>Latest shared locations for agents. These are the best signal for delivery movement.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-2xl border bg-card p-3">
-                  <MapPinned className="mt-0.5 h-4 w-4 text-blue-600" />
+                  <MapPinned className="mt-0.5 h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="font-medium text-foreground">Blue login markers</p>
                     <p>Positions captured immediately after login when the browser shares location permission.</p>
@@ -674,7 +705,7 @@ export default function MapsIndex() {
                   <>
                     <div className="rounded-2xl border bg-card p-3">
                       <div className="flex items-center gap-3">
-                        <Route className="h-4 w-4 text-emerald-600" />
+                        <Route className="h-4 w-4 text-success" />
                         <div>
                           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Distance covered</p>
                           <p className="font-semibold text-foreground">{formatDistance(trailDistanceMeters)}</p>
@@ -683,7 +714,7 @@ export default function MapsIndex() {
                     </div>
                     <div className="rounded-2xl border bg-card p-3">
                       <div className="flex items-center gap-3">
-                        <Clock3 className="h-4 w-4 text-sky-600" />
+                        <Clock3 className="h-4 w-4 text-muted-foreground" />
                         <div>
                           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Trip duration</p>
                           <p className="font-semibold text-foreground">{tripDurationLabel}</p>
@@ -759,6 +790,8 @@ export default function MapsIndex() {
           </div>
         </div>
       </div>
+      </>}
+      </Deferred>
     </AppLayout>
   );
 }

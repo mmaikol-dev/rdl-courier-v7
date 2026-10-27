@@ -20,6 +20,8 @@ class UserController extends Controller
     {
         $currentUser = $request->user();
         $search = trim((string) $request->string('search'));
+        $role = trim((string) $request->string('role'));
+        $countryId = $request->filled('country_id') ? $request->integer('country_id') : null;
 
         $query = CountryAccess::scopeUsers(
             User::query()->with('country'),
@@ -36,7 +38,15 @@ class UserController extends Controller
             });
         }
 
-        $users = $query->orderBy('created_at', 'desc')
+        if ($role !== '') {
+            $query->where('roles', $role);
+        }
+
+        if ($countryId) {
+            $query->where('country_id', $countryId);
+        }
+
+        $users = Inertia::defer(fn () => $query->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
             ->through(function (User $user) {
@@ -59,11 +69,13 @@ class UserController extends Controller
                     'created_at' => $user->created_at->format('Y-m-d H:i:s'),
                     'updated_at' => $user->updated_at->format('Y-m-d H:i:s'),
                 ];
-            });
+            }));
 
         return Inertia::render('users/index', [
             'users' => $users,
             'search' => $search,
+            'roleFilter' => $role,
+            'countryFilter' => $countryId ? (string) $countryId : '',
             'countries' => CountryAccess::hasGlobalAccess($currentUser)
                 ? Country::query()->orderBy('name')->get(['id', 'name'])
                 : Country::query()

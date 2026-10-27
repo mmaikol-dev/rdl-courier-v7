@@ -526,14 +526,14 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
   const getStatusColor = () => {
     switch (callStatus) {
       case 'active':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-success/10 text-success border-success/30';
       case 'connecting':
       case 'ringing':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-warning/10 text-warning-foreground border-warning/30';
       case 'ended':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-foreground border-border';
       default:
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-accent text-foreground border-border';
     }
   };
 
@@ -634,14 +634,14 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
       )}
 
       {showIncomingCallAlert && incomingCallInfo && (
-        <Alert className="border-blue-300 bg-blue-50 animate-in slide-in-from-top duration-300">
-          <PhoneIncoming className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-blue-800">
+        <Alert className="border-border bg-accent animate-in slide-in-from-top duration-300">
+          <PhoneIncoming className="h-4 w-4 text-muted-foreground" />
+          <AlertDescription className="text-foreground">
             <div className="flex flex-col gap-2">
               <div className="font-semibold">Incoming Call!</div>
               <div>From: {incomingCallInfo.from}</div>
               <div className="flex gap-2 mt-2">
-                <Button onClick={answerIncomingCall} size="sm" className="bg-green-600 hover:bg-green-700">
+                <Button onClick={answerIncomingCall} size="sm" className="bg-success hover:bg-success">
                   <Phone className="h-4 w-4 mr-2" />
                   Answer
                 </Button>
@@ -650,7 +650,7 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
                   Reject
                 </Button>
               </div>
-              <div className="text-xs text-blue-600 mt-1">Auto-answering in 15 seconds...</div>
+              <div className="text-xs text-muted-foreground mt-1">Auto-answering in 15 seconds...</div>
             </div>
           </AlertDescription>
         </Alert>
@@ -676,27 +676,27 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
 
             <CardContent className="space-y-6">
               {clientName && (
-                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between p-3 bg-accent rounded-lg border border-border animate-in fade-in duration-300">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                    <span className="text-blue-700">
+                    <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground">
                       <strong>Agent ID:</strong> {clientName}
                     </span>
                   </div>
-                  <div className="text-xs text-blue-600">{clientToken ? 'Connected' : 'Disconnected'}</div>
+                  <div className="text-xs text-muted-foreground">{clientToken ? 'Connected' : 'Disconnected'}</div>
                 </div>
               )}
 
               {activeCallNumber && (callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'active') && (
-                <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                <div className="p-3 bg-accent rounded-lg border border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-indigo-600" />
-                      <span className="text-indigo-700 font-medium">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground font-medium">
                         {callStatus === 'active' ? 'Connected to:' : 'Calling:'}
                       </span>
                     </div>
-                    <span className="text-indigo-900 font-semibold">{activeCallNumber}</span>
+                    <span className="text-foreground font-semibold">{activeCallNumber}</span>
                   </div>
                 </div>
               )}
@@ -709,18 +709,18 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
               )}
 
               {isInitializing && (
-                <Alert className="border-blue-300 bg-blue-50 animate-in fade-in duration-300">
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                  <AlertDescription className="text-blue-800">
+                <Alert className="border-border bg-accent animate-in fade-in duration-300">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <AlertDescription className="text-foreground">
                     Initializing voice client in this drawer...
                   </AlertDescription>
                 </Alert>
               )}
 
               {!clientToken && !error && (
-                <Alert className="border-blue-300 bg-blue-50">
-                  <Info className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-blue-800">
+                <Alert className="border-border bg-accent">
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                  <AlertDescription className="text-foreground">
                     Click "Initialize Call Client" to start. You&apos;ll need to allow microphone permissions when prompted.
                   </AlertDescription>
                 </Alert>
@@ -774,7 +774,7 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
                         Enter number in international format (e.g., +254712345678)
                       </p>
                       {phoneNumber && !validatePhoneNumber(phoneNumber) && (
-                        <p className="text-xs text-red-500">Invalid format</p>
+                        <p className="text-xs text-destructive">Invalid format</p>
                       )}
                     </div>
                   </div>
@@ -782,7 +782,7 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
                   {callStatus === 'idle' && (
                     <Button
                       onClick={makeCall}
-                      className="w-full bg-green-600 hover:bg-green-700"
+                      className="w-full bg-success hover:bg-success"
                       size="lg"
                       disabled={!phoneNumber || !validatePhoneNumber(phoneNumber)}
                     >
@@ -794,29 +794,29 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
                   {(callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'active') && (
                     <div className="space-y-4">
                       {callStatus === 'active' && (
-                        <div className="text-center p-6 bg-green-50 rounded-lg border border-green-200 animate-in fade-in duration-300">
+                        <div className="text-center p-6 bg-success/10 rounded-lg border border-success/30 animate-in fade-in duration-300">
                           <div className="flex flex-col items-center gap-3">
-                            <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse" />
+                            <div className="w-4 h-4 bg-success rounded-full animate-pulse" />
                             <div className="space-y-1">
-                              <p className="text-sm font-medium text-green-700">Connected - Live Call</p>
-                              <div className="flex items-center justify-center gap-2 text-2xl font-bold text-green-800">
+                              <p className="text-sm font-medium text-success">Connected - Live Call</p>
+                              <div className="flex items-center justify-center gap-2 text-2xl font-bold text-success">
                                 <Clock className="h-6 w-6" />
                                 {formatDuration(callDuration)}
                               </div>
-                              <p className="text-xs text-green-600">You can now talk with the client</p>
+                              <p className="text-xs text-success">You can now talk with the client</p>
                             </div>
                           </div>
                         </div>
                       )}
 
                       {(callStatus === 'connecting' || callStatus === 'ringing') && (
-                        <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <div className="text-center p-4 bg-warning/10 rounded-lg border border-warning/30">
                           <div className="flex flex-col items-center gap-2">
-                            <Loader2 className="h-8 w-8 animate-spin text-yellow-600" />
-                            <p className="text-yellow-700 font-medium">
+                            <Loader2 className="h-8 w-8 animate-spin text-warning-foreground" />
+                            <p className="text-warning-foreground font-medium">
                               {callStatus === 'connecting' ? 'Connecting to server...' : 'Ringing...'}
                             </p>
-                            <p className="text-sm text-yellow-600">Calling: {activeCallNumber}</p>
+                            <p className="text-sm text-warning-foreground">Calling: {activeCallNumber}</p>
                           </div>
                         </div>
                       )}
@@ -879,7 +879,7 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
                     'Receive incoming calls in the incoming call alert'
                   ].map((step, index) => (
                     <li key={index} className="flex gap-3">
-                      <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-semibold text-xs">
+                      <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-accent text-foreground font-semibold text-xs">
                         {index + 1}
                       </span>
                       <span className="text-muted-foreground">{step}</span>
@@ -889,9 +889,9 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
               </CardContent>
             </Card>
 
-            <Card className="shadow-lg border-green-200 bg-green-50">
+            <Card className="shadow-lg border-success/30 bg-success/10">
               <CardHeader>
-                <CardTitle className="text-lg text-green-800 flex items-center gap-2">
+                <CardTitle className="text-lg text-success flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5" />
                   System Status
                 </CardTitle>
@@ -899,32 +899,32 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
               <CardContent>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-green-700">Library Loaded</span>
+                    <span className="text-sm text-success">Library Loaded</span>
                     <Badge
                       variant={isLibraryLoaded ? 'default' : 'secondary'}
-                      className={isLibraryLoaded ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}
+                      className={isLibraryLoaded ? 'bg-success/10 text-success' : 'bg-muted text-foreground'}
                     >
                       {isLibraryLoaded ? '✓ Yes' : '✗ No'}
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-green-700">Client Initialized</span>
+                    <span className="text-sm text-success">Client Initialized</span>
                     <Badge
                       variant={clientToken ? 'default' : 'secondary'}
-                      className={clientToken ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}
+                      className={clientToken ? 'bg-success/10 text-success' : 'bg-muted text-foreground'}
                     >
                       {clientToken ? '✓ Yes' : '✗ No'}
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-green-700">Current Status</span>
+                    <span className="text-sm text-success">Current Status</span>
                     <Badge variant="outline" className={`${getStatusColor()} border`}>
                       {getStatusText()}
                     </Badge>
                   </div>
                   {clientName && (
-                    <div className="pt-2 border-t border-green-200">
-                      <p className="text-xs text-green-600">
+                    <div className="pt-2 border-t border-success/30">
+                      <p className="text-xs text-success">
                         <strong>Agent ID:</strong> {clientName}
                       </p>
                     </div>
@@ -933,15 +933,15 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
               </CardContent>
             </Card>
 
-            <Card className="shadow-lg border-orange-200 bg-orange-50">
+            <Card className="shadow-lg border-warning/30 bg-warning/10">
               <CardHeader>
-                <CardTitle className="text-lg text-orange-800 flex items-center gap-2">
+                <CardTitle className="text-lg text-warning-foreground flex items-center gap-2">
                   <AlertCircle className="h-5 w-5" />
                   Troubleshooting
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-2 text-sm text-orange-700">
+                <ul className="space-y-2 text-sm text-warning-foreground">
                   {[
                     'The call() method returns undefined - this is normal',
                     'Events are handled at client level, not call object level',
@@ -951,7 +951,7 @@ export default function VoicePanel({ variant = 'compact', initialPhoneNumber = '
                     'Reinitialize client if connection drops'
                   ].map((tip, index) => (
                     <li key={index} className="flex items-start gap-2">
-                      <span className="text-orange-500 mt-0.5">•</span>
+                      <span className="text-warning-foreground mt-0.5">•</span>
                       <span>{tip}</span>
                     </li>
                   ))}

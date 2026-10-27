@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
-import { Head, usePage } from "@inertiajs/react";
+import { Deferred, Head, usePage } from "@inertiajs/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { csrfHeaders } from "@/lib/csrf";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
@@ -231,9 +232,9 @@ export default function ImportOrdersPage() {
             description: (
               <div className="space-y-2">
                 <div className="text-sm">{percent}% complete</div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-slate-900 transition-all"
+                    className="h-full rounded-full bg-primary transition-all"
                     style={{ width: `${percent}%` }}
                   />
                 </div>
@@ -300,18 +301,20 @@ export default function ImportOrdersPage() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Import Orders" />
 
-      <div className="space-y-6 p-4 sm:p-6">
-        <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
-          <Card className="overflow-hidden border-0 shadow-lg">
-            <CardHeader className="border-b bg-slate-50/80">
-              <CardTitle className="text-xl">Import Setup</CardTitle>
-              <CardDescription>Set the merchant destination, review sheet metadata, and attach the file.</CardDescription>
+      <Deferred data="sheets" fallback={<div className="grid gap-3 p-2 sm:p-3 xl:grid-cols-[1.5fr_0.85fr]" role="status" aria-label="Loading import setup" aria-live="polite"><div className="space-y-4 rounded-xl border p-4"><Skeleton className="h-6 w-40" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-32 w-full" /><Skeleton className="h-10 w-32" /></div><div className="space-y-3 rounded-xl border p-4"><Skeleton className="h-6 w-36" /><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></div></div>}>
+      {() => <>
+      <div className="space-y-3 p-2 sm:p-3">
+        <div className="grid items-start gap-3 xl:grid-cols-[1.5fr_0.85fr]">
+          <Card className="overflow-hidden border-border/70 shadow-sm">
+            <CardHeader className="gap-0.5 border-b bg-muted/30 px-3 py-2">
+              <CardTitle className="text-base">Import Setup</CardTitle>
+              <CardDescription className="text-xs leading-tight">Choose a merchant destination and upload the order file.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6 p-6">
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">
-                    Merchant <span className="text-red-500">*</span>
+            <CardContent className="space-y-4 p-4">
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Merchant <span className="text-destructive">*</span>
                   </label>
                   <Popover open={open} onOpenChange={setOpen}>
                     <PopoverTrigger asChild>
@@ -319,7 +322,7 @@ export default function ImportOrdersPage() {
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
-                        className="h-auto min-h-11 w-full justify-between gap-2 py-3 text-left font-normal"
+                        className="h-auto min-h-10 w-full justify-between gap-2 py-2 text-left font-normal"
                       >
                         <span
                           className={cn(
@@ -380,8 +383,8 @@ export default function ImportOrdersPage() {
                     <p className="text-xs text-muted-foreground">Showing merchants linked to your account.</p>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <label htmlFor="import_sheet_name" className="text-sm font-medium text-slate-700">
+                <div className="space-y-1.5">
+                  <label htmlFor="import_sheet_name" className="text-sm font-medium text-foreground">
                     Destination Sheet Name
                   </label>
                   <Input
@@ -389,23 +392,23 @@ export default function ImportOrdersPage() {
                     value={sheetName}
                     onChange={(e) => setSheetName(e.target.value)}
                     placeholder="Enter the target sheet tab name"
-                    className="h-11"
+                    className="h-10"
                   />
                   <p className="text-xs text-muted-foreground">Defaults to &quot;orders&quot;.</p>
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label htmlFor="import_country" className="text-sm font-medium text-slate-700">
-                    Country <span className="text-red-500">*</span>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label htmlFor="import_country" className="text-sm font-medium text-foreground">
+                    Country <span className="text-destructive">*</span>
                   </label>
                   <Select
                     value={country}
                     onValueChange={handleCountryChange}
                     disabled={!canPickCountry}
                   >
-                    <SelectTrigger id="import_country" className="h-11">
+                    <SelectTrigger id="import_country" className="h-10">
                       <SelectValue placeholder="Select a country" />
                     </SelectTrigger>
                     <SelectContent>
@@ -425,31 +428,31 @@ export default function ImportOrdersPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Sheet ID</label>
-                  <Input value={selectedSheet?.sheet_id || ""} readOnly placeholder="Auto-filled from the selected country/sheet" className="h-11 bg-slate-50" />
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Sheet ID</label>
+                  <Input value={selectedSheet?.sheet_id || ""} readOnly placeholder="Auto-filled from the selected country/sheet" className="h-10 bg-muted" />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Store Name</label>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Store Name</label>
                 <Textarea
                   value={selectedSheet?.store_name || ""}
                   readOnly
                   placeholder="Auto-filled from merchant"
-                  className="min-h-24 resize-none bg-slate-50"
+                  className="min-h-16 resize-none bg-muted"
                 />
               </div>
 
-              <div className="space-y-3">
-                <label className="text-sm font-medium text-slate-700">Upload File</label>
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center transition hover:border-slate-400 hover:bg-slate-100">
-                  <div className="rounded-full bg-slate-900 p-3 text-white">
-                    <UploadCloud className="h-5 w-5" />
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Upload File</label>
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted px-4 py-4 text-center transition hover:border-border hover:bg-muted">
+                  <div className="rounded-full bg-primary p-2 text-primary-foreground">
+                    <UploadCloud className="size-4" />
                   </div>
                   <div className="space-y-1">
-                    <div className="font-medium text-slate-900">Choose CSV or Excel file</div>
-                    <div className="text-sm text-slate-500">Accepted formats: `.csv`, `.xlsx`, `.xls`</div>
+                    <div className="font-medium text-foreground">Choose CSV or Excel file</div>
+                    <div className="text-sm text-muted-foreground">Accepted formats: `.csv`, `.xlsx`, `.xls`</div>
                   </div>
                   <Input
                     type="file"
@@ -459,11 +462,11 @@ export default function ImportOrdersPage() {
                   />
                 </label>
 
-                <div className="rounded-xl border bg-white px-4 py-3 text-sm text-slate-600">
+                <div className="rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
                   {file ? (
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-medium text-slate-900">{file.name}</div>
+                        <div className="truncate font-medium text-foreground">{file.name}</div>
                         <div>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
                       </div>
                       <Badge variant="secondary">Ready</Badge>
@@ -474,11 +477,11 @@ export default function ImportOrdersPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:justify-end">
-                <Button variant="outline" onClick={clearForm} disabled={isImporting}>
+              <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+                <Button variant="outline" size="sm" onClick={clearForm} disabled={isImporting}>
                   Clear
                 </Button>
-                <Button onClick={handleImport} disabled={isImporting} className="gap-2 text-white">
+                <Button size="sm" onClick={handleImport} disabled={isImporting} className="gap-2 text-primary-foreground">
                   {isImporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                   {isImporting ? `Importing... ${uploadProgress}%` : "Import Orders"}
                 </Button>
@@ -486,58 +489,58 @@ export default function ImportOrdersPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-6">
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg">Import Checklist</CardTitle>
-                <CardDescription>Use this before running the import.</CardDescription>
+          <div className="space-y-3">
+            <Card className="border-border/70 shadow-sm">
+              <CardHeader className="gap-1 px-4 py-3">
+                <CardTitle className="text-base">Import Checklist</CardTitle>
+                <CardDescription className="text-xs">Quick checks before importing.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4 text-sm text-slate-600">
-                <div className="rounded-xl border bg-slate-50 p-4">
-                  <div className="font-medium text-slate-900">1. Confirm the merchant</div>
+              <CardContent className="space-y-2 px-4 pb-4 pt-0 text-sm text-muted-foreground">
+                <div className="rounded-lg border bg-muted p-3">
+                  <div className="font-medium text-foreground">1. Confirm the merchant</div>
                   <p className="mt-1">Pick the merchant first. Its store name and country fill in automatically.</p>
                 </div>
-                <div className="rounded-xl border bg-slate-50 p-4">
-                  <div className="font-medium text-slate-900">2. Check the destination tab name</div>
+                <div className="rounded-lg border bg-muted p-3">
+                  <div className="font-medium text-foreground">2. Check the destination tab name</div>
                   <p className="mt-1">It defaults to &quot;orders&quot;. Change it only if you want orders written to a different tab.</p>
                 </div>
-                <div className="rounded-xl border bg-slate-50 p-4">
-                  <div className="font-medium text-slate-900">3. Upload the latest file only once</div>
+                <div className="rounded-lg border bg-muted p-3">
+                  <div className="font-medium text-foreground">3. Upload the latest file only once</div>
                   <p className="mt-1">This importer updates matching orders and inserts new ones from the uploaded file.</p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg">Selected Merchant</CardTitle>
-                <CardDescription>Quick summary of the current import target.</CardDescription>
+            <Card className="border-border/70 shadow-sm">
+              <CardHeader className="gap-1 px-4 py-3">
+                <CardTitle className="text-base">Selected Merchant</CardTitle>
+                <CardDescription className="text-xs">Current import destination.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-2xl bg-slate-950 p-5 text-white">
-                  <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Merchant</div>
-                  <div className="mt-2 text-xl font-semibold">
+              <CardContent className="space-y-3 px-4 pb-4 pt-0">
+                <div className="rounded-xl bg-primary p-4 text-primary-foreground">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Merchant</div>
+                  <div className="mt-1 text-lg font-semibold">
                     {selectedSheet?.sheet_name || "No merchant selected"}
                   </div>
-                  <div className="mt-4 grid gap-3 text-sm text-slate-300">
+                  <div className="mt-3 grid gap-2 text-sm text-muted-foreground">
                     <div>
-                      <div className="text-slate-500">Store Name</div>
+                      <div className="text-muted-foreground">Store Name</div>
                       <div>{selectedSheet?.store_name || "Waiting for selection"}</div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
                       <div>
-                        <div className="text-slate-500">Country</div>
+                        <div className="text-muted-foreground">Country</div>
                         <div>{selectedSheet?.country || "Waiting for selection"}</div>
                       </div>
                       <div>
-                        <div className="text-slate-500">Sheet ID</div>
+                        <div className="text-muted-foreground">Sheet ID</div>
                         <div className="break-all">{selectedSheet?.sheet_id || "Waiting for selection"}</div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
                   Imported rows are matched by order number, merchant, and sheet ID. Existing rows are updated; missing ones are created.
                 </div>
               </CardContent>
@@ -545,6 +548,8 @@ export default function ImportOrdersPage() {
           </div>
         </div>
       </div>
+      </>}
+      </Deferred>
     </AppLayout>
   );
 }

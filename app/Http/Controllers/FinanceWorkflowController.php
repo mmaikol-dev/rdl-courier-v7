@@ -65,6 +65,24 @@ class FinanceWorkflowController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user()?->loadMissing('country');
+
+        $statusOptions = CountryAccess::scopeByCountryName(
+            SheetOrder::query()
+                ->select('status')
+                ->distinct()
+                ->whereNotNull('status')
+                ->where('status', '!=', ''),
+            $user
+        )->orderBy('status')->pluck('status')->values();
+
+        return Inertia::render('finance-workflow/index', [
+            'workflowReport' => Inertia::defer(fn () => $this->buildWorkflowReport($user)),
+            'statusOptions' => $statusOptions,
+        ]);
+    }
+
+    private function buildWorkflowReport(?\App\Models\User $user): array
+    {
         $baseQuery = $this->merchantBaseQuery($user);
 
         $readyForDelivery = (clone $baseQuery)
@@ -127,7 +145,7 @@ class FinanceWorkflowController extends Controller
                 'remitted_at' => $row->remitted_at,
             ]);
 
-        return Inertia::render('finance-workflow/index', [
+        return [
             'readyForDelivery' => $readyForDelivery,
             'awaitingConfirmation' => $awaitingConfirmation,
             'readyToRemit' => $readyToRemit,
@@ -138,15 +156,7 @@ class FinanceWorkflowController extends Controller
                 'readyToRemit' => $readyToRemit->sum('orders_count'),
                 'remitted' => $remittedHistory->sum('orders_count'),
             ],
-            'statusOptions' => CountryAccess::scopeByCountryName(
-                SheetOrder::query()
-                    ->select('status')
-                    ->distinct()
-                    ->whereNotNull('status')
-                    ->where('status', '!=', ''),
-                $user
-            )->orderBy('status')->pluck('status')->values(),
-        ]);
+        ];
     }
 
     public function merchantOrders(Request $request): JsonResponse

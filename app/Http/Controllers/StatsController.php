@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\StatsReportService;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 
 class StatsController extends Controller
 {
@@ -11,7 +12,7 @@ class StatsController extends Controller
     {
         $user = $request->user()->loadMissing('country');
 
-        return inertia('stats/index', $reportService->build($user, $request->only([
+        $filters = $request->only([
             'date_range',
             'date_field',
             'cc_email',
@@ -19,6 +20,10 @@ class StatsController extends Controller
             'status',
             'country',
             'product',
-        ])));
+        ]);
+
+        return Inertia::render('stats/index', [
+            'statsReport' => Inertia::defer(fn () => $reportService->build($user, $filters)),
+        ]);
     }
 }

@@ -1,5 +1,5 @@
 import AppLayout from '@/layouts/app-layout';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { useState } from 'react';
 import {
@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ProductFilter } from '@/components/product-filter';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Bar,
   BarChart,
@@ -41,7 +42,7 @@ import {
   YAxis,
 } from 'recharts';
 
-const COLORS = ['#1d4ed8', '#0f766e', '#d97706', '#be123c', '#7c3aed', '#0891b2', '#65a30d', '#ea580c'];
+const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--primary)', 'var(--success)', 'var(--destructive)'];
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Statistics Dashboard', href: '/stats' },
@@ -105,6 +106,11 @@ type TrendItem = {
   delivered: number;
 };
 
+type MonthlyOrderItem = {
+  month: string;
+  orders: number;
+};
+
 type ProductItem = {
   product_name: string;
   total: number;
@@ -143,6 +149,7 @@ type FilterOptions = {
   merchants: string[];
   statuses: string[];
   countries: string[];
+  productOptions: string[];
 };
 
 type Filters = {
@@ -165,6 +172,7 @@ type StatsPageProps = {
   overduePending: OverdueOrder[];
   overduePendingSummary: OverdueSummaryItem[];
   ordersByMerchant: MerchantItem[];
+  ordersByMonth: MonthlyOrderItem[];
   dailyTrend: TrendItem[];
   topProducts: ProductItem[];
   ordersByCountry: CountryItem[];
@@ -193,11 +201,11 @@ const dateFieldLabels: Record<'order_date' | 'delivery_date', string> = {
 
 const getStatusTone = (status?: string | null) => {
   const value = String(status ?? '').toLowerCase();
-  if (value.includes('deliver')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  if (value.includes('cancel')) return 'bg-red-100 text-red-700 border-red-200';
-  if (value.includes('pending')) return 'bg-amber-100 text-amber-700 border-amber-200';
-  if (value.includes('schedule')) return 'bg-blue-100 text-blue-700 border-blue-200';
-  return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (value.includes('deliver')) return 'bg-success/10 text-success border-success/30';
+  if (value.includes('cancel')) return 'bg-destructive/10 text-destructive border-destructive/30';
+  if (value.includes('pending')) return 'bg-warning/10 text-warning-foreground border-warning/30';
+  if (value.includes('schedule')) return 'bg-accent text-foreground border-border';
+  return 'bg-muted text-foreground border-border';
 };
 
 const compactDate = (value?: string) => {
@@ -209,7 +217,70 @@ const compactDate = (value?: string) => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-export default function StatsDashboard({
+const compactNumber = (value: number) =>
+  new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0));
+
+const formatMonthLabel = (value: string) => {
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return value;
+
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+};
+
+function StatsLoadingSkeleton() {
+  return (
+    <div className="space-y-4" role="status" aria-label="Loading statistics" aria-live="polite">
+      <section className="rounded-2xl border bg-card p-4" aria-label="Loading monthly order volume">
+        <Skeleton className="mb-4 h-5 w-48" />
+        <Skeleton className="h-52 w-full rounded-xl" />
+      </section>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Loading summary">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="space-y-3 rounded-2xl border bg-card p-4">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ))}
+      </section>
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" aria-label="Loading rates">
+        {Array.from({ length: 10 }).map((_, index) => (
+          <div key={index} className="space-y-2 rounded-xl border bg-card p-3">
+            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="h-5 w-1/2" />
+          </div>
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-2" aria-label="Loading charts">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="space-y-4 rounded-2xl border bg-card p-4">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+        ))}
+      </section>
+      <div className="space-y-3 rounded-2xl border bg-card p-4" aria-label="Loading tables">
+        <Skeleton className="h-5 w-44" />
+        {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-10 w-full" />)}
+      </div>
+    </div>
+  );
+}
+
+export default function StatsDashboard() {
+  const { statsReport } = usePage<{ statsReport?: StatsPageProps }>().props;
+
+  return (
+    <AppLayout breadcrumbs={breadcrumbs}>
+      <Head title="Statistics Dashboard" />
+      <Deferred data="statsReport" fallback={<StatsLoadingSkeleton />}>
+        {() => statsReport ? <StatsDashboardContent {...statsReport} /> : null}
+      </Deferred>
+    </AppLayout>
+  );
+}
+
+function StatsDashboardContent({
   summary,
   ordersByStatus,
   rates,
@@ -219,6 +290,7 @@ export default function StatsDashboard({
   overduePending,
   overduePendingSummary,
   ordersByMerchant,
+  ordersByMonth,
   dailyTrend,
   topProducts,
   ordersByCountry,
@@ -273,43 +345,62 @@ export default function StatsDashboard({
     overduePendingSummary.reduce((sum, item) => sum + item.overdue_count, 0);
 
   return (
-    <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Statistics Dashboard" />
-
-      <div className="flex h-full flex-1 flex-col gap-4 px-2 py-3 sm:px-4 sm:py-4">
-        <section className="rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_45%,#ecfeff_100%)] p-4 sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <Badge variant="outline" className="border-sky-200 bg-white/80 text-sky-700">
-                Stats workspace
-              </Badge>
+      <div className="flex h-full flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-5">
+        <section className="flex flex-col gap-4 pb-1 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Orders Analytics</h1>
-              <p className="max-w-2xl text-sm leading-6 text-slate-600">
-                Focus on the signals that matter first: volume, revenue, delivery health, and agent workload.
-                Secondary detail is grouped into tabs so the page remains faster and easier to scan.
-              </p>
+              <Badge variant="outline" className="rounded-full border-primary/20 text-primary">Stats workspace</Badge>
             </div>
+            <p className="mt-1.5 max-w-2xl text-sm leading-5 text-muted-foreground">
+              Review order volume, revenue, delivery health, and team performance.
+            </p>
+          </div>
 
-            <div className="flex flex-wrap gap-2">
-              <ProductFilter value={filters.product} preserveState preserveScroll />
-              <Button variant="outline" className="bg-white/80" onClick={() => setShowFilters((value) => !value)}>
-                <Filter className="mr-2 h-4 w-4" />
-                Filters
-                {activeFiltersCount > 0 && (
-                  <span className="ml-2 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">
-                    {activeFiltersCount}
-                  </span>
-                )}
-              </Button>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <ProductFilter options={filterOptions.productOptions} value={filters.product} preserveState preserveScroll />
+            <Button variant="outline" className="h-8 rounded-lg" onClick={() => setShowFilters((value) => !value)}>
+              <Filter className="mr-2 h-4 w-4" />
+              Filters
               {activeFiltersCount > 0 && (
-                <Button variant="ghost" onClick={clearAllFilters}>
-                  <X className="mr-2 h-4 w-4" />
-                  Clear all
-                </Button>
+                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                  {activeFiltersCount}
+                </span>
               )}
-            </div>
+            </Button>
+            {activeFiltersCount > 0 && (
+              <Button variant="ghost" className="h-8 px-2" onClick={clearAllFilters}>
+                <X className="mr-1.5 h-4 w-4" />Clear all
+              </Button>
+            )}
           </div>
         </section>
+
+        <ChartCard
+          title="Monthly order volume"
+          description={`${filters.date_range && filters.date_range !== 'all_time' ? dateRangeLabels[filters.date_range] ?? filters.date_range : 'Last 12 months'} · grouped by ${dateFieldLabels[filters.date_field || 'order_date'].toLowerCase()}`}
+          empty={ordersByMonth.length === 0}
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={ordersByMonth} margin={{ top: 8, right: 12, bottom: 8, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="month"
+                tickFormatter={formatMonthLabel}
+                minTickGap={18}
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis allowDecimals={false} width={42} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <Tooltip
+                labelFormatter={(value) => formatMonthLabel(String(value))}
+                formatter={(value: number) => [Number(value).toLocaleString(), 'Orders']}
+              />
+              <Bar dataKey="orders" name="Orders" fill="var(--chart-1)" radius={[5, 5, 0, 0]} maxBarSize={44} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
         <Dialog open={showFilters} onOpenChange={setShowFilters}>
           <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
@@ -416,7 +507,7 @@ export default function StatsDashboard({
           />
         </section>
 
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {Object.entries(rates)
             .filter(([key]) => key.endsWith('Rate') && key !== 'totalOrders')
             .sort((a, b) => b[1] - a[1])
@@ -435,7 +526,7 @@ export default function StatsDashboard({
             })}
         </section>
 
-        <section className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+        <section className="grid grid-cols-1 gap-2 lg:grid-cols-4">
           <InsightCard
             title="Top status"
             icon={<BarChart3 className="h-4 w-4" />}
@@ -463,9 +554,9 @@ export default function StatsDashboard({
           />
         </section>
 
-        <Tabs defaultValue="overview" className="space-y-4">
+        <Tabs defaultValue="overview" className="space-y-3">
           <div className="overflow-x-auto">
-            <TabsList className="inline-flex h-auto min-w-full justify-start gap-2 rounded-xl border bg-white p-1">
+            <TabsList className="inline-flex h-auto min-w-full justify-start gap-2 rounded-xl border bg-card p-1">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="performance">Performance</TabsTrigger>
               <TabsTrigger value="alerts">Alerts</TabsTrigger>
@@ -473,14 +564,14 @@ export default function StatsDashboard({
             </TabsList>
           </div>
 
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.5fr_1fr]">
+          <TabsContent value="overview" className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.4fr_1fr]">
               <ChartCard
                 title="Daily trend"
                 description="Volume, delivered orders, and revenue over time"
                 empty={dailyTrend.length === 0}
               >
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={260}>
                   <RechartsLineChart data={dailyTrend}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
@@ -499,9 +590,9 @@ export default function StatsDashboard({
                       ]}
                     />
                     <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="orders" stroke="#1d4ed8" strokeWidth={2} dot={false} />
-                    <Line yAxisId="left" type="monotone" dataKey="delivered" stroke="#059669" strokeWidth={2} dot={false} />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={2} dot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="orders" stroke="var(--chart-1)" strokeWidth={2} dot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="delivered" stroke="var(--chart-2)" strokeWidth={2} dot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="var(--chart-3)" strokeWidth={2} dot={false} />
                   </RechartsLineChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -511,7 +602,7 @@ export default function StatsDashboard({
                 description="How the current order pool is split"
                 empty={ordersByStatus.length === 0}
               >
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={260}>
                   <RechartsPieChart>
                     <Pie
                       data={ordersByStatus}
@@ -532,72 +623,93 @@ export default function StatsDashboard({
               </ChartCard>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
               <ChartCard
                 title="Top merchants"
                 description="Top contributors by order count"
                 empty={ordersByMerchant.length === 0}
               >
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={ordersByMerchant} layout="vertical" margin={{ left: 20, right: 12 }}>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={ordersByMerchant} layout="vertical" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" style={{ fontSize: 11 }} />
-                    <YAxis dataKey="merchant" type="category" width={96} style={{ fontSize: 11 }} />
+                    <XAxis type="number" tickCount={4} tickFormatter={compactNumber} tick={{ fontSize: 10 }} tickLine={false} />
+                    <YAxis
+                      dataKey="merchant"
+                      type="category"
+                      width={104}
+                      tick={{ fontSize: 10 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value: string) => value.length > 13 ? `${value.slice(0, 12)}…` : value}
+                    />
                     <Tooltip formatter={(value: number, _name, item) => [`${value.toLocaleString()} orders`, item.payload.merchant]} />
-                    <Bar dataKey="total" fill="#1d4ed8" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="total" name="Orders" fill="var(--chart-1)" radius={[0, 5, 5, 0]} maxBarSize={20} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
 
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Top products</CardTitle>
-                  <CardDescription>Best-selling products in the current filter window</CardDescription>
+              <Card className="rounded-2xl border bg-card shadow-xs">
+                <CardHeader className="px-4 pb-2 pt-4">
+                  <CardTitle className="text-base">Top products</CardTitle>
+                  <CardDescription className="text-xs">Ranked by order count · current filters</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {topProducts.length === 0 && <EmptyState message="No product data available." />}
-                  {topProducts.map((product, index) => (
-                    <div key={product.product_name} className="rounded-xl border border-slate-200 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{product.product_name}</p>
-                          <p className="text-xs text-slate-500">
-                            {product.total.toLocaleString()} orders, {product.quantity.toLocaleString()} units
-                          </p>
+                <CardContent className="px-4 pb-4 pt-0">
+                  {topProducts.length === 0 ? <EmptyState message="No product data available." /> : (
+                    <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+                      {topProducts.map((product, index) => (
+                        <div key={product.product_name} className="min-w-0 border-b py-2.5">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="flex size-5 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-medium text-muted-foreground">{index + 1}</span>
+                            <p className="truncate text-sm font-medium" title={product.product_name}>{product.product_name}</p>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 pl-7">
+                            <span className="text-[11px] text-muted-foreground">{product.total.toLocaleString()} orders · {product.quantity.toLocaleString()} units</span>
+                            <span className="text-xs font-semibold tabular-nums">{formatMoney(product.revenue)}</span>
+                          </div>
+                          <div className="mt-1.5 ml-7 h-1 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(5, (product.total / Math.max(topProducts[0]?.total ?? 1, 1)) * 100)}%` }} />
+                          </div>
                         </div>
-                        <Badge variant="outline">#{index + 1}</Badge>
-                      </div>
-                      <p className="mt-2 text-sm font-semibold text-emerald-600">{formatMoney(product.revenue)}</p>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </CardContent>
               </Card>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
               <ChartCard
                 title="Country distribution"
                 description="Top destination countries by order volume"
                 empty={ordersByCountry.length === 0}
               >
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={ordersByCountry}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="country" style={{ fontSize: 11 }} />
-                    <YAxis style={{ fontSize: 11 }} />
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={ordersByCountry} layout="vertical" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" tickFormatter={compactNumber} tick={{ fontSize: 10 }} tickLine={false} />
+                    <YAxis
+                      dataKey="country"
+                      type="category"
+                      width={94}
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value: string) => value.toLowerCase().replace(/(^|[\s-])([a-z])/g, (_match, separator: string, letter: string) => `${separator}${letter.toUpperCase()}`)}
+                    />
                     <Tooltip formatter={(value: number, _name, item) => [`${value.toLocaleString()} orders`, item.payload.country]} />
-                    <Bar dataKey="total" fill="#0f766e" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="total" name="Orders" fill="var(--chart-2)" radius={[0, 5, 5, 0]} maxBarSize={24} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
 
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Interpretation</CardTitle>
-                  <CardDescription>Quick read of what the dashboard is saying</CardDescription>
+              <Card className="rounded-2xl border bg-card shadow-xs">
+                <CardHeader className="px-4 pb-2 pt-4">
+                  <CardTitle className="text-base">Interpretation</CardTitle>
+                  <CardDescription className="text-xs">Key signals in the current view</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm text-slate-600">
+                <CardContent className="space-y-2 px-4 pb-4 pt-0 text-sm text-muted-foreground">
                   <NarrativeItem
+                    icon={<BarChart3 className="size-4" />}
                     title="Volume signal"
                     body={
                       topStatus
@@ -606,6 +718,7 @@ export default function StatsDashboard({
                     }
                   />
                   <NarrativeItem
+                    icon={<TrendingUp className="size-4" />}
                     title="Execution signal"
                     body={
                       topAgent
@@ -614,6 +727,7 @@ export default function StatsDashboard({
                     }
                   />
                   <NarrativeItem
+                    icon={<AlertTriangle className="size-4" />}
                     title="Risk signal"
                     body={
                       attentionCount > 0
@@ -626,8 +740,8 @@ export default function StatsDashboard({
             </div>
           </TabsContent>
 
-          <TabsContent value="performance" className="space-y-4">
-            <Card className="border-slate-200 shadow-sm">
+          <TabsContent value="performance" className="space-y-3">
+            <Card className="rounded-2xl border bg-card shadow-xs">
               <CardHeader>
                 <CardTitle>Agent performance leaderboard</CardTitle>
                 <CardDescription>Compressed for faster scanning on desktop and mobile.</CardDescription>
@@ -635,14 +749,14 @@ export default function StatsDashboard({
               <CardContent className="space-y-3">
                 {agentPerformance.length === 0 && <EmptyState message="No agent performance data available." />}
                 {agentPerformance.map((agent, index) => (
-                  <div key={agent.cc_email} className="rounded-2xl border border-slate-200 p-4">
+                  <div key={agent.cc_email} className="rounded-2xl border bg-muted/20 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">#{index + 1}</Badge>
                           <h3 className="truncate font-semibold">{agent.cc_email}</h3>
                         </div>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {agent.total_orders.toLocaleString()} orders • {formatMoney(agent.total_revenue)}
                         </p>
                       </div>
@@ -664,8 +778,8 @@ export default function StatsDashboard({
             </Card>
           </TabsContent>
 
-          <TabsContent value="alerts" className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <TabsContent value="alerts" className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
               <AlertCard
                 title="Overdue scheduled deliveries"
                 description="Agents with scheduled orders past delivery date"
@@ -687,8 +801,8 @@ export default function StatsDashboard({
             </div>
           </TabsContent>
 
-          <TabsContent value="recent" className="space-y-4">
-            <Card className="border-slate-200 shadow-sm">
+          <TabsContent value="recent" className="space-y-3">
+            <Card className="rounded-2xl border bg-card shadow-xs">
               <CardHeader>
                 <CardTitle>Recent orders</CardTitle>
                 <CardDescription>The latest 12 records from the filtered dataset.</CardDescription>
@@ -698,7 +812,7 @@ export default function StatsDashboard({
 
                 <div className="hidden lg:block overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="border-b bg-slate-50">
+                    <thead className="border-b bg-muted/60">
                       <tr>
                         <th className="px-3 py-3 text-left font-medium">Order</th>
                         <th className="px-3 py-3 text-left font-medium">Client</th>
@@ -713,10 +827,10 @@ export default function StatsDashboard({
                     </thead>
                     <tbody>
                       {recentOrders.map((order) => (
-                        <tr key={order.id} className="border-b last:border-b-0 hover:bg-slate-50">
-                          <td className="px-3 py-3 font-medium text-sky-700">{order.order_no}</td>
+                        <tr key={order.id} className="border-b last:border-b-0 hover:bg-muted/40">
+                          <td className="px-3 py-3 font-medium text-foreground">{order.order_no}</td>
                           <td className="px-3 py-3">{order.client_name}</td>
-                          <td className="px-3 py-3 text-slate-500">{order.product_name}</td>
+                          <td className="px-3 py-3 text-muted-foreground">{order.product_name}</td>
                           <td className="px-3 py-3">{order.cc_email || '-'}</td>
                           <td className="px-3 py-3">{order.merchant || '-'}</td>
                           <td className="px-3 py-3">
@@ -726,7 +840,7 @@ export default function StatsDashboard({
                           </td>
                           <td className="px-3 py-3 text-right">{order.quantity}</td>
                           <td className="px-3 py-3 text-right font-semibold">{formatMoney(order.amount)}</td>
-                          <td className="px-3 py-3 text-slate-500">{compactDate(order.order_date)}</td>
+                          <td className="px-3 py-3 text-muted-foreground">{compactDate(order.order_date)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -735,18 +849,18 @@ export default function StatsDashboard({
 
                 <div className="grid gap-3 lg:hidden">
                   {recentOrders.map((order) => (
-                    <div key={order.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div key={order.id} className="rounded-2xl border bg-card p-4 shadow-xs">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="font-semibold text-sky-700">{order.order_no}</p>
-                          <p className="truncate text-sm text-slate-600">{order.client_name}</p>
+                          <p className="font-semibold text-foreground">{order.order_no}</p>
+                          <p className="truncate text-sm text-muted-foreground">{order.client_name}</p>
                         </div>
                         <Badge variant="outline" className={getStatusTone(order.status)}>
                           {order.status || 'Unknown'}
                         </Badge>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                         <MiniField label="Product" value={order.product_name || '-'} />
                         <MiniField label="Merchant" value={order.merchant || '-'} />
                         <MiniField label="Agent" value={order.cc_email || '-'} />
@@ -762,7 +876,6 @@ export default function StatsDashboard({
           </TabsContent>
         </Tabs>
       </div>
-    </AppLayout>
   );
 }
 
@@ -778,14 +891,14 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardContent className="flex items-start justify-between gap-4 p-4">
+    <Card className="min-w-0 rounded-2xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
+      <CardContent className="flex min-w-0 items-start justify-between gap-3 p-0">
         <div>
-          <p className="text-sm text-slate-500">{title}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-          <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="mt-2 break-words text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
         </div>
-        <div className="rounded-xl bg-slate-100 p-2 text-slate-700">{icon}</div>
+        <div className="shrink-0 rounded-xl bg-primary/10 p-2.5 text-primary">{icon}</div>
       </CardContent>
     </Card>
   );
@@ -805,14 +918,14 @@ function InsightCard({
   tone?: 'neutral' | 'alert';
 }) {
   return (
-    <Card className={`shadow-sm ${tone === 'alert' ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200'}`}>
+    <Card className={`rounded-2xl shadow-xs ${tone === 'alert' ? 'border-warning/30 bg-warning/10' : 'border-border bg-card'}`}>
       <CardContent className="p-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {icon}
           <span>{title}</span>
         </div>
-        <p className="mt-3 text-lg font-semibold">{value}</p>
-        <p className="mt-1 text-sm text-slate-600">{supporting}</p>
+        <p className="mt-3 break-words text-lg font-semibold">{value}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{supporting}</p>
       </CardContent>
     </Card>
   );
@@ -842,7 +955,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 transition focus:border-slate-400"
+        className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
       >
         <option value="">{placeholder}</option>
         {options.map((option) => (
@@ -857,7 +970,7 @@ function FilterSelect({
 
 function FilterChip({ label, value }: { label: string; value: string }) {
   return (
-    <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+    <Badge variant="outline" className="border-border bg-muted/50 text-foreground">
       {label}: {value}
     </Badge>
   );
@@ -875,7 +988,7 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="rounded-2xl border bg-card shadow-xs">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
@@ -886,14 +999,17 @@ function ChartCard({
 }
 
 function EmptyState({ message }: { message: string }) {
-  return <div className="flex min-h-[180px] items-center justify-center text-sm text-slate-500">{message}</div>;
+  return <div className="flex min-h-[180px] items-center justify-center text-sm text-muted-foreground">{message}</div>;
 }
 
-function NarrativeItem({ title, body }: { title: string; body: string }) {
+function NarrativeItem({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <p className="font-medium text-slate-900">{title}</p>
-      <p className="mt-1">{body}</p>
+    <div className="flex items-start gap-2.5 rounded-lg border bg-muted/20 px-3 py-2.5">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-background text-primary">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-xs leading-relaxed">{body}</p>
+      </div>
     </div>
   );
 }
@@ -908,10 +1024,10 @@ function StatPill({
   tone: 'green' | 'blue' | 'amber' | 'red';
 }) {
   const tones: Record<typeof tone, string> = {
-    green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
+    green: 'bg-success/10 text-success border-success/30',
+    blue: 'bg-accent text-foreground border-border',
+    amber: 'bg-warning/10 text-warning-foreground border-warning/30',
+    red: 'bg-destructive/10 text-destructive border-destructive/30',
   };
 
   return (
@@ -933,18 +1049,18 @@ function RateMeter({
   count?: number;
   tone?: 'green' | 'blue';
 }) {
-  const barClass = tone === 'blue' ? 'bg-blue-500' : value >= 80 ? 'bg-emerald-500' : value >= 60 ? 'bg-amber-500' : 'bg-red-500';
+  const barClass = tone === 'blue' ? 'bg-primary' : value >= 80 ? 'bg-success' : value >= 60 ? 'bg-primary' : 'bg-destructive';
 
   return (
-    <div className="rounded-xl border border-slate-200 p-3">
+    <div className="rounded-xl border bg-card p-3">
       <div className="mb-2 flex items-center justify-between text-sm">
-        <span className="text-slate-500">{label}</span>
+        <span className="text-muted-foreground">{label}</span>
         <span className="font-semibold">{value}%</span>
       </div>
       {count !== undefined && (
-        <p className="mb-1 text-xs text-slate-400">{count.toLocaleString()} orders</p>
+        <p className="mb-1 text-xs text-muted-foreground">{count.toLocaleString()} orders</p>
       )}
-      <div className="h-2 rounded-full bg-slate-100">
+      <div className="h-2 rounded-full bg-muted">
         <div className={`h-2 rounded-full ${barClass}`} style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
     </div>
@@ -971,16 +1087,16 @@ function AlertCard({
   const toneClasses =
     tone === 'red'
       ? {
-          card: 'border-red-200 bg-red-50/60',
-          chip: 'bg-red-100 text-red-700',
+          card: 'border-destructive/30 bg-destructive/10',
+          chip: 'bg-destructive/10 text-destructive',
         }
       : {
-          card: 'border-amber-200 bg-amber-50/60',
-          chip: 'bg-amber-100 text-amber-700',
+          card: 'border-warning/30 bg-warning/10',
+          chip: 'bg-warning/10 text-warning-foreground',
         };
 
   return (
-    <Card className={`shadow-sm ${toneClasses.card}`}>
+    <Card className={`rounded-2xl shadow-xs ${toneClasses.card}`}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
@@ -991,11 +1107,11 @@ function AlertCard({
           const relatedOrders = details.filter((detail) => detail.cc_email === item.cc_email).slice(0, 3);
 
           return (
-            <div key={item.cc_email} className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+            <div key={item.cc_email} className="rounded-2xl border bg-card p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{item.cc_email}</p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     {item.overdue_count.toLocaleString()} affected orders
                   </p>
                 </div>
@@ -1006,17 +1122,17 @@ function AlertCard({
 
               <div className="mt-3 space-y-2">
                 {relatedOrders.map((order) => (
-                  <div key={order.order_no} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <div key={order.order_no} className="rounded-xl border bg-muted/30 p-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium">{order.order_no}</p>
-                        <p className="truncate text-slate-600">{order.client_name}</p>
-                        <p className="truncate text-xs text-slate-500">{order.merchant}</p>
+                        <p className="truncate text-muted-foreground">{order.client_name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{order.merchant}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">{(order.days_overdue ?? order.days_pending ?? 0).toLocaleString()}</p>
-                        <p className="text-xs text-slate-500">{dayLabel}</p>
-                        <p className="text-xs text-slate-500">{compactDate(order[detailDateKey])}</p>
+                        <p className="text-xs text-muted-foreground">{dayLabel}</p>
+                        <p className="text-xs text-muted-foreground">{compactDate(order[detailDateKey])}</p>
                       </div>
                     </div>
                   </div>
@@ -1032,9 +1148,9 @@ function AlertCard({
 
 function MiniField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-2">
-      <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 break-words text-slate-700">{value}</p>
+    <div className="rounded-xl bg-muted/50 p-2">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 break-words text-foreground">{value}</p>
     </div>
   );
 }

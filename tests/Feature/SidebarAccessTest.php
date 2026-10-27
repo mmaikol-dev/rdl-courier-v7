@@ -63,6 +63,13 @@ class SidebarAccessTest extends TestCase
         $this->assertSame(['dashboard', 'integrations'], $resolved);
     }
 
+    public function test_merchants_always_have_transfer_access(): void
+    {
+        $resolved = SidebarRegistry::resolveVisibleKeys('merchant', ['dashboard']);
+
+        $this->assertContains('transfer', $resolved);
+    }
+
     public function test_saved_subset_arrives_as_raw_json_string(): void
     {
         // Query-builder value() returns the column uncast, so the resolver must

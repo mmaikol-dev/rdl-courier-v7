@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink } from '@/components/ui/pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { Check, ChevronsUpDown, LinkIcon, Package, Search, Truck } from 'lucide-react';
+import { Check, ChevronsUpDown, LinkIcon, Package, Search } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -64,6 +64,7 @@ interface PaginatedOrders {
 interface PageProps {
   merchantOptions: string[];
   selectedMerchant: string | null;
+  isMerchant: boolean;
   search: string | null;
   summary: {
     totalOrders: number;
@@ -92,7 +93,7 @@ function MerchantSelect({
         <Button
           variant="outline"
           role="combobox"
-          className={cn('h-10 w-full justify-between sm:w-[260px]', !selectedLabel && 'text-muted-foreground')}
+          className={cn('h-9 w-full justify-between sm:w-[240px]', !selectedLabel && 'text-muted-foreground')}
         >
           <span className="truncate">{selectedLabel || 'All Merchants'}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -136,7 +137,7 @@ function MerchantSelect({
 }
 
 export default function DeductedOrdersPage() {
-  const { merchantOptions, selectedMerchant, search: initialSearch, summary, orders } = usePage<PageProps>().props;
+  const { merchantOptions, selectedMerchant, isMerchant, search: initialSearch, summary, orders } = usePage<PageProps>().props;
   const [merchant, setMerchant] = React.useState(selectedMerchant ?? '');
   const [search, setSearch] = React.useState(initialSearch ?? '');
 
@@ -186,44 +187,46 @@ export default function DeductedOrdersPage() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Deducted Orders" />
 
-      <div className="space-y-6 p-4">
+      <div className="space-y-2 p-2">
         <Card className="border-border/60 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="size-5" />
+          <CardHeader className="gap-1 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Package className="size-4" />
               Deducted Orders &amp; Linked Products
             </CardTitle>
-            <CardDescription>
-              Orders that have been deducted from inventory, showing which product each order was linked to.
+            <CardDescription className="text-xs sm:text-right">
+              Orders deducted from inventory with their linked products.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border p-4">
+          <CardContent className="space-y-2 px-3 pb-3 pt-0">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-md border px-2.5 py-1.5">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Deducted</div>
-                <div className="mt-2 text-2xl font-semibold">{summary.totalOrders.toLocaleString()}</div>
+                <div className="text-lg font-semibold leading-6">{summary.totalOrders.toLocaleString()}</div>
               </div>
-              <div className="rounded-xl border p-4">
+              <div className="rounded-md border px-2.5 py-1.5">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Quantity</div>
-                <div className="mt-2 text-2xl font-semibold">{summary.totalQuantity.toLocaleString()}</div>
+                <div className="text-lg font-semibold leading-6">{summary.totalQuantity.toLocaleString()}</div>
               </div>
-              <div className="rounded-xl border p-4">
+              <div className="rounded-md border px-2.5 py-1.5">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Products Affected</div>
-                <div className="mt-2 text-2xl font-semibold">{summary.productsAffected}</div>
+                <div className="text-lg font-semibold leading-6">{summary.productsAffected}</div>
               </div>
-              <div className="rounded-xl border p-4">
+              <div className="rounded-md border px-2.5 py-1.5">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Total Revenue</div>
-                <div className="mt-2 text-2xl font-semibold">{summary.totalRevenue.toLocaleString()}</div>
+                <div className="text-lg font-semibold leading-6">{summary.totalRevenue.toLocaleString()}</div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <MerchantSelect
-                value={merchant}
-                options={merchantSelectOptions}
-                onChange={handleMerchantChange}
-              />
-              <form onSubmit={handleSearch} className="flex gap-2 sm:max-w-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {!isMerchant && (
+                <MerchantSelect
+                  value={merchant}
+                  options={merchantSelectOptions}
+                  onChange={handleMerchantChange}
+                />
+              )}
+              <form onSubmit={handleSearch} className="flex gap-2 sm:max-w-md">
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -240,7 +243,7 @@ export default function DeductedOrdersPage() {
         <Card className="border-border/60 shadow-sm">
           <CardContent className="p-0">
             {orders.data.length === 0 ? (
-              <div className="py-14 text-center text-sm text-muted-foreground">
+              <div className="py-8 text-center text-sm text-muted-foreground">
                 No deducted orders found.
               </div>
             ) : (
@@ -266,22 +269,22 @@ export default function DeductedOrdersPage() {
                   </TableHeader>
                   <TableBody>
                     {orders.data.map((order) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-medium">{order.order_no}</TableCell>
-                        <TableCell className="max-w-[150px] truncate">{order.client_name ?? '-'}</TableCell>
-                        <TableCell className="max-w-[150px] truncate">{order.product_name ?? '-'}</TableCell>
-                        <TableCell className="text-center">{order.quantity}</TableCell>
-                        <TableCell className="text-right">{order.amount.toLocaleString()}</TableCell>
-                        <TableCell>
+                      <TableRow key={order.id} className="h-10">
+                        <TableCell className="px-2 py-1 font-medium">{order.order_no}</TableCell>
+                        <TableCell className="max-w-[150px] truncate px-2 py-1">{order.client_name ?? '-'}</TableCell>
+                        <TableCell className="max-w-[150px] truncate px-2 py-1">{order.product_name ?? '-'}</TableCell>
+                        <TableCell className="px-2 py-1 text-center">{order.quantity}</TableCell>
+                        <TableCell className="px-2 py-1 text-right">{order.amount.toLocaleString()}</TableCell>
+                        <TableCell className="px-2 py-1">
                           <Badge variant="outline">{order.status ?? '-'}</Badge>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        <TableCell className="whitespace-nowrap px-2 py-1 text-sm text-muted-foreground">
                           {order.delivery_date ?? '-'}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        <TableCell className="whitespace-nowrap px-2 py-1 text-sm text-muted-foreground">
                           {order.inventory_deducted_at ?? '-'}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="px-2 py-1">
                           {order.linked_product ? (
                             <div className="space-y-0.5">
                               <div className="font-medium">{order.linked_product.name}</div>
@@ -306,7 +309,7 @@ export default function DeductedOrdersPage() {
             )}
 
             {orders.last_page > 1 && (
-              <div className="border-t px-4 py-3">
+              <div className="border-t px-3 py-2">
                 <Pagination>
                   <PaginationContent>
                     {orders.links.map((link, i) => {

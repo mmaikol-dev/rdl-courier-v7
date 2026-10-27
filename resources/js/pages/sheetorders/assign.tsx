@@ -13,10 +13,11 @@ import AppLayout from '@/layouts/app-layout';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { Check, ChevronsUpDown, FilterIcon, RefreshCwIcon, UserCheck, X } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const BASE_COLUMNS = [
     'order_no',
@@ -32,13 +33,13 @@ const BASE_COLUMNS = [
 ] as const;
 
 const statusColors: Record<string, string> = {
-    Delivered: 'text-green-600 font-semibold',
-    Pending: 'text-yellow-600 font-semibold',
-    Scheduled: 'text-blue-600 font-semibold',
-    Dispatched: 'text-blue-600 font-semibold',
-    Cancelled: 'text-red-600 font-semibold',
-    Followup: 'text-purple-600 font-semibold',
-    WrongContact: 'text-gray-600 italic',
+    Delivered: 'text-success font-semibold',
+    Pending: 'text-warning-foreground font-semibold',
+    Scheduled: 'text-muted-foreground font-semibold',
+    Dispatched: 'text-muted-foreground font-semibold',
+    Cancelled: 'text-destructive font-semibold',
+    Followup: 'text-muted-foreground font-semibold',
+    WrongContact: 'text-muted-foreground italic',
 };
 
 const STATUS_OPTIONS = ['New Orders', 'Pending', 'Delivered', 'Scheduled', 'Dispatched', 'Cancelled', 'Followup', 'WrongContact'];
@@ -64,9 +65,19 @@ interface SheetOrder {
     updated_at: string;
 }
 
+const EMPTY_ASSIGN_ORDERS = { data: [] as SheetOrder[], links: [] as any[] };
+const EMPTY_ASSIGN_FILTERS: Record<string, string> = {};
+
+function ReassignTableSkeleton() {
+    return <div className="space-y-3 rounded-lg border p-3" role="status" aria-label="Loading orders for reassignment" aria-live="polite">
+        <div className="grid grid-cols-4 gap-3 border-b pb-3 sm:grid-cols-8">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}</div>
+        {Array.from({ length: 8 }).map((_, row) => <div key={row} className="grid grid-cols-4 gap-3 border-b py-3 last:border-0 sm:grid-cols-8">{Array.from({ length: 8 }).map((__, col) => <Skeleton key={col} className="h-4 w-full" />)}</div>)}
+    </div>;
+}
+
 export default function Index() {
     const { props } = usePage();
-    const { orders, filters, merchantUsers, ccUsers, productNames } = props as unknown as {
+    const pageData = props as unknown as {
         orders: { data: SheetOrder[]; links: any[] };
         filters: Record<string, string>;
         merchantUsers: string[];
@@ -74,6 +85,11 @@ export default function Index() {
         productNames: string[];
         flash?: { success?: string; error?: string };
     };
+    const orders = pageData.orders ?? EMPTY_ASSIGN_ORDERS;
+    const filters = pageData.filters ?? EMPTY_ASSIGN_FILTERS;
+    const merchantUsers = pageData.merchantUsers ?? [];
+    const ccUsers = pageData.ccUsers ?? [];
+    const productNames = pageData.productNames ?? [];
     const COLUMNS = [...BASE_COLUMNS, 'checkbox'];
 
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
@@ -250,13 +266,15 @@ export default function Index() {
                 </div>
             </div>
 
+            <Deferred data="orders" fallback={<ReassignTableSkeleton />}>
+            {() => <>
             <div className="rounded-lg border">
                 <div className="scrollbar-custom overflow-x-auto">
-                    <Table className="min-w-full table-fixed border border-gray-200">
+                    <Table className="min-w-full table-fixed border border-border">
                         <TableHeader className="sticky top-0 z-10 bg-background">
                             <TableRow>
                                 {COLUMNS.map((col) => (
-                                    <TableHead key={col} className="w-[10%] border border-gray-300 text-sm font-medium">
+                                    <TableHead key={col} className="w-[10%] border border-border text-sm font-medium">
                                         {col === 'checkbox' ? (
                                             <div className="flex items-center justify-center">
                                                 <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleSelectAll(!!checked)} />
@@ -273,7 +291,7 @@ export default function Index() {
                         <TableBody>
                             {orders.data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={COLUMNS.length} className="py-4 text-center text-gray-500">
+                                    <TableCell colSpan={COLUMNS.length} className="py-4 text-center text-muted-foreground">
                                         No orders found.
                                     </TableCell>
                                 </TableRow>
@@ -326,11 +344,14 @@ export default function Index() {
                 </Pagination>
             </div>
 
+            </>}
+            </Deferred>
+
             {/* Result Dialog */}
             <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle className={resultMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}>
+                        <DialogTitle className={resultMessage.type === 'success' ? 'text-success' : 'text-destructive'}>
                             {resultMessage.title}
                         </DialogTitle>
                     </DialogHeader>

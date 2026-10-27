@@ -32,7 +32,13 @@ class SheetOrderController extends Controller
     public function index(Request $request)
     {
         $user = $request->user()->loadMissing('country');
-        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
+        $query = CountryAccess::scopeByCountryName(
+            SheetOrder::query()->withCount([
+                'histories as instructions_edits_count' => fn ($historyQuery) => $historyQuery
+                    ->where('attribute', 'instructions'),
+            ]),
+            $user
+        );
 
         if ($user->roles === 'merchant') {
             $query->where('merchant', $user->name);
@@ -86,10 +92,6 @@ class SheetOrderController extends Controller
 
         $query->orderBy('created_at', 'desc');
 
-        $totalOrders = (clone $query)->count();
-
-        $orders = $query->paginate(50)->appends($request->all());
-
         $merchantData = CountryAccess::scopeByCountryName(
             SheetOrder::select('merchant', 'sheet_id', 'sheet_name'),
             $user
@@ -116,12 +118,14 @@ class SheetOrderController extends Controller
         )->pluck('name');
 
         return inertia('sheetorders/index', [
-            'orders' => $orders,
+            'orderResults' => Inertia::defer(fn () => [
+                'orders' => (clone $query)->paginate(50)->appends($request->all()),
+                'totalOrders' => (clone $query)->count(),
+            ]),
             'filters' => $request->all(),
             'merchantUsers' => $merchantUsers,
             'merchantData' => $merchantData,
             'ccUsers' => $ccUsers,
-            'totalOrders' => $totalOrders,
         ]);
     }
 

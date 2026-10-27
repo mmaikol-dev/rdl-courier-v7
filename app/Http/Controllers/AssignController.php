@@ -73,7 +73,7 @@ class AssignController extends Controller
     
         $totalOrders = (clone $query)->count();
     
-        $orders = $query->paginate(50)->appends($request->all());
+        $orders = Inertia::defer(fn () => $query->paginate(50)->appends($request->all()));
     
         $merchantData = CountryAccess::scopeByCountryName(
             SheetOrder::select('merchant', 'sheet_id', 'sheet_name'),

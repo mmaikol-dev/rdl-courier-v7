@@ -9,9 +9,10 @@ use App\Models\Deduction;
 use App\Models\Whatsapp;
 use App\Services\OpenwaService;
 use App\Support\CountryAccess;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -28,6 +29,28 @@ class TransferController extends Controller
         abort_if(! $country, 403, 'No country is assigned to this user.');
 
         return $country;
+    }
+
+    private function scopeProductsForUser(Builder $query, ?User $user): Builder
+    {
+        CountryAccess::scopeProducts($query, $user);
+
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'merchant') {
+            $query->where('merchant', $user->name);
+        }
+
+        return $query;
+    }
+
+    private function scopeTransfersForUser(Builder $query, ?User $user): Builder
+    {
+        CountryAccess::scopeByCountryName($query, $user);
+
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'merchant') {
+            $query->whereHas('product', fn (Builder $products) => $products->where('merchant', $user->name));
+        }
+
+        return $query;
     }
 
     /**
@@ -162,28 +185,36 @@ class TransferController extends Controller
             $deductionSubquery .= ' AND LOWER(TRIM(country)) = ?';
             $bindings[] = $countryName;
         }
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'merchant') {
+            $deductionSubquery .= ' AND product_id IN (SELECT id FROM products WHERE merchant = ?)';
+            $bindings[] = $user->name;
+        }
         $deductionSubquery .= ')';
 
-        $agents = CountryAccess::scopeUsers(
+        $agentQuery = CountryAccess::scopeUsers(
             User::query()->where('roles', 'agent'),
             $user
-        )
-            ->select('id', 'name', 'store_phone', 'store_name', 'store_address', 'email', 'created_at')
-            ->selectRaw($deductionSubquery . ' as deductions_sum_quantity', $bindings)
-            ->withCount(['transfers' => function ($q) use ($user) {
-                CountryAccess::scopeByCountryName($q, $user);
-            }])
-            ->withSum(['transfers' => function ($q) use ($user) {
-                CountryAccess::scopeByCountryName($q, $user);
-            }], 'quantity')
-            ->withMax(['transfers' => function ($q) use ($user) {
-                CountryAccess::scopeByCountryName($q, $user);
-            }], 'created_at')
-            ->orderBy('name')
-            ->get();
+        );
+
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'merchant') {
+            $agentQuery->whereHas('transfers', fn ($query) => $this->scopeTransfersForUser($query, $user));
+        }
 
         return inertia('products/transfer', [
-            'agents' => $agents,
+            'agents' => Inertia::defer(fn () => $agentQuery
+                ->select('id', 'name', 'store_phone', 'store_name', 'store_address', 'email', 'created_at')
+                ->selectRaw($deductionSubquery . ' as deductions_sum_quantity', $bindings)
+                ->withCount(['transfers' => function ($query) use ($user) {
+                    $this->scopeTransfersForUser($query, $user);
+                }])
+                ->withSum(['transfers' => function ($query) use ($user) {
+                    $this->scopeTransfersForUser($query, $user);
+                }], 'quantity')
+                ->withMax(['transfers' => function ($query) use ($user) {
+                    $this->scopeTransfersForUser($query, $user);
+                }], 'created_at')
+                ->orderBy('name')
+                ->get()),
         ]);
     }
 
@@ -209,7 +240,7 @@ class TransferController extends Controller
         }
         $deductionSubquery .= ')';
 
-        $transfers = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        $transfers = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('agent_id', $agentId)
             ->select(
                 'product_id',
@@ -236,7 +267,7 @@ class TransferController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $products = CountryAccess::scopeProducts(Product::query(), $user)
+        $products = $this->scopeProductsForUser(Product::query(), $user)
             ->select('id', 'name', 'merchant', 'code')
             ->get();
 
@@ -251,7 +282,7 @@ class TransferController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
 
-        $query = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        $query = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->select(
                 'product_id',
                 'agent_id',
@@ -277,7 +308,7 @@ class TransferController extends Controller
 
         $groupedTransfers = $query->latest('last_transfer_date')->paginate(20);
 
-        $products = CountryAccess::scopeProducts(Product::query(), $user)
+        $products = $this->scopeProductsForUser(Product::query(), $user)
             ->select('id', 'name', 'merchant', 'code')
             ->get();
 
@@ -300,7 +331,7 @@ class TransferController extends Controller
     private function detailedView(Request $request)
     {
         $user = $request->user()?->loadMissing('country');
-        $query = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        $query = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->with(['product', 'agent']);
 
         if ($request->product_id) {
@@ -317,7 +348,7 @@ class TransferController extends Controller
 
         $transfers = $query->latest()->paginate(20);
 
-        $products = CountryAccess::scopeProducts(Product::query(), $user)
+        $products = $this->scopeProductsForUser(Product::query(), $user)
             ->select('id', 'name', 'merchant', 'code')
             ->get();
 
@@ -340,8 +371,9 @@ class TransferController extends Controller
     public function show(Request $request, $productId, $agentId)
     {
         $user = $request->user()?->loadMissing('country');
+        $this->scopeProductsForUser(Product::query(), $user)->findOrFail($productId);
 
-        $query = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        $query = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->with(['product', 'agent', 'unit']);
@@ -353,17 +385,19 @@ class TransferController extends Controller
         $transfers = $query->latest()->paginate(20);
 
         $deductions = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+            ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser($products, $user))
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->latest()
             ->get();
 
-        $totalTransferred = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        $totalTransferred = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
 
         $totalDeducted = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+            ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser($products, $user))
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
@@ -397,7 +431,7 @@ class TransferController extends Controller
 
         DB::transaction(function () use ($validated, $user, $country) {
             foreach ($validated['transfers'] as $transferData) {
-                $product = CountryAccess::scopeProducts(
+                $product = $this->scopeProductsForUser(
                     Product::query(),
                     $user
                 )->findOrFail($transferData['product_id']);
@@ -448,18 +482,19 @@ class TransferController extends Controller
             'reason' => 'nullable|string|max:500',
         ]);
 
-        CountryAccess::scopeProducts(Product::query(), $user)->findOrFail($productId);
+        $this->scopeProductsForUser(Product::query(), $user)->findOrFail($productId);
         CountryAccess::scopeUsers(
             User::query()->where('roles', 'agent'),
             $user
         )->findOrFail($agentId);
 
-        $totalTransferred = CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        $totalTransferred = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
 
         $totalDeducted = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+            ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser($products, $user))
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
@@ -503,7 +538,12 @@ class TransferController extends Controller
         $deduction = CountryAccess::scopeByCountryName(
             Deduction::query(),
             request()->user()?->loadMissing('country')
-        )->findOrFail($id);
+        )
+            ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser(
+                $products,
+                request()->user()?->loadMissing('country')
+            ))
+            ->findOrFail($id);
 
         $deduction->delete();
 
@@ -519,7 +559,7 @@ class TransferController extends Controller
         $user = $request->user()?->loadMissing('country');
         $search = trim((string) $request->string('search'));
 
-        $products = CountryAccess::scopeProducts(Product::query(), $user)
+        $products = $this->scopeProductsForUser(Product::query(), $user)
             ->select('id', 'name', 'code', 'merchant')
             ->orderBy('name')
             ->get()
@@ -562,7 +602,7 @@ class TransferController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
 
-        $product = CountryAccess::scopeProducts(Product::query(), $user)
+        $product = $this->scopeProductsForUser(Product::query(), $user)
             ->findOrFail((int) $request->integer('product_id'));
 
         $holdings = $this->productHoldings($user, (int) $product->id)
@@ -598,7 +638,7 @@ class TransferController extends Controller
             'reason' => 'nullable|string|max:500',
         ]);
 
-        $product = CountryAccess::scopeProducts(Product::query(), $user)
+        $product = $this->scopeProductsForUser(Product::query(), $user)
             ->findOrFail($validated['product_id']);
 
         $agentIds = array_values(array_unique(array_map('intval', $validated['agent_ids'])));
@@ -689,7 +729,7 @@ class TransferController extends Controller
         }
         $deductionSubquery .= ')';
 
-        return CountryAccess::scopeByCountryName(Transfer::query(), $user)
+        return $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('product_id', $productId)
             ->select('product_id', 'agent_id', DB::raw('SUM(quantity) as transferred'))
             ->selectRaw($deductionSubquery . ' as deducted', $bindings)

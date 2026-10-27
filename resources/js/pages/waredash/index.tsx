@@ -1,5 +1,5 @@
 import AppLayout from '@/layouts/app-layout'
-import { Head, usePage } from '@inertiajs/react'
+import { Deferred, Head, usePage } from '@inertiajs/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -17,38 +17,85 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis, LabelList, ResponsiveContai
 import { Package, Barcode, Truck, Layers, AlertTriangle, CheckCircle2, Warehouse, Scan, Hash, AlertCircle, BarChart3 } from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import * as React from "react"
 
 interface DashboardProps {
   userName: string
-  summary: {
+  warehouseReport?: {
+    summary: {
     totalProducts: number
     totalBarcodes: number
     totalTransfers: number
     totalStock: number
-  }
-  depletedProducts: { id: number, name: string, quantity: number }[]
-  nearDepletedProducts: { id: number, name: string, quantity: number, quantity_alert: number }[]
-  transfersByRegion: { region: string, total: number }[]
-  recentScans: {
+    }
+    depletedProducts: { id: number, name: string, quantity: number }[]
+    nearDepletedProducts: { id: number, name: string, quantity: number, quantity_alert: number }[]
+    transfersByRegion: { region: string, total: number }[]
+    recentScans: {
     id: number
     product_name: string
     barcode: string
     operation_type: string
     scanned_by: string
     scanned_at: string
-  }[]
-  products: {
+    }[]
+    products: {
     name: string
     current: number
     available: number
     inDelivery: number
     totalDelivered: number
-  }[]
+    }[]
+  }
+}
+
+function WarehouseLoadingSkeleton() {
+  return (
+    <div className="space-y-4" role="status" aria-label="Loading warehouse data" aria-live="polite">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Loading inventory totals">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="space-y-3 rounded-2xl border bg-card p-4">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2" aria-label="Loading stock alerts">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div key={index} className="space-y-4 rounded-2xl border bg-card p-4">
+            <Skeleton className="h-5 w-44" />
+            {Array.from({ length: 4 }).map((__, row) => <Skeleton key={row} className="h-9 w-full" />)}
+          </div>
+        ))}
+      </section>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2" aria-label="Loading warehouse activity">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div key={index} className="space-y-4 rounded-2xl border bg-card p-4">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+        ))}
+      </section>
+      <div className="space-y-3 rounded-2xl border bg-card p-4" aria-label="Loading inventory tables">
+        <Skeleton className="h-5 w-44" />
+        {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-10 w-full" />)}
+      </div>
+    </div>
+  )
 }
 
 export default function WarehouseDashboard() {
-  const { userName, summary, depletedProducts, nearDepletedProducts, transfersByRegion, recentScans, products } = usePage<DashboardProps>().props
+  const { userName, warehouseReport } = usePage<DashboardProps>().props
+  const {
+    summary = { totalProducts: 0, totalBarcodes: 0, totalTransfers: 0, totalStock: 0 },
+    depletedProducts = [],
+    nearDepletedProducts = [],
+    transfersByRegion = [],
+    recentScans = [],
+    products = [],
+  } = warehouseReport ?? {}
 
   const maxStock = Math.max(...products.map(p => p.current), 1)
 
@@ -80,15 +127,18 @@ export default function WarehouseDashboard() {
   return (
     <AppLayout breadcrumbs={[{ title: "Warehouse Dashboard", href: "/waredash" }]}>
       <Head title="Warehouse Dashboard" />
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-chart-2/10 p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div>
+            <Badge variant="outline" className="mb-3 rounded-full border-primary/20 bg-background/80 px-3 text-primary">
+              Inventory overview
+            </Badge>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Warehouse Dashboard</h1>
-            <p className="text-muted-foreground mt-1">Welcome back, {userName}.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Welcome back, {userName}. Here is your stock and activity at a glance.</p>
           </div>
-          <Badge variant="outline" className="gap-2 px-3 py-1.5 text-xs font-normal text-muted-foreground">
+          <Badge variant="outline" className="w-fit gap-2 rounded-full bg-background/80 px-3 py-1.5 text-xs font-normal text-muted-foreground shadow-sm">
             <span className="relative flex size-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-chart-2 opacity-75" />
               <span className="relative inline-flex size-2 rounded-full bg-chart-2" />
@@ -97,8 +147,10 @@ export default function WarehouseDashboard() {
           </Badge>
         </div>
 
+        <Deferred data="warehouseReport" fallback={<WarehouseLoadingSkeleton />}>
+        {() => <>
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             title="Total Products"
             value={summary.totalProducts}
@@ -131,7 +183,7 @@ export default function WarehouseDashboard() {
 
         {/* Stock Alerts */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Card className="border-destructive/40">
+          <Card className="overflow-hidden rounded-2xl border-destructive/30 bg-card shadow-xs">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
@@ -184,7 +236,7 @@ export default function WarehouseDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="overflow-hidden rounded-2xl border bg-card shadow-xs">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-accent">
@@ -251,7 +303,7 @@ export default function WarehouseDashboard() {
         />
 
         {/* Product Stock Table */}
-        <Card>
+        <Card className="overflow-hidden rounded-2xl border bg-card shadow-xs">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -372,7 +424,7 @@ export default function WarehouseDashboard() {
         </Card>
 
         {/* Recent Scans */}
-        <Card>
+        <Card className="overflow-hidden rounded-2xl border bg-card shadow-xs">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -433,6 +485,8 @@ export default function WarehouseDashboard() {
           </CardContent>
         </Card>
 
+        </>}
+        </Deferred>
       </div>
     </AppLayout>
   )
@@ -440,15 +494,15 @@ export default function WarehouseDashboard() {
 
 function SummaryCard({ title, value, hint, icon, accent }: { title: string; value: number; hint: string; icon: React.ReactNode; accent: string }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
-        <div className="space-y-1">
-          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-          <div className="text-2xl font-bold tracking-tight">{value.toLocaleString()}</div>
+    <Card className="min-w-0 rounded-2xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 p-0">
+        <div className="min-w-0 space-y-1">
+          <CardTitle className="text-xs font-medium text-muted-foreground">{title}</CardTitle>
+          <div className="break-words text-2xl font-bold tracking-tight tabular-nums">{value.toLocaleString()}</div>
         </div>
-        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${accent}`}>{icon}</div>
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${accent}`}>{icon}</div>
       </CardHeader>
-      <CardContent className="border-t pt-3">
+      <CardContent className="mt-4 border-t px-0 pt-3 pb-0">
         <p className="text-xs text-muted-foreground">{hint}</p>
       </CardContent>
     </Card>
@@ -456,10 +510,10 @@ function SummaryCard({ title, value, hint, icon, accent }: { title: string; valu
 }
 
 function ChartCard({ title, description, data, xKey, color }: { title: string; description?: string; data: any[]; xKey: string; color: string }) {
-  const chartHeight = Math.max(240, data.length * 44 + 40)
+  const chartHeight = Math.max(220, data.length * 38 + 36)
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="overflow-hidden rounded-2xl border bg-card shadow-xs">
+      <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
             <BarChart3 className="size-4 text-muted-foreground" />
@@ -470,54 +524,59 @@ function ChartCard({ title, description, data, xKey, color }: { title: string; d
           </div>
         </div>
       </CardHeader>
-      <CardContent className="overflow-hidden" style={{ height: chartHeight }}>
+      <CardContent
+        className="max-h-[340px] overflow-y-auto overflow-x-hidden"
+        style={{ height: Math.min(chartHeight, 340) }}
+      >
         {data.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             No data available
           </div>
         ) : (
-          <ChartContainer config={{ total: { label: "Total", color } }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} layout="vertical" margin={{ top: 4, right: 36, bottom: 4, left: 8 }}>
-                <defs>
-                  <linearGradient id={`fill-${xKey}`} x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="5%" stopColor={color} stopOpacity={0.8} />
-                    <stop offset="95%" stopColor={color} stopOpacity={0.1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid horizontal={false} stroke="var(--border)" />
-                <XAxis
-                  type="number"
-                  allowDecimals={false}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
-                />
-                <YAxis
-                  dataKey={xKey}
-                  type="category"
-                  width={140}
-                  interval={0}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
-                  tickFormatter={(v) => (typeof v === 'string' && v.length > 22 ? `${v.slice(0, 21)}…` : v)}
-                />
-                <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                <Bar dataKey="total" fill={`url(#fill-${xKey})`} radius={[0, 8, 8, 0]} barSize={24}>
-                  <LabelList
-                    dataKey="total"
-                    position="right"
-                    className="fill-foreground text-xs"
-                    fontWeight={600}
-                    formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)}
+          <div style={{ height: chartHeight }}>
+            <ChartContainer config={{ total: { label: "Total", color } }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data} layout="vertical" margin={{ top: 4, right: 36, bottom: 4, left: 8 }}>
+                  <defs>
+                    <linearGradient id={`fill-${xKey}`} x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="5%" stopColor={color} stopOpacity={0.8} />
+                      <stop offset="95%" stopColor={color} stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid horizontal={false} stroke="var(--border)" />
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
                   />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartContainer>
+                  <YAxis
+                    dataKey={xKey}
+                    type="category"
+                    width={140}
+                    interval={0}
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
+                    tickFormatter={(v) => (typeof v === 'string' && v.length > 22 ? `${v.slice(0, 21)}…` : v)}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <Bar dataKey="total" fill={`url(#fill-${xKey})`} radius={[0, 8, 8, 0]} barSize={24}>
+                    <LabelList
+                      dataKey="total"
+                      position="right"
+                      className="fill-foreground text-xs"
+                      fontWeight={600}
+                      formatter={(v) => (typeof v === 'number' ? v.toLocaleString() : v)}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </div>
         )}
       </CardContent>
     </Card>

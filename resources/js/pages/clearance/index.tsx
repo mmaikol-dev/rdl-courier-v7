@@ -36,13 +36,13 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
-    Delivered: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    Pending: "bg-amber-100 text-amber-700 border-amber-200",
-    Scheduled: "bg-sky-100 text-sky-700 border-sky-200",
-    Dispatched: "bg-blue-100 text-blue-700 border-blue-200",
-    Cancelled: "bg-rose-100 text-rose-700 border-rose-200",
-    Followup: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
-    WrongContact: "bg-slate-100 text-slate-700 border-slate-200",
+    Delivered: "bg-success/10 text-success border-success/30",
+    Pending: "bg-warning/10 text-warning-foreground border-warning/30",
+    Scheduled: "bg-accent text-foreground border-border",
+    Dispatched: "bg-accent text-foreground border-border",
+    Cancelled: "bg-destructive/10 text-destructive border-destructive/30",
+    Followup: "bg-accent text-foreground border-border",
+    WrongContact: "bg-muted text-foreground border-border",
 };
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -261,7 +261,7 @@ export default function Index() {
 
     const getStatusPillClass = (status: string) => {
         const normalized = status?.trim() || "New Orders";
-        return statusColors[normalized] || "bg-slate-100 text-slate-700 border-slate-200";
+        return statusColors[normalized] || "bg-muted text-foreground border-border";
     };
 
     const renderCellValue = (order: ClearanceOrder, col: { key: keyof ClearanceOrder; label: string; align?: 'right' }) => {
@@ -286,7 +286,7 @@ export default function Index() {
                 <Button
                     variant={cleared ? 'default' : 'outline'}
                     size="sm"
-                    className={cn('gap-2', cleared && 'bg-emerald-600 hover:bg-emerald-700')}
+                    className={cn('gap-2', cleared && 'bg-success hover:bg-success')}
                     onClick={() => toggleClearance(order)}
                     disabled={updating}
                     title={cleared ? 'Click to mark as not cleared' : 'Click to mark as cleared'}
@@ -341,11 +341,11 @@ export default function Index() {
                         </div>
                         <div className="rounded-lg border bg-background p-3">
                             <p className="text-xs text-muted-foreground">Cleared</p>
-                            <p className="text-lg font-semibold text-emerald-600">{clearedCount}</p>
+                            <p className="text-lg font-semibold text-success">{clearedCount}</p>
                         </div>
                         <div className="rounded-lg border bg-background p-3">
                             <p className="text-xs text-muted-foreground">Pending Clearance</p>
-                            <p className="text-lg font-semibold text-amber-600">{pendingClearanceCount}</p>
+                            <p className="text-lg font-semibold text-warning-foreground">{pendingClearanceCount}</p>
                         </div>
                         <div className="rounded-lg border bg-background p-3">
                             <p className="text-xs text-muted-foreground">Agents</p>
@@ -676,7 +676,7 @@ export default function Index() {
                                             {history.old_value || '(empty)'}
                                         </span>
                                         <X className="h-3 w-3 text-muted-foreground" />
-                                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 font-medium text-emerald-700">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-success/10 px-2 py-1 font-medium text-success">
                                             {history.new_value || '(empty)'}
                                         </span>
                                     </div>

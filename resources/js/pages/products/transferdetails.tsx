@@ -118,7 +118,7 @@ export default function TransferDetails() {
                       required
                     />
                     {errors.code && (
-                      <p className="text-sm text-red-600">{errors.code}</p>
+                      <p className="text-sm text-destructive">{errors.code}</p>
                     )}
                   </div>
 
@@ -135,9 +135,9 @@ export default function TransferDetails() {
                       required
                     />
                     {errors.quantity && (
-                      <p className="text-sm text-red-600">{errors.quantity}</p>
+                      <p className="text-sm text-destructive">{errors.quantity}</p>
                     )}
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       Available: {remainingQuantity} units
                     </p>
                   </div>
@@ -175,57 +175,57 @@ export default function TransferDetails() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <PackageIcon className="w-4 h-4" />
                   Product
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-gray-900">{firstTransfer.product?.name}</p>
-                <p className="text-sm text-gray-500 mt-1">ID: {productId}</p>
+                <p className="text-2xl font-bold text-foreground">{firstTransfer.product?.name}</p>
+                <p className="text-sm text-muted-foreground mt-1">ID: {productId}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <UserIcon className="w-4 h-4" />
                   Agent
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-gray-900">{firstTransfer.agent?.name}</p>
-                <p className="text-sm text-gray-500 mt-1">ID: {agentId}</p>
+                <p className="text-2xl font-bold text-foreground">{firstTransfer.agent?.name}</p>
+                <p className="text-sm text-muted-foreground mt-1">ID: {agentId}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
-                  <PlusCircleIcon className="w-4 h-4 text-green-600" />
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <PlusCircleIcon className="w-4 h-4 text-success" />
                   Total Transferred
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-green-600">{totalTransferred}</p>
-                <p className="text-sm text-gray-500 mt-1">{transfers?.data?.length || 0} transfers</p>
+                <p className="text-2xl font-bold text-success">{totalTransferred}</p>
+                <p className="text-sm text-muted-foreground mt-1">{transfers?.data?.length || 0} transfers</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
-                  <MinusCircleIcon className="w-4 h-4 text-red-600" />
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <MinusCircleIcon className="w-4 h-4 text-destructive" />
                   Deducted / Remaining
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-2xl font-bold text-red-600">{totalDeducted}</p>
-                  <span className="text-gray-400">/</span>
-                  <p className="text-2xl font-bold text-blue-600">{remainingQuantity}</p>
+                  <p className="text-2xl font-bold text-destructive">{totalDeducted}</p>
+                  <span className="text-muted-foreground">/</span>
+                  <p className="text-2xl font-bold text-muted-foreground">{remainingQuantity}</p>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">{deductions?.length || 0} deductions</p>
+                <p className="text-sm text-muted-foreground mt-1">{deductions?.length || 0} deductions</p>
               </CardContent>
             </Card>
           </div>
@@ -253,7 +253,7 @@ export default function TransferDetails() {
                   </TableHeader>
                   <TableBody>
                     {deductions.map((deduction: any, index: number) => (
-                      <TableRow key={deduction.id} className="hover:bg-gray-50">
+                      <TableRow key={deduction.id} className="hover:bg-muted">
                         <TableCell className="font-medium">{index + 1}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="font-mono">
@@ -266,7 +266,7 @@ export default function TransferDetails() {
                         <TableCell className="max-w-xs truncate">
                           {deduction.reason || "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-gray-600">
+                        <TableCell className="text-sm text-muted-foreground">
                           {deduction.deducted_by}
                         </TableCell>
                         <TableCell className="text-sm">
@@ -277,7 +277,7 @@ export default function TransferDetails() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setDeleteId(deduction.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           >
                             <TrashIcon className="w-4 h-4" />
                           </Button>
@@ -313,7 +313,7 @@ export default function TransferDetails() {
                 <TableBody>
                   {transfers?.data?.length > 0 ? (
                     transfers.data.map((transfer: any, index: number) => (
-                      <TableRow key={transfer.id} className="hover:bg-gray-50">
+                      <TableRow key={transfer.id} className="hover:bg-muted">
                         <TableCell className="font-medium">{index + 1}</TableCell>
                         <TableCell>{transfer.date || new Date(transfer.created_at).toLocaleDateString()}</TableCell>
                         <TableCell>
@@ -323,15 +323,15 @@ export default function TransferDetails() {
                         </TableCell>
                         <TableCell>{transfer.region || "N/A"}</TableCell>
                         <TableCell>{transfer.from || "N/A"}</TableCell>
-                        <TableCell className="text-sm text-gray-600">{transfer.transfer_by || "System"}</TableCell>
-                        <TableCell className="text-sm text-gray-600">
+                        <TableCell className="text-sm text-muted-foreground">{transfer.transfer_by || "System"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
                           {transfer.unit?.name || transfer.merchant || "N/A"}
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         No transfer records found.
                       </TableCell>
                     </TableRow>

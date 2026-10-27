@@ -106,10 +106,10 @@ export default function RequisitionShow() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: any = {
-      pending: { variant: "secondary", label: "Pending", color: "bg-yellow-100 text-yellow-800" },
-      approved: { variant: "default", label: "Approved", color: "bg-green-100 text-green-800" },
-      rejected: { variant: "destructive", label: "Rejected", color: "bg-red-100 text-red-800" },
-      paid: { variant: "default", label: "Paid", color: "bg-blue-100 text-blue-800" },
+      pending: { variant: "secondary", label: "Pending", color: "bg-warning/10 text-warning-foreground" },
+      approved: { variant: "default", label: "Approved", color: "bg-success/10 text-success" },
+      rejected: { variant: "destructive", label: "Rejected", color: "bg-destructive/10 text-destructive" },
+      paid: { variant: "default", label: "Paid", color: "bg-accent text-foreground" },
     };
     const config = statusConfig[status] || statusConfig.pending;
     return (
@@ -152,7 +152,7 @@ export default function RequisitionShow() {
               {isGoingBack ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <ArrowLeft className="w-4 h-4" />}
               {isGoingBack ? "Loading..." : "Back"}
             </Button>
-            <h1 className="text-2xl font-bold text-gray-800">
+            <h1 className="text-2xl font-bold text-foreground">
               {requisition.requisition_number}
             </h1>
           </div>
@@ -164,7 +164,7 @@ export default function RequisitionShow() {
                   variant="outline"
                   onClick={() => updateStatus('approved')}
                   disabled={isUpdating}
-                  className="flex items-center gap-2 text-green-600 border-green-600 hover:bg-green-50"
+                  className="flex items-center gap-2 text-success border-success/30 hover:bg-success/10"
                 >
                   {isUpdating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                   {isUpdating ? "Processing..." : "Approve"}
@@ -173,7 +173,7 @@ export default function RequisitionShow() {
                   variant="outline"
                   onClick={() => updateStatus('rejected')}
                   disabled={isUpdating}
-                  className="flex items-center gap-2 text-red-600 border-red-600 hover:bg-red-50"
+                  className="flex items-center gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
                 >
                   {isUpdating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                   {isUpdating ? "Processing..." : "Reject"}
@@ -184,7 +184,7 @@ export default function RequisitionShow() {
               <Button
                 onClick={() => updateStatus('paid')}
                 disabled={isUpdating}
-                className="flex items-center gap-2 text-white"
+                className="flex items-center gap-2 text-primary-foreground"
               >
                 {isUpdating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
                 {isUpdating ? "Processing..." : "Mark as Paid"}
@@ -202,29 +202,29 @@ export default function RequisitionShow() {
               <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-600">Title</p>
-                    <p className="font-semibold text-gray-800">{requisition.title}</p>
+                    <p className="text-sm text-muted-foreground">Title</p>
+                    <p className="font-semibold text-foreground">{requisition.title}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Category</p>
-                    <p className="font-semibold text-gray-800">{requisition.category?.name}</p>
+                    <p className="text-sm text-muted-foreground">Category</p>
+                    <p className="font-semibold text-foreground">{requisition.category?.name}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Requisition Date</p>
-                    <p className="font-semibold text-gray-800">
+                    <p className="text-sm text-muted-foreground">Requisition Date</p>
+                    <p className="font-semibold text-foreground">
                       {new Date(requisition.requisition_date).toLocaleDateString()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Status</p>
+                    <p className="text-sm text-muted-foreground">Status</p>
                     <div className="mt-1">{getStatusBadge(requisition.status)}</div>
                   </div>
                 </div>
 
                 {requisition.description && (
                   <div>
-                    <p className="text-sm text-gray-600">Description</p>
-                    <p className="text-gray-800 mt-1">{requisition.description}</p>
+                    <p className="text-sm text-muted-foreground">Description</p>
+                    <p className="text-foreground mt-1">{requisition.description}</p>
                   </div>
                 )}
               </CardContent>
@@ -261,7 +261,7 @@ export default function RequisitionShow() {
                         const isDuplicateItem = duplicateEntries.length > 0;
 
                         return (
-                        <TableRow key={item.id} className={isDuplicateItem ? "bg-red-50/40" : undefined}>
+                        <TableRow key={item.id} className={isDuplicateItem ? "bg-destructive/10" : undefined}>
                           <TableCell>{index + 1}</TableCell>
 
                           {editingItemId === item.id ? (
@@ -270,7 +270,7 @@ export default function RequisitionShow() {
                                 <Input
                                   value={editFormData.item_name}
                                   onChange={(e) => setEditFormData({ ...editFormData, item_name: e.target.value })}
-                                  className={cn("min-w-[150px]", isDuplicateItem && "border-red-400 bg-red-50 text-red-700")}
+                                  className={cn("min-w-[150px]", isDuplicateItem && "border-destructive/30 bg-destructive/10 text-destructive")}
                                 />
                               </TableCell>
                               <TableCell>
@@ -308,11 +308,11 @@ export default function RequisitionShow() {
                             <>
                               <TableCell className="font-medium">
                                 <div className="flex items-center gap-2">
-                                  <span className={isDuplicateItem ? "text-red-700" : undefined}>{item.item_name}</span>
+                                  <span className={isDuplicateItem ? "text-destructive" : undefined}>{item.item_name}</span>
                                   {isDuplicateItem && (
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <span className="inline-flex cursor-help items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                        <span className="inline-flex cursor-help items-center rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
                                           Duplicate
                                         </span>
                                       </TooltipTrigger>
@@ -325,7 +325,7 @@ export default function RequisitionShow() {
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell className="text-sm text-gray-600">
+                              <TableCell className="text-sm text-muted-foreground">
                                 {item.description || '-'}
                               </TableCell>
                               <TableCell className="text-right">{item.quantity}</TableCell>
@@ -348,7 +348,7 @@ export default function RequisitionShow() {
                                       variant="outline"
                                       onClick={() => saveItemEdit(item.id)}
                                       disabled={savingItemId === item.id}
-                                      className="flex items-center gap-1 text-green-600 border-green-600 hover:bg-green-50"
+                                      className="flex items-center gap-1 text-success border-success/30 hover:bg-success/10"
                                     >
                                       {savingItemId === item.id ? <LoaderCircle className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                                       {savingItemId === item.id ? "Saving..." : "Save"}
@@ -380,7 +380,7 @@ export default function RequisitionShow() {
                           )}
                         </TableRow>
                       )})}
-                      <TableRow className="bg-gray-50 font-bold">
+                      <TableRow className="bg-muted font-bold">
                         <TableCell colSpan={canEditItems ? 6 : 5} className="text-right">
                           Grand Total
                         </TableCell>
@@ -403,27 +403,27 @@ export default function RequisitionShow() {
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <div>
-                  <p className="text-sm text-gray-600">Requested By</p>
-                  <p className="font-semibold text-gray-800">{requisition.user?.name}</p>
-                  <p className="text-sm text-gray-600">{requisition.user?.email}</p>
+                  <p className="text-sm text-muted-foreground">Requested By</p>
+                  <p className="font-semibold text-foreground">{requisition.user?.name}</p>
+                  <p className="text-sm text-muted-foreground">{requisition.user?.email}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Created At</p>
-                  <p className="font-semibold text-gray-800">
+                  <p className="text-sm text-muted-foreground">Created At</p>
+                  <p className="font-semibold text-foreground">
                     {new Date(requisition.created_at).toLocaleString()}
                   </p>
                 </div>
                 {requisition.approved_at && (
                   <>
                     <div>
-                      <p className="text-sm text-gray-600">Approved By</p>
-                      <p className="font-semibold text-gray-800">
+                      <p className="text-sm text-muted-foreground">Approved By</p>
+                      <p className="font-semibold text-foreground">
                         {requisition.approver?.name || 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Approved At</p>
-                      <p className="font-semibold text-gray-800">
+                      <p className="text-sm text-muted-foreground">Approved At</p>
+                      <p className="font-semibold text-foreground">
                         {new Date(requisition.approved_at).toLocaleString()}
                       </p>
                     </div>
@@ -431,8 +431,8 @@ export default function RequisitionShow() {
                 )}
                 {requisition.paid_at && (
                   <div>
-                    <p className="text-sm text-gray-600">Paid At</p>
-                    <p className="font-semibold text-gray-800">
+                    <p className="text-sm text-muted-foreground">Paid At</p>
+                    <p className="font-semibold text-foreground">
                       {new Date(requisition.paid_at).toLocaleString()}
                     </p>
                   </div>
@@ -441,26 +441,26 @@ export default function RequisitionShow() {
             </Card>
 
             {requisition.daily_budget && (
-              <Card className="shadow-sm bg-blue-50 border-blue-200">
-                <CardHeader className="border-b border-blue-200">
-                  <CardTitle className="text-blue-800">Budget Information</CardTitle>
+              <Card className="shadow-sm bg-accent border-border">
+                <CardHeader className="border-b border-border">
+                  <CardTitle className="text-foreground">Budget Information</CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 space-y-3">
                   <div>
-                    <p className="text-sm text-blue-700">Budget Date</p>
-                    <p className="font-semibold text-blue-900">
+                    <p className="text-sm text-foreground">Budget Date</p>
+                    <p className="font-semibold text-foreground">
                       {new Date(requisition.daily_budget.budget_date).toLocaleDateString()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-blue-700">Budget Remaining</p>
-                    <p className="font-semibold text-blue-900 text-lg">
+                    <p className="text-sm text-foreground">Budget Remaining</p>
+                    <p className="font-semibold text-foreground text-lg">
                       KES {parseFloat(requisition.daily_budget.current_amount).toFixed(2)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-blue-700">Budget Spent</p>
-                    <p className="font-semibold text-blue-900">
+                    <p className="text-sm text-foreground">Budget Spent</p>
+                    <p className="font-semibold text-foreground">
                       KES {parseFloat(requisition.daily_budget.spent_amount).toFixed(2)}
                     </p>
                   </div>

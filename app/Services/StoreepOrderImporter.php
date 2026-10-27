@@ -40,9 +40,9 @@ class StoreepOrderImporter
      * Stage one normalised order and queue it for processing.
      *
      * @param  array<string, mixed>  $order  Output of StoreepApiService's normaliser.
-     * @return IncomingSheetOrder
+     * @return IncomingSheetOrder|null
      */
-    public function stage(StoreepIntegration $integration, array $order): IncomingSheetOrder
+    public function stage(StoreepIntegration $integration, array $order): ?IncomingSheetOrder
     {
         $storeepId = $order['storeep_id'] ?? null;
 
@@ -50,6 +50,27 @@ class StoreepOrderImporter
             throw new \InvalidArgumentException('Storeep order is missing its id.');
         }
 
+        $selectedCountries = $integration->allowed_countries;
+        $legacyCountrySelection = $selectedCountries === null;
+        $resolvedCountry = $this->countries->resolve(
+            $order['market'] ?? null,
+            $legacyCountrySelection ? $integration->country : null,
+        );
+        $allowedCountries = $legacyCountrySelection ? [$integration->country] : $selectedCountries;
+
+        if (! $this->countries->isAllowed($resolvedCountry, $allowedCountries)) {
+            Log::info('Storeep order skipped because its country is not selected', [
+                'store' => $integration->store_name,
+                'storeep_id' => $storeepId,
+                'market' => $order['market'] ?? null,
+                'resolved_country' => $resolvedCountry,
+                'allowed_countries' => $allowedCountries,
+            ]);
+
+            return null;
+        }
+
+        $order['_resolved_country'] = $resolvedCountry;
         $payload = $this->buildPayload($integration, $order);
 
         // Scoped to the integration as well as the Storeep id, so the same
@@ -89,7 +110,7 @@ class StoreepOrderImporter
                 ])->save();
 
                 $shouldDispatch = true;
-            } elseif ($incoming->status === 'failed') {
+            } elseif (in_array($incoming->status, ['failed', 'skipped'], true)) {
                 $incoming->forceFill([
                     'status' => 'pending',
                     'error_message' => null,
@@ -132,7 +153,7 @@ class StoreepOrderImporter
             ? $prefix.$storeepNumber
             : $prefix.Str::upper(Str::substr((string) ($order['storeep_id'] ?? ''), -9));
 
-        $country = $this->countries->resolve(
+        $country = $order['_resolved_country'] ?? $this->countries->resolve(
             $order['market'] ?? null,
             $integration->country
         );
@@ -149,10 +170,13 @@ class StoreepOrderImporter
             // Blank by design: see the class docblock.
             'status' => null,
             'country' => $country,
+            '_storeep_integration_id' => $integration->id,
+            '_storeep_market' => $order['market'] ?? null,
             'merchant' => $sheet?->sheet_name,
             'sheet_id' => $sheet?->sheet_id,
             'sheet_name' => $sheet?->sheet_name,
             'store_name' => $sheet?->store_name ?: 'RDL1',
         ];
     }
+
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import AppLayout from "@/layouts/app-layout";
-import { Head, usePage } from "@inertiajs/react";
+import { Deferred, Head, usePage } from "@inertiajs/react";
 import { useState, useRef, useEffect } from "react";
 import { type BreadcrumbItem } from "@/types";
 import { csrfHeaders } from "@/lib/csrf";
@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -75,8 +76,23 @@ const BREADCRUMBS: BreadcrumbItem[] = [
   { title: "WhatsApp Chats", href: "/whatsapp" },
 ];
 
+const EMPTY_CHAT_DATA = {
+  conversations: [] as Conversation[],
+  pagination: { current_page: 1, per_page: 50, total: 0, last_page: 0, has_more_pages: false },
+};
+
+function WhatsAppLoadingSkeleton() {
+  return <div className="m-3 grid h-[calc(100vh-120px)] grid-cols-[minmax(0,1fr)] overflow-hidden sm:grid-cols-[20rem_minmax(0,1fr)] rounded-lg border" role="status" aria-label="Loading WhatsApp chats" aria-live="polite">
+    <div className="space-y-3 border-r p-4"><Skeleton className="h-7 w-40" /><Skeleton className="h-10 w-full" />{Array.from({ length: 7 }).map((_, i) => <div key={i} className="flex items-center gap-3 border-b py-3"><Skeleton className="size-11 rounded-full" /><div className="flex-1 space-y-2"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-full" /></div></div>)}</div>
+    <div className="flex flex-col justify-end gap-4 p-6">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className={`h-12 w-2/3 rounded-2xl ${i % 2 ? 'ml-auto' : ''}`} />)}<Skeleton className="h-11 w-full rounded-full" /></div>
+  </div>;
+}
+
 export default function WhatsAppPage() {
-  const { conversations: initialConversations, pagination: initialPagination } = usePage<{ conversations: Conversation[]; pagination: any }>().props;
+  const { chatData } = usePage<{ chatData?: typeof EMPTY_CHAT_DATA }>().props;
+  const initialData = chatData ?? EMPTY_CHAT_DATA;
+  const initialConversations = initialData.conversations;
+  const initialPagination = initialData.pagination;
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
   const [pagination, setPagination] = useState(initialPagination);
   const [selected, setSelected] = useState<Conversation | null>(null);
@@ -118,6 +134,12 @@ export default function WhatsAppPage() {
 
     return Array.from(merged.values()).sort((a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime());
   };
+
+  useEffect(() => {
+    if (!chatData) return;
+    setConversations(chatData.conversations);
+    setPagination(chatData.pagination);
+  }, [chatData]);
 
   // Scroll to bottom when chat changes or messages update
   useEffect(() => {
@@ -245,7 +267,7 @@ export default function WhatsAppPage() {
       case "delivered":
         return <CheckCheck className="w-3 h-3 text-muted-foreground" />;
       case "read":
-        return <CheckCheck className="w-3 h-3 text-blue-500" />;
+        return <CheckCheck className="w-3 h-3 text-muted-foreground" />;
       case "failed":
         return <Clock className="w-3 h-3 text-muted-foreground animate-pulse" />;
       default:
@@ -519,12 +541,14 @@ export default function WhatsAppPage() {
     <AppLayout breadcrumbs={BREADCRUMBS}>
       <Head title="WhatsApp Chats" />
 
+      <Deferred data="chatData" fallback={<WhatsAppLoadingSkeleton />}>
+      {() => <>
       {/* Success Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCheck className="w-5 h-5 text-green-500" />
+              <CheckCheck className="w-5 h-5 text-success" />
               Message Sent
             </DialogTitle>
             <DialogDescription>
@@ -541,7 +565,7 @@ export default function WhatsAppPage() {
 
       {/* Image Lightbox */}
       <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-        <DialogContent className="sm:max-w-3xl p-0 bg-black border-none overflow-hidden">
+        <DialogContent className="sm:max-w-3xl p-0 bg-foreground border-none overflow-hidden">
           {previewImage && (
             <img
               src={previewImage}
@@ -559,7 +583,7 @@ export default function WhatsAppPage() {
           <div className="p-4 border-b bg-background/50 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-green-600" />
+                <MessageSquare className="w-5 h-5 text-success" />
                 WhatsApp Chats
               </h2>
               <Button variant="ghost" size="sm">
@@ -640,7 +664,7 @@ export default function WhatsAppPage() {
                     >
                       <div className="flex items-start gap-3">
                         <Avatar className="w-12 h-12">
-                          <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-600 text-white font-medium">
+                          <AvatarFallback className="bg-gradient-to-br from-success/30 to-success text-success-foreground font-medium">
                             {getInitials(conv.client_name, conv.phone)}
                           </AvatarFallback>
                         </Avatar>
@@ -652,7 +676,7 @@ export default function WhatsAppPage() {
                                 {conv.client_name || conv.phone}
                               </span>
                               {lastMsg?.type === "1" && (
-                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <div className="w-2 h-2 bg-success rounded-full"></div>
                               )}
                             </div>
                             <div className="flex items-center gap-1">
@@ -660,7 +684,7 @@ export default function WhatsAppPage() {
                                 {formatTime(conv.latest_at)}
                               </span>
                               {unreadCount > 0 && (
-                                <Badge variant="default" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs bg-green-600">
+                                <Badge variant="default" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs bg-success">
                                   {unreadCount}
                                 </Badge>
                               )}
@@ -705,7 +729,7 @@ export default function WhatsAppPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-600 text-white">
+                      <AvatarFallback className="bg-gradient-to-br from-success/30 to-success text-success-foreground">
                         {getInitials(selected.client_name, selected.phone)}
                       </AvatarFallback>
                     </Avatar>
@@ -767,7 +791,7 @@ export default function WhatsAppPage() {
                             className={cn(
                               "max-w-[70%] rounded-2xl px-4 py-2 relative",
                               isOutgoing
-                                ? "bg-green-600 text-white rounded-br-md"
+                                ? "bg-success text-success-foreground rounded-br-md"
                                 : "bg-muted rounded-bl-md"
                             )}
                           >
@@ -775,7 +799,7 @@ export default function WhatsAppPage() {
                             <div className="flex items-center justify-end gap-1 mt-1">
                               <span className={cn(
                                 "text-xs",
-                                isOutgoing ? "text-green-100" : "text-muted-foreground"
+                                isOutgoing ? "text-success" : "text-muted-foreground"
                               )}>
                                 {new Date(msg.created_at).toLocaleTimeString('en-US', {
                                   hour: '2-digit',
@@ -784,7 +808,7 @@ export default function WhatsAppPage() {
                                 })}
                               </span>
                               {isOutgoing && (
-                                <div className="text-green-100">
+                                <div className="text-success">
                                   {renderStatusIcon(msg.status)}
                                 </div>
                               )}
@@ -832,7 +856,7 @@ export default function WhatsAppPage() {
                     onClick={handleSend}
                     disabled={!message.trim()}
                     size="sm"
-                    className="mb-1 rounded-full w-10 h-10 p-0 bg-green-600 hover:bg-green-700"
+                    className="mb-1 rounded-full w-10 h-10 p-0 bg-success hover:bg-success"
                   >
                     <Send className="w-4 h-4" />
                   </Button>
@@ -851,6 +875,8 @@ export default function WhatsAppPage() {
           )}
         </div>
       </div>
+      </>}
+      </Deferred>
     </AppLayout>
   );
 }

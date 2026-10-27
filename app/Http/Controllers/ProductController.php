@@ -7,8 +7,10 @@ use Illuminate\Http\Request;
 use App\Models\InventoryLog;
 use App\Models\Barcode;
 use App\Models\Category;
+use App\Models\Deduction;
 use App\Models\Unit;
 use App\Models\Sheet;
+use App\Models\Transfer;
 use App\Support\CountryAccess;
 use App\Services\ProductStockAlertService;
 use Inertia\Inertia;
@@ -39,8 +41,21 @@ class ProductController extends Controller
             'name' => $name,
         ]);
 
+    $inventoryTotals = InventoryLog::query()
+        ->select('product_code')
+        ->selectRaw('SUM(CASE WHEN quantity_added > 0 THEN quantity_added ELSE 0 END) as total_stock_added')
+        ->selectRaw('SUM(CASE WHEN quantity_added < 0 THEN ABS(quantity_added) ELSE 0 END) as total_stock_deducted')
+        ->groupBy('product_code');
+
     $productsQuery = CountryAccess::scopeProducts(
-        Product::query()->with(['user:id,name,store_address,country_id']),
+        Product::query()
+            ->with(['user:id,name,store_address,country_id'])
+            ->leftJoinSub($inventoryTotals, 'inventory_totals', function ($join): void {
+                $join->on('inventory_totals.product_code', '=', 'products.code');
+            })
+            ->select('products.*')
+            ->selectRaw('COALESCE(inventory_totals.total_stock_added, 0) as total_stock_added')
+            ->selectRaw('COALESCE(inventory_totals.total_stock_deducted, 0) as total_stock_deducted'),
         $user
     );
 
@@ -66,14 +81,19 @@ class ProductController extends Controller
         });
     }
 
-    $products = $productsQuery->orderBy('created_at', 'desc')->paginate(50)->withQueryString();
+    $perPage = (int) $request->query('per_page', 10);
+    $perPage = in_array($perPage, [10, 20, 50, 100], true) ? $perPage : 10;
+    $products = Inertia::defer(fn () => $productsQuery->orderBy('created_at', 'desc')->paginate($perPage)->withQueryString());
 
     return Inertia::render('products/index', [
         'products' => $products,
         'categories' => $categories,
         'units' => $units,
         'merchantUsers' => $merchantUsers,
-        'filters' => $request->only(['country', 'search']),
+        'filters' => [
+            ...$request->only(['country', 'search']),
+            'per_page' => $perPage,
+        ],
     ]);
 }
     public function inventoryLogs($productCode)
@@ -83,6 +103,89 @@ class ProductController extends Controller
             ->get();
 
         return response()->json(['logs' => $logs]);
+    }
+
+    public function overview(Request $request, Product $product): JsonResponse
+    {
+        $user = $request->user()->loadMissing('country');
+        $productQuery = CountryAccess::scopeProducts(Product::query(), $user);
+
+        if (strtolower(trim((string) $user->roles)) === 'merchant') {
+            $productQuery->where('merchant', $user->name);
+        }
+
+        $product = $productQuery
+            ->with(['category:id,name', 'unit:id,name,short_code'])
+            ->findOrFail($product->id);
+
+        $transfers = CountryAccess::scopeByCountryName(
+            Transfer::query()->where('product_id', $product->id),
+            $user
+        );
+        $transferSummary = (clone $transfers)
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(quantity), 0) as quantity')
+            ->first();
+        $recentTransfers = (clone $transfers)
+            ->with('agent:id,name')
+            ->latest()
+            ->take(8)
+            ->get(['id', 'agent_id', 'quantity', 'region', 'from', 'date', 'created_at']);
+
+        $deductions = CountryAccess::scopeByCountryName(
+            Deduction::query()->where('product_id', $product->id),
+            $user
+        );
+        $deductionSummary = (clone $deductions)
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(quantity), 0) as quantity')
+            ->first();
+        $recentDeductions = (clone $deductions)
+            ->leftJoin('users', 'users.id', '=', 'deductions.agent_id')
+            ->latest('deductions.created_at')
+            ->take(8)
+            ->get([
+                'deductions.id',
+                'deductions.code',
+                'deductions.quantity',
+                'deductions.reason',
+                'deductions.deducted_by',
+                'deductions.created_at',
+                'users.name as agent_name',
+            ]);
+
+        return response()->json([
+            'product' => $product,
+            'stock' => [
+                'quantity' => (float) $product->quantity,
+                'added' => (float) InventoryLog::query()
+                    ->where('product_code', $product->code)
+                    ->where('quantity_added', '>', 0)
+                    ->sum('quantity_added'),
+                'deducted' => (float) InventoryLog::query()
+                    ->where('product_code', $product->code)
+                    ->where('quantity_added', '<', 0)
+                    ->sum(DB::raw('ABS(quantity_added)')),
+            ],
+            'transfers' => [
+                'count' => (int) $transferSummary->count,
+                'quantity' => (float) $transferSummary->quantity,
+                'recent' => $recentTransfers,
+            ],
+            'deductions' => [
+                'count' => (int) $deductionSummary->count,
+                'quantity' => (float) $deductionSummary->quantity,
+                'recent' => $recentDeductions,
+            ],
+            'inventoryLogs' => InventoryLog::query()
+                ->where('product_code', $product->code)
+                ->latest()
+                ->take(8)
+                ->get(),
+            'barcodes' => Barcode::query()
+                ->where('product_id', $product->id)
+                ->latest('scanned_at')
+                ->take(8)
+                ->get(),
+        ]);
     }
 
     public function updateQuantity(Request $request, Product $product)
@@ -206,7 +309,22 @@ class ProductController extends Controller
             'unit_id' => $request->unit_id ?? 10,
         ];
 
-        Product::create($data);
+        DB::transaction(function () use ($data, $user): void {
+            $product = Product::create($data);
+            $initialQuantity = (float) $product->quantity;
+
+            if ($initialQuantity !== 0.0) {
+                InventoryLog::create([
+                    'product_name' => $product->name,
+                    'product_code' => $product->code,
+                    'quantity_added' => $initialQuantity,
+                    'remaining_qnty' => $initialQuantity,
+                    'added_by' => $user->name,
+                    'product_unit_id' => $product->unit_id,
+                    'date_added' => now(),
+                ]);
+            }
+        });
 
         return redirect()->route('products.index')
             ->with('successMessage', 'Product created successfully!');
@@ -223,7 +341,6 @@ class ProductController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'merchant' => 'nullable|string|max:255',
-            'quantity' => 'required|numeric',
             'buying_price' => 'nullable|numeric',
             'selling_price' => 'nullable|numeric',
             'quantity_alert' => 'nullable|numeric',
@@ -245,7 +362,6 @@ class ProductController extends Controller
             'name' => $request->name,
             'merchant' => $request->merchant,
             'slug' => $slug,
-            'quantity' => $request->quantity,
             'buying_price' => $request->buying_price,
             'selling_price' => $request->selling_price,
             'quantity_alert' => $request->quantity_alert,

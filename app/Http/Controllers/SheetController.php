@@ -48,14 +48,13 @@ class SheetController extends Controller
             $query->whereRaw('LOWER(country) = ?', [$country]);
         }
 
-        $sheets = $query->orderBy('created_at', 'desc')->get();
         $ccUsers = CountryAccess::scopeUsers(
             User::query()->where('roles', 'callcenter1'),
             $user
         )->pluck('name');
 
         return Inertia::render('sheets/index', [
-            'sheets' => $sheets,
+            'sheets' => Inertia::defer(fn () => $query->orderBy('created_at', 'desc')->get()),
             'ccUsers' => $ccUsers,
             'filters' => $request->only(['country']),
         ]);

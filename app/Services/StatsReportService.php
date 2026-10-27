@@ -222,6 +222,23 @@ class StatsReportService
                 'revenue' => round($item->revenue ?? 0, 2),
             ]);
 
+        $monthlyOrdersQuery = (clone $query)->whereNotNull($dateColumn);
+        if ($dateRange === 'all_time') {
+            $monthlyOrdersQuery->where($dateColumn, '>=', Carbon::now()->subMonths(11)->startOfMonth());
+        }
+
+        $ordersByMonth = $monthlyOrdersQuery
+            ->selectRaw("DATE_FORMAT({$dateColumn}, '%Y-%m') as month_key")
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('month_key')
+            ->orderBy('month_key')
+            ->get()
+            ->map(fn ($item) => [
+                'month' => (string) $item->month_key,
+                'orders' => (int) $item->total,
+            ])
+            ->values();
+
         $trendQuery = $this->scopeVisibleOrders($user);
         if ($dateRange !== 'all_time') {
             $dates = $this->getDateRange($dateRange);
@@ -312,6 +329,7 @@ class StatsReportService
             'overduePending' => $overduePending,
             'overduePendingSummary' => $overduePendingSummary,
             'ordersByMerchant' => $ordersByMerchant,
+            'ordersByMonth' => $ordersByMonth,
             'dailyTrend' => $dailyTrend,
             'topProducts' => $topProducts,
             'ordersByCountry' => $ordersByCountry,
@@ -380,7 +398,7 @@ class StatsReportService
     {
         return Cache::remember(
             sprintf(
-                'stats-filter-options:v2:user:%s:role:%s:user-country:%s:session-country:%s:name:%s',
+                'stats-filter-options:v3:user:%s:role:%s:user-country:%s:session-country:%s:name:%s',
                 $user->getKey(),
                 strtolower(trim((string) $user->roles)),
                 strtolower(trim((string) CountryAccess::userCountryName($user))),
@@ -413,6 +431,13 @@ class StatsReportService
                             ->orderBy('country')
                             ->pluck('country')
                     ))->values(),
+                    'productOptions' => $this->scopeVisibleOrders($user)
+                        ->whereNotNull('product_name')
+                        ->where('product_name', '!=', '')
+                        ->select('product_name')
+                        ->distinct()
+                        ->orderBy('product_name')
+                        ->pluck('product_name'),
                 ];
             }
         );
@@ -423,7 +448,7 @@ class StatsReportService
         ksort($filters);
 
         return sprintf(
-            'stats-report:v2:user:%s:role:%s:user-country:%s:session-country:%s:name:%s:%s',
+            'stats-report:v3:user:%s:role:%s:user-country:%s:session-country:%s:name:%s:%s',
             $user->getKey(),
             strtolower(trim((string) $user->roles)),
             strtolower(trim((string) CountryAccess::userCountryName($user))),

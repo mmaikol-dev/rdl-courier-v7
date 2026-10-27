@@ -1,7 +1,7 @@
 "use client";
 
 import AppLayout from "@/layouts/app-layout";
-import { Head, usePage, router } from "@inertiajs/react";
+import { Deferred, Head, usePage, router } from "@inertiajs/react";
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { csrfHeaders } from "@/lib/csrf";
@@ -34,6 +34,7 @@ import {
   AttachmentTitle,
 } from "@/components/ui/attachment"
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircleIcon,
   TrashIcon,
@@ -79,17 +80,6 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-/** Stable hue per agent so every avatar keeps its own colour. */
-function agentHue(name: string) {
-  let hash = 0;
-
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) % 360;
-  }
-
-  return hash;
-}
-
 function StatTile({
   icon,
   label,
@@ -105,8 +95,8 @@ function StatTile({
     <div
       className={cn(
         "rounded-xl border border-transparent bg-muted/50 px-2.5 py-2 transition-colors",
-        tone === "positive" && "border-emerald-500/20 bg-emerald-500/5",
-        tone === "warning" && "border-amber-500/20 bg-amber-500/5"
+        tone === "positive" && "border-success/30 bg-success",
+        tone === "warning" && "border-warning/30 bg-primary"
       )}
     >
       <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -116,12 +106,30 @@ function StatTile({
       <p
         className={cn(
           "mt-0.5 text-sm font-bold tabular-nums",
-          tone === "positive" && "text-emerald-600",
-          tone === "warning" && "text-amber-600"
+          tone === "positive" && "text-success",
+          tone === "warning" && "text-warning-foreground"
         )}
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+function TransferAgentsSkeleton() {
+  return (
+    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))]" role="status" aria-label="Loading agents" aria-live="polite">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div key={index} className="space-y-3 overflow-hidden rounded-2xl border bg-card p-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="size-11 rounded-xl" />
+            <div className="flex-1 space-y-2"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-1/2" /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">{Array.from({ length: 3 }).map((__, tile) => <Skeleton key={tile} className="h-14 rounded-xl" />)}</div>
+          <Skeleton className="h-2 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -571,6 +579,8 @@ export default function TransferIndex() {
 
       {/* Agent Cards */}
       <div className="p-4 sm:p-6">
+        <Deferred data="agents" fallback={<TransferAgentsSkeleton />}>
+        {() => <>
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))]">
           {filteredAgents?.length > 0 ? (
             filteredAgents.map((agent: any) => {
@@ -580,7 +590,6 @@ export default function TransferIndex() {
               const deducted = Number(agent.deductions_sum_quantity || 0);
               const stock = Math.max(units - deducted, 0);
               const stockRatio = units > 0 ? Math.min(1, stock / units) : 0;
-              const hue = agentHue(agent.name || "");
 
               return (
                 <div
@@ -597,14 +606,7 @@ export default function TransferIndex() {
                   className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card text-card-foreground shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                 >
                   <div className="flex items-start gap-3 p-4 pb-3">
-                    <span
-                      className="flex size-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm"
-                      style={{
-                        backgroundImage: `linear-gradient(135deg, hsl(${hue} 72% 54%), hsl(${
-                          (hue + 45) % 360
-                        } 70% 40%))`,
-                      }}
-                    >
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm">
                       {initials}
                     </span>
 
@@ -656,8 +658,8 @@ export default function TransferIndex() {
                         className={cn(
                           "h-full rounded-full transition-all duration-500",
                           stock > 0
-                            ? "bg-gradient-to-r from-emerald-400 to-emerald-500"
-                            : "bg-gradient-to-r from-amber-400 to-amber-500"
+                            ? "bg-gradient-to-r from-success/30 to-success"
+                            : "bg-gradient-to-r from-warning/30 to-primary"
                         )}
                         style={{
                           width: `${units > 0 ? Math.max(stockRatio * 100, 6) : 0}%`,
@@ -693,6 +695,8 @@ export default function TransferIndex() {
             </div>
           )}
         </div>
+        </>}
+        </Deferred>
       </div>
 
       {/* ── Create New Transfer Drawer ── */}
@@ -703,13 +707,13 @@ export default function TransferIndex() {
       >
         <DrawerContent
           className={cn(
-            "flex flex-col bg-white overflow-hidden",
+            "flex flex-col bg-card overflow-hidden",
             "h-[95vh]",
             "md:h-screen md:w-1/2 md:max-w-none md:right-0 md:left-auto md:rounded-l-2xl"
           )}
         >
-          <DrawerHeader className="border-b bg-white sticky top-0 z-10 px-6 py-4">
-            <DrawerTitle className="text-xl font-bold text-gray-800">
+          <DrawerHeader className="border-b bg-card sticky top-0 z-10 px-6 py-4">
+            <DrawerTitle className="text-xl font-bold text-foreground">
               Create New Transfer
             </DrawerTitle>
             <DrawerDescription className="text-sm text-muted-foreground">
@@ -717,16 +721,16 @@ export default function TransferIndex() {
             </DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-gray-50">
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-muted">
             <Card className="shadow-sm">
               <CardContent className="p-6">
-                <h3 className="text-base font-semibold mb-4 text-gray-800">
+                <h3 className="text-base font-semibold mb-4 text-foreground">
                   Transfer Information
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">
-                      Region <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-foreground">
+                      Region <span className="text-destructive">*</span>
                     </label>
                     <Input
                       value={region}
@@ -735,8 +739,8 @@ export default function TransferIndex() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">
-                      From <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-foreground">
+                      From <span className="text-destructive">*</span>
                     </label>
                     <Input
                       value={from}
@@ -745,13 +749,13 @@ export default function TransferIndex() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">
+                    <label className="text-sm font-medium text-foreground">
                       Initiated By
                     </label>
                     <Input
                       readOnly
                       value={auth?.user?.name || ""}
-                      className="bg-gray-100"
+                      className="bg-muted"
                     />
                   </div>
                 </div>
@@ -761,7 +765,7 @@ export default function TransferIndex() {
             <Card className="shadow-sm">
               <CardContent className="p-6">
                 <div className="flex justify-between items-center mb-5">
-                  <h3 className="text-base font-semibold text-gray-800">
+                  <h3 className="text-base font-semibold text-foreground">
                     Products to Transfer
                   </h3>
                   <span className="text-sm text-muted-foreground">
@@ -773,11 +777,11 @@ export default function TransferIndex() {
                   {rows.map((row, i) => (
                     <Card
                       key={i}
-                      className="border border-gray-200 border-l-4 border-l-blue-500 bg-white shadow-none"
+                      className="border border-border border-l-4 border-l-border bg-card shadow-none"
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             Product #{i + 1}
                           </span>
                           <Button
@@ -785,7 +789,7 @@ export default function TransferIndex() {
                             size="sm"
                             onClick={() => removeRow(i)}
                             disabled={rows.length === 1}
-                            className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 px-2"
                           >
                             <TrashIcon className="w-3.5 h-3.5 mr-1" />
                             Remove
@@ -794,8 +798,8 @@ export default function TransferIndex() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
-                              Product <span className="text-red-500">*</span>
+                            <label className="text-sm font-medium text-foreground">
+                              Product <span className="text-destructive">*</span>
                             </label>
                             <SearchableSelect
                               value={row.product_id}
@@ -810,20 +814,20 @@ export default function TransferIndex() {
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
+                            <label className="text-sm font-medium text-foreground">
                               Merchant
                             </label>
                             <Input
                               readOnly
                               value={row.merchant || ""}
                               placeholder="Auto-filled on product select"
-                              className="bg-gray-100 text-gray-600"
+                              className="bg-muted text-muted-foreground"
                             />
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
-                              Quantity <span className="text-red-500">*</span>
+                            <label className="text-sm font-medium text-foreground">
+                              Quantity <span className="text-destructive">*</span>
                             </label>
                             <Input
                               type="number"
@@ -837,8 +841,8 @@ export default function TransferIndex() {
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
-                              Agent <span className="text-red-500">*</span>
+                            <label className="text-sm font-medium text-foreground">
+                              Agent <span className="text-destructive">*</span>
                             </label>
                             <SearchableSelect
                               value={row.agent_id}
@@ -871,7 +875,7 @@ export default function TransferIndex() {
             </Card>
           </div>
 
-          <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex flex-row justify-end gap-2 py-4 px-6">
+          <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex flex-row justify-end gap-2 py-4 px-6">
             <DrawerClose asChild>
               <Button variant="outline" className="min-w-[100px]">
                 Cancel
@@ -880,7 +884,7 @@ export default function TransferIndex() {
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="text-white min-w-[140px]"
+              className="text-primary-foreground min-w-[140px]"
             >
               {isSubmitting ? (
                 <LoaderCircle className="w-4 h-4 animate-spin mr-2" />
@@ -1180,7 +1184,7 @@ export default function TransferIndex() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">
+                  <label className="text-sm font-medium text-foreground">
                     Reason
                   </label>
                   <Input
@@ -1222,7 +1226,7 @@ export default function TransferIndex() {
 
             {returnStep === "done" && returnResult ? (
               <div className="flex flex-col items-center gap-4 py-8 text-center animate-in fade-in-0 zoom-in-95 duration-200">
-                <div className="flex size-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+                <div className="flex size-16 items-center justify-center rounded-full bg-success text-success">
                   <CircleCheckIcon className="size-8" />
                 </div>
                 <div>

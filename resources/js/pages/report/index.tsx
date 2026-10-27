@@ -265,30 +265,30 @@ export default function OrdersFilterCard({
       <Head title="Generate Report" />
 
       <div className="space-y-6 p-4 sm:p-6">
-        <section className="overflow-hidden rounded-3xl border bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 text-white shadow-xl">
+        <section className="overflow-hidden rounded-3xl border bg-gradient-to-r from-primary via-primary to-success text-primary-foreground shadow-xl">
           <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
                 Generate clean order reports
               </h1>
-              <p className="mt-1 text-sm text-slate-200/85">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Filter by date basis, merchant, and status, preview the matching orders, then export to
                 Excel.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2 lg:justify-end">
-              <div className="rounded-2xl border border-white/10 bg-white/8 px-3 py-2 backdrop-blur">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Merchants</p>
-                <p className="text-sm font-semibold text-white">{merchants.length}</p>
+              <div className="rounded-2xl border border-primary-foreground/10 bg-background/10 px-3 py-2 backdrop-blur">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">Merchants</p>
+                <p className="text-sm font-semibold text-primary-foreground">{merchants.length}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/8 px-3 py-2 backdrop-blur">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Statuses</p>
-                <p className="text-sm font-semibold text-white">{statuses.length}</p>
+              <div className="rounded-2xl border border-primary-foreground/10 bg-background/10 px-3 py-2 backdrop-blur">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">Statuses</p>
+                <p className="text-sm font-semibold text-primary-foreground">{statuses.length}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/8 px-3 py-2 backdrop-blur">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Output</p>
-                <p className="text-sm font-semibold text-white">Excel</p>
+              <div className="rounded-2xl border border-primary-foreground/10 bg-background/10 px-3 py-2 backdrop-blur">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">Output</p>
+                <p className="text-sm font-semibold text-primary-foreground">Excel</p>
               </div>
             </div>
           </div>
@@ -296,7 +296,7 @@ export default function OrdersFilterCard({
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card className="overflow-hidden border-0 shadow-lg">
-            <CardHeader className="border-b bg-slate-50/80">
+            <CardHeader className="border-b bg-muted">
               <CardTitle className="text-xl">Report Filters</CardTitle>
               <CardDescription>
                 Choose whether the date window filters on delivery date or order date, then preview
@@ -305,7 +305,7 @@ export default function OrdersFilterCard({
             </CardHeader>
             <CardContent className="space-y-6 p-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Filter dates by</label>
+                <label className="text-sm font-medium text-foreground">Filter dates by</label>
                 <ToggleGroup
                   type="single"
                   variant="outline"
@@ -324,7 +324,7 @@ export default function OrdersFilterCard({
                     </ToggleGroupItem>
                   ))}
                 </ToggleGroup>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   The selected basis controls which order timestamp the date range below is applied
                   to. Both dates are still included as columns in the export.
                 </p>
@@ -332,7 +332,7 @@ export default function OrdersFilterCard({
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">{dateFieldLabel}</label>
+                  <label className="text-sm font-medium text-foreground">{dateFieldLabel}</label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -372,9 +372,9 @@ export default function OrdersFilterCard({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Merchant</label>
+                  <label className="text-sm font-medium text-foreground">Merchant</label>
                   {isMerchantUser ? (
-                    <div className="flex min-h-11 items-center rounded-lg border bg-slate-50 px-3 py-2 text-sm">
+                    <div className="flex min-h-11 items-center rounded-lg border bg-muted px-3 py-2 text-sm">
                       {merchant ?? "Your merchant"}
                     </div>
                   ) : (
@@ -426,7 +426,7 @@ export default function OrdersFilterCard({
                     </Popover>
                   )}
                   {isMerchantUser ? (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       Your account is limited to your own merchant name or username.
                     </p>
                   ) : null}
@@ -434,7 +434,7 @@ export default function OrdersFilterCard({
               </div>
 
               <div className="space-y-3">
-                <label className="text-sm font-medium text-slate-700">Status</label>
+                <label className="text-sm font-medium text-foreground">Status</label>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant={allStatusesSelected ? "default" : "outline"}
@@ -445,7 +445,7 @@ export default function OrdersFilterCard({
                     }}
                     className={cn(
                       "rounded-full px-4",
-                      allStatusesSelected && "bg-slate-900 text-white hover:bg-slate-800"
+                      allStatusesSelected && "bg-primary text-primary-foreground hover:bg-primary"
                     )}
                   >
                     {allStatusesSelected ? <Check className="h-4 w-4" /> : null}
@@ -465,7 +465,7 @@ export default function OrdersFilterCard({
                         }}
                         className={cn(
                           "rounded-full px-4",
-                          selected && "bg-slate-900 text-white hover:bg-slate-800"
+                          selected && "bg-primary text-primary-foreground hover:bg-primary"
                         )}
                       >
                         {selected ? <Check className="h-4 w-4" /> : null}
@@ -474,7 +474,7 @@ export default function OrdersFilterCard({
                     );
                   })}
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Leave every status unselected, or pick &quot;All statuses&quot;, to include orders in
                   any status — including orders with no status set.
                 </p>
@@ -497,27 +497,27 @@ export default function OrdersFilterCard({
           </Card>
 
           <Card className="border-0 shadow-lg">
-            <CardHeader className="border-b bg-emerald-50/70">
+            <CardHeader className="border-b bg-success/10">
               <CardTitle className="text-xl">Selection Summary</CardTitle>
               <CardDescription>Review the active export scope before downloading.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-6">
-              <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="rounded-2xl border bg-muted p-4">
                 <div className="flex items-center gap-3">
-                  <CalendarIcon className="h-5 w-5 text-emerald-600" />
+                  <CalendarIcon className="h-5 w-5 text-success" />
                   <div>
-                    <p className="text-sm font-medium text-slate-900">Date basis</p>
-                    <p className="text-sm text-slate-500">{dateFieldLabel}</p>
+                    <p className="text-sm font-medium text-foreground">Date basis</p>
+                    <p className="text-sm text-muted-foreground">{dateFieldLabel}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="rounded-2xl border bg-muted p-4">
                 <div className="flex items-center gap-3">
-                  <CalendarIcon className="h-5 w-5 text-emerald-600" />
+                  <CalendarIcon className="h-5 w-5 text-success" />
                   <div>
-                    <p className="text-sm font-medium text-slate-900">{dateFieldLabel} range</p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm font-medium text-foreground">{dateFieldLabel} range</p>
+                    <p className="text-sm text-muted-foreground">
                       {dateRange?.from
                         ? dateRange?.to
                           ? `${format(dateRange.from, "LLL dd, y")} to ${format(
@@ -531,39 +531,39 @@ export default function OrdersFilterCard({
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-slate-50 p-4">
+              <div className="rounded-2xl border bg-muted p-4">
                 <div className="flex items-center gap-3">
-                  <Store className="h-5 w-5 text-sky-600" />
+                  <Store className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="text-sm font-medium text-slate-900">Merchant</p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm font-medium text-foreground">Merchant</p>
+                    <p className="text-sm text-muted-foreground">
                       {applied?.merchant ?? merchant ?? "All merchants"}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-slate-50 p-4">
-                <p className="text-sm font-medium text-slate-900">Statuses</p>
+              <div className="rounded-2xl border bg-muted p-4">
+                <p className="text-sm font-medium text-foreground">Statuses</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {status.length > 0 ? (
                     status.map((item) => (
                       <span
                         key={item}
-                        className="inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white"
+                        className="inline-flex rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
                       >
                         {item}
                       </span>
                     ))
                   ) : (
-                    <span className="text-sm text-slate-500">All statuses</span>
+                    <span className="text-sm text-muted-foreground">All statuses</span>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-dashed bg-white p-4">
-                <p className="text-sm font-medium text-slate-900">Export format</p>
-                <p className="mt-1 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed bg-card p-4">
+                <p className="text-sm font-medium text-foreground">Export format</p>
+                <p className="mt-1 text-sm text-muted-foreground">
                   The report downloads as an Excel file for sharing and reconciliation.
                 </p>
               </div>
@@ -572,7 +572,7 @@ export default function OrdersFilterCard({
         </div>
 
         <Card className="overflow-hidden border-0 shadow-lg">
-          <CardHeader className="border-b bg-slate-50/80">
+          <CardHeader className="border-b bg-muted">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="text-xl">Matching orders</CardTitle>
@@ -603,12 +603,12 @@ export default function OrdersFilterCard({
           <CardContent className="p-0">
             {!previewed ? (
               <div className="px-6 py-14 text-center">
-                <FileSpreadsheetIcon className="mx-auto h-10 w-10 text-slate-300" />
-                <p className="mt-3 text-sm text-slate-500">No preview yet.</p>
+                <FileSpreadsheetIcon className="mx-auto h-10 w-10 text-muted-foreground" />
+                <p className="mt-3 text-sm text-muted-foreground">No preview yet.</p>
               </div>
             ) : rows.length === 0 ? (
               <div className="px-6 py-14 text-center">
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   No orders match these filters. Widen the date range or clear some statuses.
                 </p>
               </div>
@@ -616,7 +616,7 @@ export default function OrdersFilterCard({
               <>
                 <div className="max-h-[32rem] overflow-auto">
                   <Table>
-                    <TableHeader className="bg-slate-50 sticky top-0 z-10">
+                    <TableHeader className="bg-muted sticky top-0 z-10">
                       <TableRow>
                         <TableHead className="w-28">Order No</TableHead>
                         <TableHead className="w-28">Order Date</TableHead>
@@ -648,11 +648,11 @@ export default function OrdersFilterCard({
                           </TableCell>
                           <TableCell>
                             {row.status ? (
-                              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                              <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
                                 {row.status}
                               </span>
                             ) : (
-                              <span className="text-xs text-slate-400">New</span>
+                              <span className="text-xs text-muted-foreground">New</span>
                             )}
                           </TableCell>
                         </TableRow>

@@ -289,7 +289,7 @@ export default function AgentTransfers() {
           </Button>
           <Button
             onClick={() => setOpenTransferModal(true)}
-            className="flex items-center gap-2 text-white"
+            className="flex items-center gap-2 text-primary-foreground"
           >
             <PlusCircleIcon className="w-4 h-4" />
             New Transfer
@@ -363,7 +363,7 @@ export default function AgentTransfers() {
                     filtered.map((item: any, index: number) => (
                       <TableRow
                         key={`${item.product_id}-${item.agent_id}`}
-                        className="hover:bg-gray-50"
+                        className="hover:bg-muted"
                       >
                         <TableCell>{index + 1}</TableCell>
                         <TableCell className="font-medium">
@@ -389,12 +389,12 @@ export default function AgentTransfers() {
                             {Number(item.total_quantity) - Number(item.total_deducted || 0)} units
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-gray-600">
+                        <TableCell className="text-sm text-muted-foreground">
                           {item.first_transfer_date
                             ? new Date(item.first_transfer_date).toLocaleDateString()
                             : "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-gray-600">
+                        <TableCell className="text-sm text-muted-foreground">
                           {item.last_transfer_date
                             ? new Date(item.last_transfer_date).toLocaleDateString()
                             : "—"}
@@ -461,13 +461,13 @@ export default function AgentTransfers() {
       >
         <DrawerContent
           className={cn(
-            "flex flex-col bg-white overflow-hidden",
+            "flex flex-col bg-card overflow-hidden",
             "h-[95vh]",
             "md:h-screen md:w-1/2 md:max-w-none md:right-0 md:left-auto md:rounded-l-2xl"
           )}
         >
-          <DrawerHeader className="border-b bg-white sticky top-0 z-10 px-6 py-4">
-            <DrawerTitle className="text-xl font-bold text-gray-800">
+          <DrawerHeader className="border-b bg-card sticky top-0 z-10 px-6 py-4">
+            <DrawerTitle className="text-xl font-bold text-foreground">
               New Transfer — {agent?.name}
             </DrawerTitle>
             <DrawerDescription className="text-sm text-muted-foreground">
@@ -475,16 +475,16 @@ export default function AgentTransfers() {
             </DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-gray-50">
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-muted">
             <Card className="shadow-sm">
               <CardContent className="p-6">
-                <h3 className="text-base font-semibold mb-4 text-gray-800">
+                <h3 className="text-base font-semibold mb-4 text-foreground">
                   Transfer Information
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">
-                      Region <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-foreground">
+                      Region <span className="text-destructive">*</span>
                     </label>
                     <Input
                       value={region}
@@ -493,8 +493,8 @@ export default function AgentTransfers() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">
-                      From <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-foreground">
+                      From <span className="text-destructive">*</span>
                     </label>
                     <Input
                       value={fromField}
@@ -503,13 +503,13 @@ export default function AgentTransfers() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">
+                    <label className="text-sm font-medium text-foreground">
                       Initiated By
                     </label>
                     <Input
                       readOnly
                       value={auth?.user?.name || ""}
-                      className="bg-gray-100"
+                      className="bg-muted"
                     />
                   </div>
                 </div>
@@ -519,7 +519,7 @@ export default function AgentTransfers() {
             <Card className="shadow-sm">
               <CardContent className="p-6">
                 <div className="flex justify-between items-center mb-5">
-                  <h3 className="text-base font-semibold text-gray-800">
+                  <h3 className="text-base font-semibold text-foreground">
                     Products to Transfer
                   </h3>
                   <span className="text-sm text-muted-foreground">
@@ -531,11 +531,11 @@ export default function AgentTransfers() {
                   {rows.map((row, i) => (
                     <Card
                       key={i}
-                      className="border border-gray-200 border-l-4 border-l-blue-500 bg-white shadow-none"
+                      className="border border-border border-l-4 border-l-border bg-card shadow-none"
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             Product #{i + 1}
                           </span>
                           <Button
@@ -543,7 +543,7 @@ export default function AgentTransfers() {
                             size="sm"
                             onClick={() => removeRow(i)}
                             disabled={rows.length === 1}
-                            className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 px-2"
                           >
                             <TrashIcon className="w-3.5 h-3.5 mr-1" />
                             Remove
@@ -552,8 +552,8 @@ export default function AgentTransfers() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
-                              Product <span className="text-red-500">*</span>
+                            <label className="text-sm font-medium text-foreground">
+                              Product <span className="text-destructive">*</span>
                             </label>
                             <SearchableSelect
                               value={row.product_id}
@@ -568,20 +568,20 @@ export default function AgentTransfers() {
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
+                            <label className="text-sm font-medium text-foreground">
                               Merchant
                             </label>
                             <Input
                               readOnly
                               value={row.merchant || ""}
                               placeholder="Auto-filled on product select"
-                              className="bg-gray-100 text-gray-600"
+                              className="bg-muted text-muted-foreground"
                             />
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-gray-700">
-                              Quantity <span className="text-red-500">*</span>
+                            <label className="text-sm font-medium text-foreground">
+                              Quantity <span className="text-destructive">*</span>
                             </label>
                             <Input
                               type="number"
@@ -613,7 +613,7 @@ export default function AgentTransfers() {
             </Card>
           </div>
 
-          <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex flex-row justify-end gap-2 py-4 px-6">
+          <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex flex-row justify-end gap-2 py-4 px-6">
             <DrawerClose asChild>
               <Button variant="outline" className="min-w-[100px]">
                 Cancel
@@ -622,7 +622,7 @@ export default function AgentTransfers() {
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="text-white min-w-[140px]"
+              className="text-primary-foreground min-w-[140px]"
             >
               {isSubmitting ? (
                 <LoaderCircle className="w-4 h-4 animate-spin mr-2" />

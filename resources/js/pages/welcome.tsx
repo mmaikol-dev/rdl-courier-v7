@@ -24,7 +24,7 @@ export default function Login({ status, canResetPassword }: LoginProps) {
             {status && (
                 <div
                     role="status"
-                    className="mb-6 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-400"
+                    className="mb-6 flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm font-medium text-success dark:border-success/30 dark:bg-success dark:text-success"
                 >
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
                     {status}

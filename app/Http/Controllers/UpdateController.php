@@ -34,11 +34,11 @@ class UpdateController extends Controller
         }
 
         return Inertia::render('updates/index', [
-            'updates' => $updatesQuery
+            'updates' => Inertia::defer(fn () => $updatesQuery
                 ->select(['id', 'order_no', 'sheet_id', 'sheet_name', 'merchant', 'status', 'updated_at'])
                 ->orderBy('updated_at')
                 ->limit(500)
-                ->get(),
+                ->get()),
             'filters' => $request->only(['search', 'country']),
         ]);
     }

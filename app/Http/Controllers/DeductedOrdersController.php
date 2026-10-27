@@ -14,15 +14,32 @@ class DeductedOrdersController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user()?->loadMissing('country');
-        $selectedMerchant = trim((string) $request->string('merchant'));
+        $role = strtolower(trim((string) ($user?->roles ?? '')));
+        $isGod = $role === 'g.o.d';
+        $isMerchant = $role === 'merchant';
+        $selectedMerchant = $isMerchant ? trim((string) ($user?->name ?? '')) : trim((string) $request->string('merchant'));
         $search = trim((string) $request->string('search'));
 
-        $baseQuery = CountryAccess::scopeByCountryName(
-            SheetOrder::query(),
-            $user
-        )->whereNotNull('inventory_deducted_at');
+        $baseQuery = SheetOrder::query()->whereNotNull('inventory_deducted_at');
 
-        if ($selectedMerchant !== '') {
+        if (! $isGod) {
+            $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
+            if ($countryName === null) {
+                $baseQuery->whereRaw('1 = 0');
+            } else {
+                $baseQuery->whereRaw('LOWER(TRIM(country)) = ?', [$countryName]);
+            }
+        }
+
+        if ($isMerchant) {
+            if ($selectedMerchant === '') {
+                $baseQuery->whereRaw('1 = 0');
+            } else {
+                $baseQuery->whereRaw('LOWER(TRIM(merchant)) = ?', [mb_strtolower($selectedMerchant)]);
+            }
+        }
+
+        if (! $isMerchant && $selectedMerchant !== '') {
             $baseQuery->where('merchant', $selectedMerchant);
         }
 
@@ -36,12 +53,14 @@ class DeductedOrdersController extends Controller
             });
         }
 
-        $merchantOptions = (clone $baseQuery)
-            ->select('merchant')
-            ->distinct()
-            ->orderBy('merchant')
-            ->pluck('merchant')
-            ->values();
+        $merchantOptions = $isMerchant
+            ? collect($selectedMerchant !== '' ? [$selectedMerchant] : [])
+            : (clone $baseQuery)
+                ->select('merchant')
+                ->distinct()
+                ->orderBy('merchant')
+                ->pluck('merchant')
+                ->values();
 
         $summaryQuery = clone $baseQuery;
 
@@ -56,13 +75,31 @@ class DeductedOrdersController extends Controller
         $orders = (clone $baseQuery)
             ->orderByDesc('inventory_deducted_at')
             ->paginate(50)
-            ->withQueryString()
-            ->through(function (SheetOrder $order) {
-                $product = $order->inventory_product_id
-                    ? Product::with('category')->find($order->inventory_product_id)
-                    : null;
+            ->withQueryString();
 
-                return [
+        $productIds = $orders->getCollection()
+            ->pluck('inventory_product_id')
+            ->filter()
+            ->unique()
+            ->values();
+        $productsQuery = Product::with('category')->whereIn('id', $productIds);
+        if (! $isGod) {
+            $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
+            if ($countryName === null) {
+                $productsQuery->whereRaw('1 = 0');
+            } else {
+                $productsQuery->whereRaw('LOWER(TRIM(products.country)) = ?', [$countryName]);
+            }
+        }
+        if ($isMerchant && $selectedMerchant !== '') {
+            $productsQuery->whereRaw('LOWER(TRIM(products.merchant)) = ?', [mb_strtolower($selectedMerchant)]);
+        }
+        $linkedProducts = $productsQuery->get()->keyBy('id');
+
+        $orders->through(function (SheetOrder $order) use ($linkedProducts) {
+            $product = $linkedProducts->get($order->inventory_product_id);
+
+            return [
                     'id' => $order->id,
                     'order_no' => $order->order_no,
                     'client_name' => $order->client_name,
@@ -84,12 +121,13 @@ class DeductedOrdersController extends Controller
                         'merchant' => $product->merchant,
                         'category' => $product->category?->name,
                     ] : null,
-                ];
-            });
+            ];
+        });
 
         return Inertia::render('deducted-orders/index', [
             'merchantOptions' => $merchantOptions,
             'selectedMerchant' => $selectedMerchant ?: null,
+            'isMerchant' => $isMerchant,
             'search' => $search ?: null,
             'summary' => [
                 'totalOrders' => $totalOrders,

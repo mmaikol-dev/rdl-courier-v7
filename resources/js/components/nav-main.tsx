@@ -33,8 +33,12 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
                                 aria-busy={pendingHref === item.href ? true : undefined}
                             >
                                 {item.icon &&
-                                    (pendingHref === item.href ? <Loader2 className="animate-spin" /> : <item.icon />)}
-                                <span>{item.title}</span>
+                                    (pendingHref === item.href ? (
+                                        <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />
+                                    ) : (
+                                        <item.icon className="size-4" strokeWidth={2.25} />
+                                    ))}
+                                <span className="text-sm font-semibold">{item.title}</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>

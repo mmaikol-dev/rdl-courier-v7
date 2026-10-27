@@ -410,7 +410,7 @@ export default function RequisitionsIndex() {
             <Head title="Requisitions" />
 
             <div className="flex items-center justify-between gap-2 p-3 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-800">Requisitions</h1>
+                <h1 className="text-xl font-bold text-foreground">Requisitions</h1>
 
                 <div className="flex items-center gap-2">
                     <Button
@@ -429,7 +429,7 @@ export default function RequisitionsIndex() {
 
                     <Button
                         onClick={() => setOpenRequisitionModal(true)}
-                        className="flex items-center gap-2 text-white"
+                        className="flex items-center gap-2 text-primary-foreground"
                     >
                         <PlusCircleIcon className="w-4 h-4" />
                         New Requisition
@@ -443,13 +443,13 @@ export default function RequisitionsIndex() {
                     <Card>
                         <CardContent className="p-3">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-medium text-gray-700">Active Filters:</span>
+                                <span className="text-sm font-medium text-foreground">Active Filters:</span>
 
                                 {filterStatus && (
                                     <Badge variant="secondary" className="flex items-center gap-1">
                                         Status: {filterStatus}
                                         <XCircleIcon
-                                            className="w-3 h-3 cursor-pointer hover:text-red-600"
+                                            className="w-3 h-3 cursor-pointer hover:text-destructive"
                                             onClick={() => removeFilter('status')}
                                         />
                                     </Badge>
@@ -459,7 +459,7 @@ export default function RequisitionsIndex() {
                                     <Badge variant="secondary" className="flex items-center gap-1">
                                         Category: {categories?.find((c: any) => String(c.id) === filterCategory)?.name}
                                         <XCircleIcon
-                                            className="w-3 h-3 cursor-pointer hover:text-red-600"
+                                            className="w-3 h-3 cursor-pointer hover:text-destructive"
                                             onClick={() => removeFilter('category_id')}
                                         />
                                     </Badge>
@@ -469,7 +469,7 @@ export default function RequisitionsIndex() {
                                     <Badge variant="secondary" className="flex items-center gap-1">
                                         Date: {dateRange.from ? format(dateRange.from, "MMM dd, yyyy") : "..."} - {dateRange.to ? format(dateRange.to, "MMM dd, yyyy") : "..."}
                                         <XCircleIcon
-                                            className="w-3 h-3 cursor-pointer hover:text-red-600"
+                                            className="w-3 h-3 cursor-pointer hover:text-destructive"
                                             onClick={() => removeFilter('date_range')}
                                         />
                                     </Badge>
@@ -479,7 +479,7 @@ export default function RequisitionsIndex() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={clearFilters}
-                                    className="text-xs text-red-600 hover:text-red-700"
+                                    className="text-xs text-destructive hover:text-destructive"
                                 >
                                     Clear All
                                 </Button>
@@ -510,7 +510,7 @@ export default function RequisitionsIndex() {
                             <TableBody>
                                 {requisitionRows.length > 0 ? (
                                     requisitionRows.map((req: any, index: number) => (
-                                        <TableRow key={req.id} className="hover:bg-gray-50">
+                                        <TableRow key={req.id} className="hover:bg-muted">
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell className="font-medium">{req.requisition_number}</TableCell>
                                             <TableCell>{req.title}</TableCell>
@@ -519,7 +519,7 @@ export default function RequisitionsIndex() {
                                                 KES {parseFloat(req.total_amount).toFixed(2)}
                                             </TableCell>
                                             <TableCell>{getStatusBadge(req.status)}</TableCell>
-                                            <TableCell className="text-sm text-gray-600">
+                                            <TableCell className="text-sm text-muted-foreground">
                                                 {new Date(req.requisition_date).toLocaleDateString()}
                                             </TableCell>
                                             <TableCell>{req.user?.name}</TableCell>
@@ -540,7 +540,7 @@ export default function RequisitionsIndex() {
                                                             size="sm"
                                                             onClick={() => updateStatus(req.id, 'paid')}
                                                             disabled={statusLoadingId === req.id}
-                                                            className="text-white"
+                                                            className="text-primary-foreground"
                                                         >
                                                             {statusLoadingId === req.id && <LoaderCircle className="w-4 h-4 animate-spin" />}
                                                             {statusLoadingId === req.id ? "Updating..." : "Mark Paid"}
@@ -552,7 +552,7 @@ export default function RequisitionsIndex() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={9} className="text-center text-gray-500 py-6">
+                                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
                                             {hasActiveFilters
                                                 ? "No requisitions found matching your filters."
                                                 : "No requisitions found."}
@@ -571,25 +571,25 @@ export default function RequisitionsIndex() {
                     className={`
             md:max-w-[900px] w-full h-[90vh] md:h-screen
             md:right-0 md:left-auto md:rounded-l-2xl
-            flex flex-col overflow-hidden bg-white
+            flex flex-col overflow-hidden bg-card
           `}
                 >
-                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
-                        <DrawerTitle className="text-xl font-bold text-gray-800">Create New Requisition</DrawerTitle>
+                    <DrawerHeader className="border-b bg-card sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-xl font-bold text-foreground">Create New Requisition</DrawerTitle>
                         <DrawerDescription className="text-sm text-muted-foreground">
                             Fill in the details below to create a requisition request.
                         </DrawerDescription>
                     </DrawerHeader>
 
-                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-muted">
                         <Card className="shadow-sm">
                             <CardContent className="p-4 sm:p-6">
-                                <h3 className="text-base sm:text-lg font-semibold mb-4 text-gray-800">
+                                <h3 className="text-base sm:text-lg font-semibold mb-4 text-foreground">
                                     Requisition Information
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-700">Category *</label>
+                                        <label className="text-sm font-medium text-foreground">Category *</label>
                                         <SearchableSelect
                                             value={formData.category_id}
                                             onChange={(value) => setFormData({ ...formData, category_id: value })}
@@ -601,7 +601,7 @@ export default function RequisitionsIndex() {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-700">Date *</label>
+                                        <label className="text-sm font-medium text-foreground">Date *</label>
                                         <Input
                                             type="date"
                                             value={formData.requisition_date}
@@ -610,7 +610,7 @@ export default function RequisitionsIndex() {
                                     </div>
 
                                     <div className="space-y-2 sm:col-span-2">
-                                        <label className="text-sm font-medium text-gray-700">User *</label>
+                                        <label className="text-sm font-medium text-foreground">User *</label>
                                         <SearchableSelect
                                             value={formData.user_id}
                                             onChange={(value) => setFormData({ ...formData, user_id: value })}
@@ -622,7 +622,7 @@ export default function RequisitionsIndex() {
                                     </div>
 
                                     <div className="space-y-2 sm:col-span-2">
-                                        <label className="text-sm font-medium text-gray-700">Description</label>
+                                        <label className="text-sm font-medium text-foreground">Description</label>
                                         <Textarea
                                             value={formData.description}
                                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -632,8 +632,8 @@ export default function RequisitionsIndex() {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-700">Requested By</label>
-                                        <Input readOnly value={auth?.user?.name || ""} className="bg-gray-100" />
+                                        <label className="text-sm font-medium text-foreground">Requested By</label>
+                                        <Input readOnly value={auth?.user?.name || ""} className="bg-muted" />
                                     </div>
                                 </div>
                             </CardContent>
@@ -642,7 +642,7 @@ export default function RequisitionsIndex() {
                         <Card className="shadow-sm">
                             <CardContent className="p-4 sm:p-6">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-base sm:text-lg font-semibold text-gray-800">
+                                    <h3 className="text-base sm:text-lg font-semibold text-foreground">
                                         Requisition Items
                                     </h3>
                                     <span className="text-xs sm:text-sm text-muted-foreground">
@@ -659,21 +659,21 @@ export default function RequisitionsIndex() {
                                         <Card
                                             key={i}
                                             className={cn(
-                                                "border-l-4 bg-white",
+                                                "border-l-4 bg-card",
                                                 isDuplicateItem
-                                                    ? "border-l-red-500 border-red-200 bg-red-50/40"
-                                                    : "border-l-blue-500"
+                                                    ? "border-l-destructive/30 border-destructive/30 bg-destructive/10"
+                                                    : "border-l-border"
                                             )}
                                         >
                                             <CardContent className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                                                     <div className="space-y-2 md:col-span-2">
                                                         <div className="flex items-center gap-2">
-                                                            <label className="text-sm font-medium text-gray-700">Item Name *</label>
+                                                            <label className="text-sm font-medium text-foreground">Item Name *</label>
                                                             {isDuplicateItem && (
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
-                                                                        <span className="inline-flex cursor-help items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                                                        <span className="inline-flex cursor-help items-center rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
                                                                             Duplicate
                                                                         </span>
                                                                     </TooltipTrigger>
@@ -689,12 +689,12 @@ export default function RequisitionsIndex() {
                                                             value={item.item_name}
                                                             onChange={(e) => handleItemChange(i, "item_name", e.target.value)}
                                                             placeholder="Enter item name"
-                                                            className={isDuplicateItem ? "border-red-400 bg-red-50 text-red-700 placeholder:text-red-400" : ""}
+                                                            className={isDuplicateItem ? "border-destructive/30 bg-destructive/10 text-destructive placeholder:text-destructive" : ""}
                                                         />
                                                     </div>
 
                                                     <div className="space-y-2">
-                                                        <label className="text-sm font-medium text-gray-700">Quantity *</label>
+                                                        <label className="text-sm font-medium text-foreground">Quantity *</label>
                                                         <Input
                                                             type="number"
                                                             min="1"
@@ -705,7 +705,7 @@ export default function RequisitionsIndex() {
                                                     </div>
 
                                                     <div className="space-y-2">
-                                                        <label className="text-sm font-medium text-gray-700">Unit Price *</label>
+                                                        <label className="text-sm font-medium text-foreground">Unit Price *</label>
                                                         <Input
                                                             type="number"
                                                             min="0"
@@ -727,7 +727,7 @@ export default function RequisitionsIndex() {
                                                 </div>
 
                                                 <div className="mt-3 space-y-2">
-                                                    <label className="text-sm font-medium text-gray-700">Description</label>
+                                                    <label className="text-sm font-medium text-foreground">Description</label>
                                                     <Textarea
                                                         value={item.description}
                                                         onChange={(e) => handleItemChange(i, "description", e.target.value)}
@@ -737,7 +737,7 @@ export default function RequisitionsIndex() {
                                                 </div>
 
                                                 <div className="mt-3 text-right">
-                                                    <span className="text-sm text-gray-600">
+                                                    <span className="text-sm text-muted-foreground">
                                                         Subtotal: <span className="font-semibold">KES {(item.quantity * item.unit_price).toFixed(2)}</span>
                                                     </span>
                                                 </div>
@@ -751,7 +751,7 @@ export default function RequisitionsIndex() {
                                         <PlusCircleIcon className="w-4 h-4" /> Add Item
                                     </Button>
                                     <div className="text-right">
-                                        <span className="text-lg font-bold text-gray-800">
+                                        <span className="text-lg font-bold text-foreground">
                                             Total: KES {calculateTotal().toFixed(2)}
                                         </span>
                                     </div>
@@ -760,9 +760,9 @@ export default function RequisitionsIndex() {
                         </Card>
                     </div>
 
-                    <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
+                    <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
                         <DrawerClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DrawerClose>
-                        <Button onClick={handleSubmit} disabled={isSubmitting} className="text-white">
+                        <Button onClick={handleSubmit} disabled={isSubmitting} className="text-primary-foreground">
                             {isSubmitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
                             {isSubmitting ? "Submitting..." : "Submit Requisition"}
                         </Button>
@@ -775,18 +775,18 @@ export default function RequisitionsIndex() {
                 <DrawerContent className={`
             md:max-w-[500px] w-full h-[90vh] md:h-screen
             md:right-0 md:left-auto md:rounded-l-2xl
-            flex flex-col overflow-hidden bg-white
+            flex flex-col overflow-hidden bg-card
           `}>
-                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
-                        <DrawerTitle className="text-lg font-semibold text-gray-800">Filter Requisitions</DrawerTitle>
-                        <DrawerDescription className="text-sm text-gray-500">
+                    <DrawerHeader className="border-b bg-card sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-lg font-semibold text-foreground">Filter Requisitions</DrawerTitle>
+                        <DrawerDescription className="text-sm text-muted-foreground">
                             Filter by status, category, requested user, or date range
                         </DrawerDescription>
                     </DrawerHeader>
 
                     <div className="p-6 space-y-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Status</label>
+                            <label className="text-sm font-medium text-foreground">Status</label>
                             <SearchableSelect
                                 value={filterStatus}
                                 onChange={setFilterStatus}
@@ -798,7 +798,7 @@ export default function RequisitionsIndex() {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Category</label>
+                            <label className="text-sm font-medium text-foreground">Category</label>
                             <SearchableSelect
                                 value={filterCategory}
                                 onChange={setFilterCategory}
@@ -810,7 +810,7 @@ export default function RequisitionsIndex() {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Date Range</label>
+                            <label className="text-sm font-medium text-foreground">Date Range</label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
@@ -849,7 +849,7 @@ export default function RequisitionsIndex() {
                         </div>
                     </div>
 
-                    <DrawerFooter className="border-t flex justify-between gap-2 bg-white p-4">
+                    <DrawerFooter className="border-t flex justify-between gap-2 bg-card p-4">
                         <Button
                             variant="outline"
                             onClick={clearFilters}
@@ -865,7 +865,7 @@ export default function RequisitionsIndex() {
                             <Button
                                 onClick={applyFilters}
                                 disabled={isFiltering}
-                                className="text-white"
+                                className="text-primary-foreground"
                             >
                                 {isFiltering && <LoaderCircle className="w-4 h-4 animate-spin" />}
                                 {isFiltering ? "Applying..." : "Apply Filters"}
@@ -890,11 +890,11 @@ export default function RequisitionsIndex() {
                     className={`
             md:max-w-[900px] w-full h-[90vh] md:h-screen
             md:right-0 md:left-auto md:rounded-l-2xl
-            flex flex-col overflow-hidden bg-white
+            flex flex-col overflow-hidden bg-card
           `}
                 >
-                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
-                        <DrawerTitle className="text-xl font-bold text-gray-800">
+                    <DrawerHeader className="border-b bg-card sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-xl font-bold text-foreground">
                             {selectedRequisition?.requisition_number || "Requisition Details"}
                         </DrawerTitle>
                         <DrawerDescription className="text-sm text-muted-foreground">
@@ -902,44 +902,44 @@ export default function RequisitionsIndex() {
                         </DrawerDescription>
                     </DrawerHeader>
 
-                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-muted">
                         {selectedRequisition ? (
                             <>
                                 <Card className="shadow-sm">
                                     <CardContent className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
-                                            <p className="text-sm text-gray-600">Title</p>
-                                            <p className="font-semibold text-gray-800">{selectedRequisition.title}</p>
+                                            <p className="text-sm text-muted-foreground">Title</p>
+                                            <p className="font-semibold text-foreground">{selectedRequisition.title}</p>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-600">Category</p>
-                                            <p className="font-semibold text-gray-800">{selectedRequisition.category?.name || "-"}</p>
+                                            <p className="text-sm text-muted-foreground">Category</p>
+                                            <p className="font-semibold text-foreground">{selectedRequisition.category?.name || "-"}</p>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-600">Status</p>
+                                            <p className="text-sm text-muted-foreground">Status</p>
                                             <div className="mt-1">{getStatusBadge(selectedRequisition.status)}</div>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-600">Requisition Date</p>
-                                            <p className="font-semibold text-gray-800">
+                                            <p className="text-sm text-muted-foreground">Requisition Date</p>
+                                            <p className="font-semibold text-foreground">
                                                 {new Date(selectedRequisition.requisition_date).toLocaleDateString()}
                                             </p>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-600">Requested By</p>
-                                            <p className="font-semibold text-gray-800">{selectedRequisition.user?.name || "-"}</p>
-                                            <p className="text-sm text-gray-600">{selectedRequisition.user?.email || ""}</p>
+                                            <p className="text-sm text-muted-foreground">Requested By</p>
+                                            <p className="font-semibold text-foreground">{selectedRequisition.user?.name || "-"}</p>
+                                            <p className="text-sm text-muted-foreground">{selectedRequisition.user?.email || ""}</p>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-600">Total Amount</p>
-                                            <p className="font-semibold text-gray-800">
+                                            <p className="text-sm text-muted-foreground">Total Amount</p>
+                                            <p className="font-semibold text-foreground">
                                                 KES {Number(selectedRequisition.total_amount || 0).toFixed(2)}
                                             </p>
                                         </div>
                                         {selectedRequisition.description && (
                                             <div className="md:col-span-2">
-                                                <p className="text-sm text-gray-600">Description</p>
-                                                <p className="text-gray-800">{selectedRequisition.description}</p>
+                                                <p className="text-sm text-muted-foreground">Description</p>
+                                                <p className="text-foreground">{selectedRequisition.description}</p>
                                             </div>
                                         )}
                                     </CardContent>
@@ -964,15 +964,15 @@ export default function RequisitionsIndex() {
                                                     const isDuplicateItem = duplicateEntries.length > 0;
 
                                                     return (
-                                                    <TableRow key={item.id} className={isDuplicateItem ? "bg-red-50/40" : undefined}>
+                                                    <TableRow key={item.id} className={isDuplicateItem ? "bg-destructive/10" : undefined}>
                                                         <TableCell>{index + 1}</TableCell>
                                                         <TableCell className="font-medium">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={isDuplicateItem ? "text-red-700" : undefined}>{item.item_name}</span>
+                                                                <span className={isDuplicateItem ? "text-destructive" : undefined}>{item.item_name}</span>
                                                                 {isDuplicateItem && (
                                                                     <Tooltip>
                                                                         <TooltipTrigger asChild>
-                                                                            <span className="inline-flex cursor-help items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                                                            <span className="inline-flex cursor-help items-center rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
                                                                                 Duplicate
                                                                             </span>
                                                                         </TooltipTrigger>
@@ -1002,12 +1002,12 @@ export default function RequisitionsIndex() {
                             </>
                         ) : (
                             <Card className="shadow-sm">
-                                <CardContent className="p-6 text-sm text-gray-500">No requisition selected.</CardContent>
+                                <CardContent className="p-6 text-sm text-muted-foreground">No requisition selected.</CardContent>
                             </Card>
                         )}
                     </div>
 
-                    <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
+                    <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
                         <DrawerClose asChild>
                             <Button variant="outline">Close</Button>
                         </DrawerClose>

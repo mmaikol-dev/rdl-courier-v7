@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A Storeep store connected to one of our merchants in one country.
+ * A Storeep store connected to one of our merchants with an allowed-market list.
  *
  * Credentials are encrypted at rest by the 'encrypted' cast, so the token is
  * never readable in the database or in logs. Access it through
@@ -22,6 +22,7 @@ class StoreepIntegration extends Model
         'store_name',
         'access_token',
         'country',
+        'allowed_countries',
         'order_no_prefix',
         'is_enabled',
         'last_synced_at',
@@ -38,6 +39,7 @@ class StoreepIntegration extends Model
         'last_synced_at_remote' => 'datetime',
         'last_error_at' => 'datetime',
         'orders_synced' => 'integer',
+        'allowed_countries' => 'array',
     ];
 
     /**

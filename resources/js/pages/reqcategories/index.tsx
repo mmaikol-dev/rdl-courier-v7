@@ -148,11 +148,11 @@ export default function CategoriesIndex() {
             <Head title="Requisition Categories" />
 
             <div className="flex items-center justify-between gap-2 p-3 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-800">Requisition Categories</h1>
+                <h1 className="text-xl font-bold text-foreground">Requisition Categories</h1>
 
                 <Button
                     onClick={openCreateModal}
-                    className="flex items-center gap-2 text-white"
+                    className="flex items-center gap-2 text-primary-foreground"
                 >
                     <PlusCircleIcon className="w-4 h-4" />
                     New Category
@@ -178,7 +178,7 @@ export default function CategoriesIndex() {
                             <TableBody>
                                 {categories?.length > 0 ? (
                                     categories.map((category: any, index: number) => (
-                                        <TableRow key={category.id} className="hover:bg-gray-50">
+                                        <TableRow key={category.id} className="hover:bg-muted">
                                             <TableCell>{index + 1}</TableCell>
                                             <TableCell className="font-medium">{category.name}</TableCell>
                                             <TableCell className="max-w-xs truncate">
@@ -194,7 +194,7 @@ export default function CategoriesIndex() {
                                                     {category.is_active ? 'Active' : 'Inactive'}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-sm text-gray-600">
+                                            <TableCell className="text-sm text-muted-foreground">
                                                 {new Date(category.created_at).toLocaleDateString()}
                                             </TableCell>
                                             <TableCell>
@@ -212,7 +212,7 @@ export default function CategoriesIndex() {
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => confirmDelete(category)}
-                                                        className="flex items-center gap-1 text-red-600 border-red-600 hover:bg-red-50"
+                                                        className="flex items-center gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                         Delete
@@ -223,7 +223,7 @@ export default function CategoriesIndex() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center text-gray-500 py-6">
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                                             No categories found.
                                         </TableCell>
                                     </TableRow>
@@ -240,11 +240,11 @@ export default function CategoriesIndex() {
                     className={`
             md:max-w-[600px] w-full h-[90vh] md:h-screen
             md:right-0 md:left-auto md:rounded-l-2xl
-            flex flex-col overflow-hidden bg-white
+            flex flex-col overflow-hidden bg-card
           `}
                 >
-                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
-                        <DrawerTitle className="text-xl font-bold text-gray-800">
+                    <DrawerHeader className="border-b bg-card sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-xl font-bold text-foreground">
                             {isEditing ? 'Edit Category' : 'Create New Category'}
                         </DrawerTitle>
                         <DrawerDescription className="text-sm text-muted-foreground">
@@ -252,11 +252,11 @@ export default function CategoriesIndex() {
                         </DrawerDescription>
                     </DrawerHeader>
 
-                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-muted">
                         <Card className="shadow-sm">
                             <CardContent className="p-4 sm:p-6 space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Category Name *</label>
+                                    <label className="text-sm font-medium text-foreground">Category Name *</label>
                                     <Input
                                         value={formData.name}
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -265,7 +265,7 @@ export default function CategoriesIndex() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Description</label>
+                                    <label className="text-sm font-medium text-foreground">Description</label>
                                     <Textarea
                                         value={formData.description}
                                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -280,9 +280,9 @@ export default function CategoriesIndex() {
                                         id="is_active"
                                         checked={formData.is_active}
                                         onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                        className="w-4 h-4 text-muted-foreground border-border rounded focus:ring-primary"
                                     />
-                                    <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+                                    <label htmlFor="is_active" className="text-sm font-medium text-foreground">
                                         Active Category
                                     </label>
                                 </div>
@@ -290,9 +290,9 @@ export default function CategoriesIndex() {
                         </Card>
                     </div>
 
-                    <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
+                    <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
                         <DrawerClose asChild><Button variant="outline">Cancel</Button></DrawerClose>
-                        <Button onClick={handleSubmit} className="text-white">
+                        <Button onClick={handleSubmit} className="text-primary-foreground">
                             {isEditing ? 'Update Category' : 'Create Category'}
                         </Button>
                     </DrawerFooter>
@@ -311,7 +311,7 @@ export default function CategoriesIndex() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+                        <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive">
                             Delete
                         </AlertDialogAction>
                     </AlertDialogFooter>

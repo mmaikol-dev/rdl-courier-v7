@@ -1,6 +1,6 @@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { addDays } from 'date-fns';
 import { AlertCircle, Check, ChevronsUpDown, Loader2, Skull } from 'lucide-react';
 import * as React from 'react';
@@ -20,7 +20,9 @@ import {
 } from '@/components/ui/pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const STATUS_OPTIONS = [
   'Scheduled',
@@ -80,10 +82,18 @@ interface BulkExpirePageProps {
   };
   flash?: { success?: string; error?: string };
   errors?: Record<string, string>;
+  hasPreviewed?: boolean;
+}
+
+function BulkExpireTableSkeleton() {
+  return <div className="space-y-2 rounded-lg border p-3" role="status" aria-label="Loading matching orders" aria-live="polite">
+    <div className="grid grid-cols-4 gap-3 border-b pb-3 sm:grid-cols-8">{Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}</div>
+    {Array.from({ length: 6 }).map((_, row) => <div key={row} className="grid grid-cols-4 gap-3 border-b py-3 last:border-0 sm:grid-cols-8">{Array.from({ length: 8 }).map((__, column) => <Skeleton key={column} className="h-4 w-full" />)}</div>)}
+  </div>;
 }
 
 export default function BulkExpirePage() {
-  const { merchants, orders, filters, flash, errors } = usePage<BulkExpirePageProps>().props;
+  const { merchants, orders, filters, flash, errors, hasPreviewed = false } = usePage<BulkExpirePageProps>().props;
 
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>(
     filters.from_date && filters.to_date
@@ -95,7 +105,6 @@ export default function BulkExpirePage() {
   const [processing, setProcessing] = React.useState(false);
   const [merchantOpen, setMerchantOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
-  const [hasPreviewed, setHasPreviewed] = React.useState(!!orders);
 
   const toggleStatus = (status: string) => {
     setSelectedStatuses((prev) =>
@@ -104,18 +113,31 @@ export default function BulkExpirePage() {
   };
 
   const handlePreview = () => {
-    if (!dateRange?.from || !dateRange?.to) return;
+    if (!dateRange?.from || !dateRange?.to) {
+      toast.error('Choose both a start date and an end date to preview orders.');
+      return;
+    }
 
     router.get('/orders/bulk-expire', {
       from_date: dateRange.from.toISOString(),
       to_date: dateRange.to.toISOString(),
       merchant: selectedMerchant || '',
       statuses: selectedStatuses.length > 0 ? selectedStatuses : null,
-    }, { preserveState: true, replace: true });
+    }, {
+      preserveState: true,
+      replace: true,
+      onError: (responseErrors) => {
+        const firstError = Object.values(responseErrors).find((message) => typeof message === 'string');
+        toast.error(firstError ?? 'Could not preview orders. Check the filters and try again.');
+      },
+    });
   };
 
   const handleExpire = () => {
-    if (!dateRange?.from || !dateRange?.to) return;
+    if (!dateRange?.from || !dateRange?.to) {
+      toast.error('Choose both a start date and an end date before expiring orders.');
+      return;
+    }
 
     setProcessing(true);
     router.post('/orders/bulk-expire', {
@@ -125,6 +147,11 @@ export default function BulkExpirePage() {
       statuses: selectedStatuses.length > 0 ? selectedStatuses : null,
     }, {
       preserveScroll: true,
+      onSuccess: () => toast.success('Matching orders were marked as expired.'),
+      onError: (responseErrors) => {
+        const firstError = Object.values(responseErrors).find((message) => typeof message === 'string');
+        toast.error(firstError ?? 'Could not expire orders. Check the filters and try again.');
+      },
       onFinish: () => setProcessing(false),
     });
   };
@@ -133,50 +160,63 @@ export default function BulkExpirePage() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Bulk Expire Orders" />
 
-      <div className="space-y-5 p-4">
-        <Card className="border-border/60 bg-gradient-to-br from-background via-background to-muted/25">
-          <CardHeader>
+      <div className="space-y-3 p-3 sm:p-4">
+        <Card className="border-border/60 bg-gradient-to-r from-background to-muted/25">
+          <CardHeader className="flex flex-col items-start gap-1 p-4 sm:flex-row sm:items-center sm:gap-3 sm:p-5">
             <div className="flex items-center gap-2">
               <Skull className="size-5 text-destructive" />
-              <CardTitle className="text-2xl">Bulk Expire Orders</CardTitle>
+              <CardTitle className="text-xl">Bulk Expire Orders</CardTitle>
             </div>
-            <CardDescription>
-              Step 1: Set filters and preview matching orders. Step 2: Confirm to mark them as Expired.
+            <CardDescription className="text-xs sm:text-sm">
+              Choose a date range and filters, preview matching orders, then confirm expiration.
             </CardDescription>
           </CardHeader>
         </Card>
 
         {flash?.success && (
-          <Card className="border-green-500/50 bg-green-50 dark:bg-green-950/20">
-            <CardContent className="flex items-center gap-2 p-4 text-sm text-green-700 dark:text-green-400">
+          <Card className="border-success/30 bg-success/10 dark:bg-success">
+            <CardContent className="flex items-center gap-2 p-3 text-sm text-success dark:text-success">
               <AlertCircle className="size-4 shrink-0" />
               {flash.success}
             </CardContent>
           </Card>
         )}
 
-        {errors?.no_results && (
-          <Card className="border-red-500/50 bg-red-50 dark:bg-red-950/20">
-            <CardContent className="flex items-center gap-2 p-4 text-sm text-red-700 dark:text-red-400">
+        {flash?.error && (
+          <Card className="border-destructive/30 bg-destructive/10">
+            <CardContent className="flex items-center gap-2 p-3 text-sm text-destructive">
               <AlertCircle className="size-4 shrink-0" />
-              {errors.no_results}
+              {flash.error}
+            </CardContent>
+          </Card>
+        )}
+
+        {errors && Object.keys(errors).length > 0 && (
+          <Card className="border-destructive/30 bg-destructive/10 dark:bg-destructive">
+            <CardContent className="flex items-start gap-2 p-3 text-sm text-destructive dark:text-destructive">
+              <AlertCircle className="size-4 shrink-0" />
+              <div className="space-y-1">
+                {Object.entries(errors).map(([field, message]) => (
+                  <p key={field}>{message}</p>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Step 1: Set Filters</CardTitle>
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="text-base">1. Filter orders</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
+          <CardContent className="space-y-4 px-4 pb-4 pt-0">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Date Range</label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="w-full justify-start text-left font-normal"
+                      className="h-9 w-full justify-start text-left font-normal"
                     >
                       {dateRange?.from ? (
                         dateRange.to ? (
@@ -202,11 +242,11 @@ export default function BulkExpirePage() {
                 </Popover>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Merchant</label>
                 <Popover open={merchantOpen} onOpenChange={setMerchantOpen}>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                    <Button variant="outline" role="combobox" className="h-9 w-full justify-between">
                       {selectedMerchant || <span className="text-muted-foreground">All merchants</span>}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
@@ -246,11 +286,11 @@ export default function BulkExpirePage() {
                 </Popover>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Statuses</label>
                 <Popover open={statusOpen} onOpenChange={setStatusOpen}>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                    <Button variant="outline" role="combobox" className="h-9 w-full justify-between">
                       {selectedStatuses.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {selectedStatuses.map((s) => (
@@ -289,14 +329,15 @@ export default function BulkExpirePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={handlePreview} className="gap-2">
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <Button onClick={handlePreview} className="h-9 gap-2">
                 <ChevronsUpDown className="size-4" />
                 Preview Orders
               </Button>
 
               <Button
                 variant="outline"
+                className="h-9"
                 onClick={() => {
                   setDateRange({ from: new Date(), to: addDays(new Date(), 30) });
                   setSelectedMerchant('');
@@ -309,13 +350,16 @@ export default function BulkExpirePage() {
           </CardContent>
         </Card>
 
-        {orders && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+        {hasPreviewed && (
+          <Deferred data="orders" fallback={<BulkExpireTableSkeleton />}>
+          {() => orders && <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
               <div>
-                <CardTitle className="text-lg">Step 2: Review & Confirm</CardTitle>
+                <CardTitle className="text-base">2. Review matches</CardTitle>
                 <CardDescription>
-                  {orders.total} order(s) match the filters above.
+                  {orders.total > 0
+                    ? `${orders.total} order(s) match the filters above.`
+                    : 'No orders match these filters. Adjust the dates, merchant, or statuses and preview again.'}
                 </CardDescription>
               </div>
               <Button
@@ -328,7 +372,7 @@ export default function BulkExpirePage() {
                 {processing ? 'Expiring...' : `Expire All ${orders.total}`}
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 p-3 pt-0">
               <div className="overflow-x-auto rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -344,7 +388,13 @@ export default function BulkExpirePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders.data.map((order) => (
+                    {orders.data.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                          No matching orders found for this filter selection.
+                        </TableCell>
+                      </TableRow>
+                    ) : orders.data.map((order) => (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">{order.order_no}</TableCell>
                         <TableCell>{order.client_name || '-'}</TableCell>
@@ -395,7 +445,8 @@ export default function BulkExpirePage() {
                 </Pagination>
               )}
             </CardContent>
-          </Card>
+          </Card>}
+          </Deferred>
         )}
       </div>
     </AppLayout>

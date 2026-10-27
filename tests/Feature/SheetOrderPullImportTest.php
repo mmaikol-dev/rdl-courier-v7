@@ -196,7 +196,7 @@ class SheetOrderPullImportTest extends TestCase
         $this->assertSame(0, $summary['skipped']['existing_order']);
     }
 
-    public function test_automatic_pickup_requires_column_c_and_stamps_the_system_entry_date(): void
+    public function test_automatic_pickup_requires_column_c_and_phone_and_stamps_the_system_entry_date(): void
     {
         Queue::fake();
 
@@ -204,12 +204,14 @@ class SheetOrderPullImportTest extends TestCase
             $this->headerRow(),
             $this->regularRow('ORD-READY'),
             array_replace($this->regularRow('ORD-WAIT'), [2 => '']),
+            array_replace($this->regularRow('ORD-NO-PHONE'), [5 => '']),
         ];
 
         $summary = $this->fakeImporter($rows)->importForAutomaticPickup($this->makeSheet(), 'Sheet1');
 
         $this->assertSame(1, $summary['queued']);
         $this->assertSame(1, $summary['skipped']['missing_priority']);
+        $this->assertSame(1, $summary['skipped']['missing_phone']);
         $this->assertSame(0, $summary['errors_total']);
 
         $incoming = IncomingSheetOrder::where('order_no', 'ORD-READY')->firstOrFail();

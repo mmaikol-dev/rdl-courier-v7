@@ -100,7 +100,13 @@ class SidebarRegistry
         }
 
         if (is_array($saved)) {
-            return array_values(array_intersect($saved, self::allKeys()));
+            $visible = array_values(array_intersect($saved, self::allKeys()));
+
+            if (self::normalizeRole($role) === 'merchant' && ! in_array('transfer', $visible, true)) {
+                $visible[] = 'transfer';
+            }
+
+            return $visible;
         }
 
         return self::defaultVisibleKeysForRole($role);

@@ -61,36 +61,6 @@ class StkController extends Controller
             $query->whereRaw('DATE(delivery_date) <= ?', [$request->end_date]);
         }
         
-        // 🚀 Order by most recent first and paginate
-        $orders = $query->latest('created_at')
-            ->paginate(20)
-            ->withQueryString();
-        
-        Log::info('Fetched orders count: ' . $orders->count());
-        
-        // ✅ Keep transformation but include all necessary fields
-        $transformedOrders = $orders->through(function ($order) {
-            $rawDeliveryDate = $order->getRawOriginal('delivery_date');
-
-            return [
-                'id' => $order->id ?? 0,
-                'order_no' => $order->order_no ?? '',
-                'cc_email' => $order->cc_email ?? '',
-                'client_name' => $order->client_name ?? '',
-                'quantity' => $order->quantity ?? 0,
-                'amount' => $order->amount ?? 0,
-                'product_name' => $order->product_name ?? '',
-                'address' => $order->address ?? '',
-                'phone' => $order->phone ?? '',
-                'city' => $order->city ?? '',
-                'status' => $order->status ?? 'Pending',
-                'delivery_date' => $rawDeliveryDate ? substr((string) $rawDeliveryDate, 0, 10) : '',
-                'code' => $order->code ?? '',
-                'comments' => $order->comments ?? '', // ✅ Add comments field
-                'confirmed' => $order->confirmed ?? false, // ✅ Add confirmed field
-            ];
-        });
-
         $agents = User::query()
             ->where('roles', 'agent')
             ->orderBy('name')
@@ -102,7 +72,33 @@ class StkController extends Controller
             ->get(['id', 'name', 'email']);
         
         return Inertia::render('stk/index', [
-            'orders'  => $transformedOrders,
+            'orders' => Inertia::defer(function () use ($query) {
+                $orders = $query->latest('created_at')->paginate(20)->withQueryString();
+
+                Log::info('Fetched orders count: ' . $orders->count());
+
+                return $orders->through(function ($order) {
+                    $rawDeliveryDate = $order->getRawOriginal('delivery_date');
+
+                    return [
+                        'id' => $order->id ?? 0,
+                        'order_no' => $order->order_no ?? '',
+                        'cc_email' => $order->cc_email ?? '',
+                        'client_name' => $order->client_name ?? '',
+                        'quantity' => $order->quantity ?? 0,
+                        'amount' => $order->amount ?? 0,
+                        'product_name' => $order->product_name ?? '',
+                        'address' => $order->address ?? '',
+                        'phone' => $order->phone ?? '',
+                        'city' => $order->city ?? '',
+                        'status' => $order->status ?? 'Pending',
+                        'delivery_date' => $rawDeliveryDate ? substr((string) $rawDeliveryDate, 0, 10) : '',
+                        'code' => $order->code ?? '',
+                        'comments' => $order->comments ?? '',
+                        'confirmed' => $order->confirmed ?? false,
+                    ];
+                });
+            }),
             'filters' => $request->only(['search', 'status', 'start_date', 'end_date', 'agent', 'cc_name']),
             'agents' => $agents,
             'callCenterUsers' => $callCenterUsers,

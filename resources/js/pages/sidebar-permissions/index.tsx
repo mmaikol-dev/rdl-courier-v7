@@ -1,7 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { allSidebarItems } from '@/lib/sidebar';
 import type { BreadcrumbItem } from '@/types';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronRight, Layers3, LockOpen, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import * as React from 'react';
 
@@ -43,8 +44,15 @@ function normalizeRole(role: string) {
     return role.trim().toLowerCase();
 }
 
+const EMPTY_SIDEBAR_DATA = { roles: [] as string[], sidebarItems: [] as SidebarItem[], permissionsByRole: {} as Record<string, string[]> };
+
+function SidebarAccessSkeleton() {
+    return <div className="space-y-4 p-4" role="status" aria-label="Loading sidebar access" aria-live="polite"><Skeleton className="h-36 w-full rounded-xl" /><div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">{Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-square w-full rounded-xl" />)}</div></div>;
+}
+
 export default function SidebarPermissionsPage() {
-    const { roles, permissionsByRole, sidebarItems } = usePage<SidebarPermissionsPageProps>().props;
+    const { sidebarData } = usePage<SidebarPermissionsPageProps & { sidebarData?: typeof EMPTY_SIDEBAR_DATA }>().props;
+    const { roles, permissionsByRole, sidebarItems } = sidebarData ?? EMPTY_SIDEBAR_DATA;
     const [query, setQuery] = React.useState('');
     const [state, setState] = React.useState<Record<string, string[]>>(permissionsByRole);
     const [savingRole, setSavingRole] = React.useState<string | null>(null);
@@ -89,7 +97,11 @@ export default function SidebarPermissionsPage() {
     const setAllForRole = (role: string, enabled: boolean) => {
         setState((current) => ({
             ...current,
-            [role]: enabled ? allSidebarItems.filter((item) => item.key !== 'sidebar-permissions').map((item) => item.key) : [],
+            [role]: enabled
+                ? allSidebarItems.filter((item) => item.key !== 'sidebar-permissions').map((item) => item.key)
+                : normalizeRole(role) === 'merchant'
+                  ? ['transfer']
+                  : [],
         }));
     };
 
@@ -116,6 +128,8 @@ export default function SidebarPermissionsPage() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Sidebar Access" />
 
+            <Deferred data="sidebarData" fallback={<SidebarAccessSkeleton />}>
+            {() => <>
             <div className="space-y-6 p-4">
                 <Card className="overflow-hidden border-border/60 bg-gradient-to-br from-background via-background to-muted/30">
                     <CardHeader className="relative">
@@ -261,6 +275,7 @@ export default function SidebarPermissionsPage() {
                                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                             {items.map((item) => {
                                                 const checked = selectedRoleItems.includes(item.key);
+                                                const requiredForMerchant = normalizeRole(selectedRole) === 'merchant' && item.key === 'transfer';
 
                                                 return (
                                                     <label
@@ -272,10 +287,13 @@ export default function SidebarPermissionsPage() {
                                                     >
                                                         <div className="space-y-1">
                                                             <div className="font-medium">{item.title}</div>
-                                                            <div className="text-sm text-muted-foreground">{item.href}</div>
+                                                            <div className="text-sm text-muted-foreground">
+                                                                {requiredForMerchant ? 'Required for merchant access' : item.href}
+                                                            </div>
                                                         </div>
                                                         <Switch
                                                             checked={checked}
+                                                            disabled={requiredForMerchant}
                                                             onCheckedChange={(nextChecked) => toggleItem(selectedRole, item.key, nextChecked)}
                                                         />
                                                     </label>
@@ -300,6 +318,8 @@ export default function SidebarPermissionsPage() {
                     ) : null}
                 </DrawerContent>
             </Drawer>
+            </>}
+            </Deferred>
         </AppLayout>
     );
 }

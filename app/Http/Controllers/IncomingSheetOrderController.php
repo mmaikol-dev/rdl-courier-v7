@@ -51,7 +51,7 @@ class IncomingSheetOrderController extends Controller
             ->pluck('total', 'status');
 
         return Inertia::render('incoming-sheet-orders/index', [
-            'incomingOrders' => $query->paginate(50)->withQueryString(),
+            'incomingOrders' => Inertia::defer(fn () => $query->paginate(50)->withQueryString()),
             'filters' => [
                 'search' => $search,
                 'status' => $status ?: 'all',
@@ -61,6 +61,7 @@ class IncomingSheetOrderController extends Controller
                 'pending' => (int) ($statusCounts['pending'] ?? 0),
                 'processing' => (int) ($statusCounts['processing'] ?? 0),
                 'processed' => (int) ($statusCounts['processed'] ?? 0),
+                'skipped' => (int) ($statusCounts['skipped'] ?? 0),
                 'failed' => (int) ($statusCounts['failed'] ?? 0),
             ],
         ]);

@@ -312,7 +312,7 @@ export default function OrderScansPage() {
               className={cn(
                 'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all',
                 scanType === 'in'
-                  ? 'bg-emerald-600 text-white shadow-sm'
+                  ? 'bg-success text-success-foreground shadow-sm'
                   : 'text-muted-foreground',
               )}
             >
@@ -339,7 +339,7 @@ export default function OrderScansPage() {
         {/* Camera view — full view when open */}
         {cameraOpen && (
           <div className="px-4 pt-4">
-            <div className="relative overflow-hidden rounded-xl bg-black">
+            <div className="relative overflow-hidden rounded-xl bg-foreground">
               {/* Container always visible so html5-qrcode video renders properly */}
               <div
                 id="qr-scanner-container"
@@ -348,7 +348,7 @@ export default function OrderScansPage() {
               />
 
               {cameraError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-foreground">
                   <XCircle className="size-10 text-destructive/60" />
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-destructive">Camera Unavailable</p>
@@ -364,7 +364,7 @@ export default function OrderScansPage() {
 
               {/* Loading overlay sits on top of the container while camera starts */}
               {!cameraReady && !cameraError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-foreground">
                   <LoaderCircle className="size-8 animate-spin text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Starting camera...</p>
                 </div>
@@ -377,7 +377,7 @@ export default function OrderScansPage() {
                       'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wider shadow-sm',
                       scanType === 'out'
                         ? 'bg-destructive/90 text-destructive-foreground'
-                        : 'bg-emerald-600/90 text-white',
+                        : 'bg-success text-success-foreground',
                     )}
                   >
                     {scanType === 'out' ? (
@@ -391,24 +391,24 @@ export default function OrderScansPage() {
               )}
 
               {isSubmitting && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div className="absolute inset-0 flex items-center justify-center bg-foreground">
                   <div className="flex flex-col items-center gap-2">
-                    <LoaderCircle className="size-8 animate-spin text-white" />
-                    <span className="text-sm font-medium text-white">Processing...</span>
+                    <LoaderCircle className="size-8 animate-spin text-primary-foreground" />
+                    <span className="text-sm font-medium text-primary-foreground">Processing...</span>
                   </div>
                 </div>
               )}
 
               {lastScan && (
-                <div className="absolute bottom-3 left-3 right-3 rounded-lg bg-black/70 px-3 py-2 text-center text-sm font-medium text-white backdrop-blur-sm">
-                  <CheckCircle className="mr-1.5 inline size-4 text-emerald-400" />
+                <div className="absolute bottom-3 left-3 right-3 rounded-lg bg-foreground px-3 py-2 text-center text-sm font-medium text-background backdrop-blur-sm">
+                  <CheckCircle className="mr-1.5 inline size-4 text-success" />
                   {lastScan}
                 </div>
               )}
 
               {cameraReady && !isSubmitting && (
                 <div className="pointer-events-none absolute left-[15%] right-[15%] top-1/2 -translate-y-1/2">
-                  <div className="h-[0.5px] animate-pulse rounded-full bg-primary shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                  <div className="h-[0.5px] animate-pulse rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
                 </div>
               )}
             </div>
@@ -528,7 +528,7 @@ export default function OrderScansPage() {
                       variant={scan.scan_type === 'out' ? 'destructive' : 'default'}
                       className={cn(
                         'text-[10px]',
-                        scan.scan_type === 'in' && 'bg-emerald-600 text-white',
+                        scan.scan_type === 'in' && 'bg-success text-success-foreground',
                       )}
                     >
                       {scan.scan_type === 'out' ? 'OUT' : 'IN'}

@@ -21,6 +21,27 @@ class InventoryLog extends Model
         'date_added',
     ];
 
+    protected $appends = [
+        'previous_quantity',
+        'updated_quantity',
+        'current_quantity',
+    ];
+
+    public function getPreviousQuantityAttribute(): float
+    {
+        return (float) $this->remaining_qnty - (float) $this->quantity_added;
+    }
+
+    public function getUpdatedQuantityAttribute(): float
+    {
+        return (float) $this->quantity_added;
+    }
+
+    public function getCurrentQuantityAttribute(): float
+    {
+        return (float) $this->remaining_qnty;
+    }
+
     // Optional: if you want to treat date_added as a Carbon date
     protected $dates = [
         'date_added',

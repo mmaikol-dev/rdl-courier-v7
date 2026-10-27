@@ -81,6 +81,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/products/{product}/inventory-logs', [ProductController::class, 'inventoryLogs'])
         ->name('products.inventoryLogs');
+    Route::get('/products/{product}/overview', [ProductController::class, 'overview'])
+        ->name('products.overview');
 
     Route::post('/products/scan-barcodes', [ProductController::class, 'scanBarcodes'])
         ->name('products.scanBarcodes');
@@ -217,6 +219,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // storeep integrations (credentials live in the DB, one row per store/market)
     Route::get('/integrations', [StoreepIntegrationController::class, 'index'])->name('integrations.index');
+    Route::get('/integrations/{integration}/orders', [StoreepIntegrationController::class, 'orders'])->name('integrations.orders');
     Route::post('/integrations', [StoreepIntegrationController::class, 'store'])->name('integrations.store');
     Route::put('/integrations/{integration}', [StoreepIntegrationController::class, 'update'])->name('integrations.update');
     Route::delete('/integrations/{integration}', [StoreepIntegrationController::class, 'destroy'])->name('integrations.destroy');

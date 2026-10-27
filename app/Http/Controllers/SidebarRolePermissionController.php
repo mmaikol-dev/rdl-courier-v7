@@ -16,40 +16,44 @@ class SidebarRolePermissionController extends Controller
     {
         abort_unless(SidebarRegistry::canManage($request->user()?->roles), 403);
 
-        $roles = User::query()
-            ->whereNotNull('roles')
-            ->where('roles', '!=', '')
-            ->distinct()
-            ->orderBy('roles')
-            ->pluck('roles');
+        $sidebarData = Inertia::defer(function () {
+            $roles = User::query()
+                ->whereNotNull('roles')
+                ->where('roles', '!=', '')
+                ->distinct()
+                ->orderBy('roles')
+                ->pluck('roles');
 
-        $savedPermissions = SidebarRolePermission::query()
-            ->get()
-            ->mapWithKeys(function (SidebarRolePermission $permission): array {
-                return [
-                    $permission->role => array_values(array_intersect(
-                        $permission->visible_items ?? [],
-                        SidebarRegistry::allKeys(),
-                    )),
-                ];
-            });
+            $savedPermissions = SidebarRolePermission::query()
+                ->get()
+                ->mapWithKeys(function (SidebarRolePermission $permission): array {
+                    return [
+                        $permission->role => array_values(array_intersect(
+                            $permission->visible_items ?? [],
+                            SidebarRegistry::allKeys(),
+                        )),
+                    ];
+                });
 
-        $roles = $roles
-            ->merge($savedPermissions->keys())
-            ->unique()
-            ->sort()
-            ->values();
+            $roles = $roles
+                ->merge($savedPermissions->keys())
+                ->unique()
+                ->sort()
+                ->values();
 
-        $permissionsByRole = $roles
-            ->mapWithKeys(fn (string $role): array => [
-                $role => SidebarRegistry::resolveVisibleKeys($role, $savedPermissions[$role] ?? null),
-            ])
-            ->all();
+            return [
+                'roles' => $roles,
+                'sidebarItems' => SidebarRegistry::items(),
+                'permissionsByRole' => $roles
+                    ->mapWithKeys(fn (string $role): array => [
+                        $role => SidebarRegistry::resolveVisibleKeys($role, $savedPermissions[$role] ?? null),
+                    ])
+                    ->all(),
+            ];
+        });
 
         return Inertia::render('sidebar-permissions/index', [
-            'roles' => $roles,
-            'sidebarItems' => SidebarRegistry::items(),
-            'permissionsByRole' => $permissionsByRole,
+            'sidebarData' => $sidebarData,
         ]);
     }
 

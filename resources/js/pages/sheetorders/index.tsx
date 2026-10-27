@@ -10,11 +10,12 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink, Paginati
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { format } from 'date-fns';
 import {
     Calendar1Icon,
@@ -80,18 +81,18 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const statusColors: Record<string, string> = {
-    Scheduled: 'bg-sky-100 text-sky-700 border-sky-200',
-    Dispatched: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-    Followup: 'bg-purple-100 text-purple-700 border-purple-200',
-    Duplicate: 'bg-pink-100 text-pink-700 border-pink-200',
-    Cancelled: 'bg-red-100 text-red-700 border-red-200',
-    Pending: 'bg-amber-100 text-amber-700 border-amber-200',
-    OutofStock: 'bg-orange-100 text-orange-700 border-orange-200',
-    Expired: 'bg-orange-100 text-orange-700 border-orange-200',
-    Returned: 'bg-rose-100 text-rose-700 border-rose-200',
-    WrongContact: 'bg-slate-100 text-slate-700 border-slate-200 italic',
-    Delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    'New Orders': 'bg-gray-100 text-gray-600 border-gray-200',
+    Scheduled: 'bg-accent text-foreground border-border',
+    Dispatched: 'bg-accent text-foreground border-border',
+    Followup: 'bg-accent text-foreground border-border',
+    Duplicate: 'bg-accent text-foreground border-border',
+    Cancelled: 'bg-destructive/10 text-destructive border-destructive/30',
+    Pending: 'bg-warning/10 text-warning-foreground border-warning/30',
+    OutofStock: 'bg-warning/10 text-warning-foreground border-warning/30',
+    Expired: 'bg-warning/10 text-warning-foreground border-warning/30',
+    Returned: 'bg-destructive/10 text-destructive border-destructive/30',
+    WrongContact: 'bg-muted text-foreground border-border italic',
+    Delivered: 'bg-success/10 text-success border-success/30',
+    'New Orders': 'bg-muted text-muted-foreground border-border',
 };
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -141,6 +142,7 @@ interface SheetOrder {
     merchant: string;
     cc_email: string;
     instructions: string;
+    instructions_edits_count: number;
     invoice_code: string;
     sheet_id: string;
     sheet_name: string;
@@ -178,6 +180,43 @@ interface PaginationLinkData {
     url: string | null;
     label: string;
     active: boolean;
+}
+
+const EMPTY_ORDERS: { data: SheetOrder[]; links: PaginationLinkData[] } = { data: [], links: [] };
+
+function OrdersTableSkeleton() {
+    return (
+        <div className="mx-4 mt-4 overflow-hidden rounded-xl border bg-card shadow-sm" role="status" aria-label="Loading orders" aria-live="polite">
+            <div className="scrollbar-custom overflow-x-auto">
+                <Table className="min-w-full border-separate border-spacing-0">
+                    <TableHeader>
+                        <TableRow className="h-10">
+                            {COLUMNS.map((column) => (
+                                <TableHead key={column} className="min-w-[130px] px-3"><Skeleton className="h-3 w-20" /></TableHead>
+                            ))}
+                            <TableHead className="min-w-[76px] px-3"><Skeleton className="ml-auto h-3 w-12" /></TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {Array.from({ length: 8 }).map((_, row) => (
+                            <TableRow key={row} className="h-10">
+                                {COLUMNS.map((column, cell) => (
+                                    <TableCell key={column} className="px-3 py-2">
+                                        <Skeleton className={`h-4 ${cell % 3 === 0 ? 'w-24' : 'w-28'}`} />
+                                    </TableCell>
+                                ))}
+                                <TableCell className="px-3 py-2"><Skeleton className="ml-auto h-6 w-12" /></TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+            <div className="mx-2 mb-2 mt-1 flex items-center justify-between rounded-lg border px-2 py-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-8 w-44" />
+            </div>
+        </div>
+    );
 }
 
 // ✅ Optimized TableRow with better memoization
@@ -228,21 +267,32 @@ const TableRowMemo = React.memo(
                     // ✅ Apply green color to all columns if the row has a code value
                     const hasCode = order.code && order.code.trim() !== '';
 
-                    const colorClass = col === 'status' ? '' : hasCode ? 'text-green-700 font-semibold' : '';
+                    const colorClass = col === 'status' ? '' : hasCode ? 'text-success font-semibold' : '';
 
                     const baseCellClass = cn(
                         'max-w-[130px] min-w-[130px] whitespace-nowrap cursor-pointer truncate px-3 py-2',
-                        highlighted[key] ? 'bg-green-200' : '',
+                        highlighted[key] ? 'bg-success/20' : '',
                         colorClass,
                     );
 
                     const cellContent = col === 'status' ? (
                         <span className={cn(
                             'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-                            statusColors[value] || 'bg-slate-100 text-slate-700 border-slate-200',
+                            statusColors[value] || 'bg-muted text-foreground border-border',
                         )}>
                             {value}
                         </span>
+                    ) : col === 'instructions' ? (
+                        <div className="relative -my-2 min-h-8 py-2 pr-7">
+                            <span className="block truncate">{value || '—'}</span>
+                            <Badge
+                                variant="outline"
+                                className="pointer-events-none absolute right-0 top-0 h-4 min-w-4 justify-center rounded-full border-foreground bg-foreground px-1 text-[9px] font-semibold leading-none text-background"
+                                title={`${order.instructions_edits_count} instruction edits`}
+                            >
+                                {order.instructions_edits_count}
+                            </Badge>
+                        </div>
                     ) : undefined;
 
                     return (
@@ -387,20 +437,23 @@ export default function Index() {
     const authUser = (props as { auth?: { user?: { roles?: string } } }).auth?.user;
 
     const {
-        orders,
+        orderResults,
         merchantUsers,
-        totalOrders,
         ccUsers,
         merchantData,
         filters: initialFilters,
     } = props as unknown as {
-        orders: { data: SheetOrder[]; links: PaginationLinkData[] };
+        orderResults?: {
+            orders: { data: SheetOrder[]; links: PaginationLinkData[] };
+            totalOrders: number;
+        };
         merchantUsers: string[];
-        totalOrders: number;
         ccUsers: string[];
         merchantData: Record<string, { sheet_id: string; sheet_names: string[] }>;
         filters?: Record<string, string | string[]>;
     };
+    const orders = orderResults?.orders ?? EMPTY_ORDERS;
+    const totalOrders = orderResults?.totalOrders ?? 0;
 
     // ✅ Optimized state management
     const [filters, setFilters] = React.useState<Record<string, string | string[]>>(initialFilters || {});
@@ -659,7 +712,7 @@ export default function Index() {
                     {
                         preserveState: true,
                         preserveScroll: true,
-                        only: ['orders'],
+                        only: ['orderResults'],
                         onSuccess: () => {
                             setLocalOrders((current) =>
                                 current.map((order) =>
@@ -667,6 +720,9 @@ export default function Index() {
                                         ? {
                                               ...order,
                                               [field]: value,
+                                              ...(field === 'instructions'
+                                                  ? { instructions_edits_count: order.instructions_edits_count + 1 }
+                                                  : {}),
                                           }
                                         : order,
                                 ),
@@ -822,19 +878,29 @@ export default function Index() {
         <AppLayout breadcrumbs={BREADCRUMBS}>
             <Head title="Sheet Orders" />
 
-            <div className="mb-2 flex items-center justify-between px-4 pt-4">
-                {/* Left side - Total Orders */}
-                <Badge className="rounded bg-black px-3 py-1 text-white">Total: {totalOrders}</Badge>
-                <div className="flex space-x-2">
-                    {/* Filter Orders */}
-                    <Button className="h-8 w-8 p-0 text-sm" disabled={isFiltering} onClick={() => setFilterDialogOpen(true)}>
+            <div className="flex flex-col gap-3 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-xl border bg-card text-primary shadow-sm">
+                        <PackageSearch className="size-5" />
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-semibold tracking-tight">Sheet Orders</h1>
+                        <p className="text-sm text-muted-foreground">
+                            <span className="font-medium tabular-nums text-foreground">{totalOrders.toLocaleString()}</span> orders
+                        </p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg" disabled={isFiltering} onClick={() => setFilterDialogOpen(true)}>
                         {isFiltering ? <Spinner /> : <FilterIcon className="h-4 w-4" />}
+                        <span>Filters</span>
                     </Button>
 
                     <Sheet open={isCallSheetOpen} onOpenChange={setIsCallSheetOpen}>
                         <SheetTrigger asChild>
-                            <Button className="h-8 w-8 p-0 text-sm">
+                            <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg">
                                 <PhoneIcon className="h-4 w-4" />
+                                <span>Call center</span>
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="right" className="w-[320px] overflow-y-auto sm:w-[400px]">
@@ -848,34 +914,38 @@ export default function Index() {
                     </Sheet>
 
                     {/* Refresh Button */}
-                    <Button className="h-8 w-8 p-0 text-sm" disabled={isRefreshing} onClick={refreshOrders}>
+                    <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg" disabled={isRefreshing} onClick={refreshOrders}>
                         {isRefreshing ? <Spinner /> : <RefreshCwIcon className="h-4 w-4" />}
+                        <span>Refresh</span>
                     </Button>
 
-                    {/* Create Order Button */}
-                    <Button className="h-8 w-8 p-0 text-sm" onClick={() => setCreateModalOpen(true)}>
+                    <Button size="sm" className="h-9 gap-2 rounded-lg shadow-sm" onClick={() => setCreateModalOpen(true)}>
                         <PlusIcon className="h-4 w-4" />
+                        <span>New order</span>
                     </Button>
                 </div>
             </div>
 
-            <div className="rounded-xl border bg-card shadow-sm">
+            <Deferred data="orderResults" fallback={<OrdersTableSkeleton />}>
+            {() => <>
+            <div className="mx-4 mt-4 overflow-hidden rounded-xl border bg-card shadow-sm">
                 <div className="scrollbar-custom overflow-x-auto">
                     <div className="inline-block min-w-full">
-                        <div className="max-h-[600px] overflow-y-auto">
-                            <Table className="min-w-full">
-                                <TableHeader className="sticky top-0 z-10 bg-muted/60">
-                                    <TableRow className="h-11 hover:bg-muted/60">
+                        <div className="max-h-[min(68vh,720px)] overflow-y-auto">
+                            <Table className="min-w-full border-separate border-spacing-0">
+                                <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                                    <TableRow className="h-10 hover:bg-transparent">
                                         {COLUMNS.map((col) => (
                                             <TableHead
                                                 key={col}
-                                                className="min-w-[130px] whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                                                scope="col"
+                                                className="min-w-[130px] whitespace-nowrap border-b bg-muted/70 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                                                 title={attributeLabels[col] ?? col}
                                             >
                                                 {attributeLabels[col] ?? col}
                                             </TableHead>
                                         ))}
-                                        <TableHead className="sticky right-0 z-20 min-w-[40px] whitespace-nowrap bg-muted/60 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        <TableHead scope="col" className="sticky right-0 z-20 min-w-[76px] whitespace-nowrap border-b bg-muted/70 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                             Actions
                                         </TableHead>
                                     </TableRow>
@@ -915,8 +985,11 @@ export default function Index() {
                 </div>
             </div>
 
-            <div className="mt-4 flex justify-center">
-                <Pagination>
+            <div className="mx-2 mb-2 mt-1 flex items-center justify-between gap-2 rounded-lg border bg-card px-2 py-1">
+                <p className="text-xs text-muted-foreground">
+                    Page <span className="font-medium text-foreground">{orders.links.find((link) => link.active)?.label ?? '1'}</span>
+                </p>
+                <Pagination className="mx-0 w-auto flex-none justify-end">
                     <PaginationContent>
                         {/* Previous */}
                         <PaginationItem>
@@ -983,16 +1056,18 @@ export default function Index() {
                     </PaginationContent>
                 </Pagination>
             </div>
+            </>}
+            </Deferred>
 
             {/* ✅ Filter Dialog */}
             {filterDialogOpen && (
                 <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
-                    <DialogContent className="max-w-lg">
-                        <DialogHeader>
-                            <DialogTitle>Filter Orders</DialogTitle>
-                            <DialogDescription>Apply filters to narrow down your orders. Click Apply to filter or Clear to reset.</DialogDescription>
+                    <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl gap-3 p-4 sm:p-5">
+                        <DialogHeader className="gap-1">
+                            <DialogTitle className="text-lg">Filter Orders</DialogTitle>
+                            <DialogDescription className="text-xs">Choose fields to narrow down your orders.</DialogDescription>
                         </DialogHeader>
-                        <div className="mt-2 grid max-h-[500px] grid-cols-1 gap-4 overflow-y-auto md:grid-cols-3">
+                        <div className="grid max-h-[65vh] grid-cols-1 gap-x-3 gap-y-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
                             {FILTER_FIELDS.map((col) =>
                                 col === 'delivery_date' ? (
                                     // ✅ Date Range Filter
@@ -1146,8 +1221,8 @@ export default function Index() {
                                 ),
                             )}
                         </div>
-                        <div className="mt-4 flex justify-end gap-2">
-                            <Button variant="outline" disabled={isFiltering} onClick={clearFilters}>
+                        <div className="flex justify-end gap-2 border-t pt-3">
+                            <Button variant="outline" size="sm" disabled={isFiltering} onClick={clearFilters}>
                                 {isFiltering ? (
                                     <>
                                         <Spinner className="mr-2" />
@@ -1157,7 +1232,7 @@ export default function Index() {
                                     'Clear'
                                 )}
                             </Button>
-                            <Button disabled={isFiltering} onClick={applyFilters}>
+                            <Button size="sm" disabled={isFiltering} onClick={applyFilters}>
                                 {isFiltering ? (
                                     <>
                                         <Spinner className="mr-2" />
@@ -1223,17 +1298,17 @@ export default function Index() {
                                     </div>
                                     {isListening && (
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <div className="h-2 w-2 animate-pulse rounded-full bg-red-500"></div>
+                                            <div className="h-2 w-2 animate-pulse rounded-full bg-destructive"></div>
                                             Listening... {interimTranscript && <span className="italic">"{interimTranscript}"</span>}
                                         </div>
                                     )}
-                                    {speechError && <div className="text-sm text-red-500">Voice input error: {speechError}</div>}
+                                    {speechError && <div className="text-sm text-destructive">Voice input error: {speechError}</div>}
                                     {!isSpeechSupported && (
                                         <div className="text-sm text-muted-foreground">
                                             Voice input is not supported in your browser. Try Chrome or Edge.
                                         </div>
                                     )}
-                                    <div className="text-xs text-gray-500 italic">
+                                    <div className="text-xs text-muted-foreground italic">
                                         💡 Date/time is auto-added. Type your comment after the dash. If you don't add text after the dash, changes
                                         won't be saved.
                                     </div>
@@ -1295,7 +1370,7 @@ export default function Index() {
                                                 {history.old_value || '(empty)'}
                                             </span>
                                             <X className="h-3 w-3 text-muted-foreground" />
-                                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 font-medium text-emerald-700">
+                                            <span className="inline-flex items-center gap-1 rounded-md bg-success/10 px-2 py-1 font-medium text-success">
                                                 {history.new_value || '(empty)'}
                                             </span>
                                         </div>
@@ -1590,11 +1665,11 @@ export default function Index() {
                             )}
                             {isListening && (
                                 <div className="absolute bottom-2 left-2 flex items-center gap-2 text-sm text-muted-foreground">
-                                    <div className="h-2 w-2 animate-pulse rounded-full bg-red-500"></div>
+                                    <div className="h-2 w-2 animate-pulse rounded-full bg-destructive"></div>
                                     Listening... {interimTranscript && <span className="italic">"{interimTranscript}"</span>}
                                 </div>
                             )}
-                            {speechError && <div className="mt-1 text-sm text-red-500">Voice input error: {speechError}</div>}
+                            {speechError && <div className="mt-1 text-sm text-destructive">Voice input error: {speechError}</div>}
                             {!isSpeechSupported && (
                                 <div className="mt-1 text-sm text-muted-foreground">
                                     Voice input is not supported in your browser. Try Chrome or Edge.

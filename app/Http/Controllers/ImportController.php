@@ -46,7 +46,7 @@ class ImportController extends Controller
         }
 
         return Inertia::render('import/index', [
-            'sheets' => $sheetsQuery->get(),
+            'sheets' => Inertia::defer(fn () => $sheetsQuery->get()),
             'userCountry' => CountryAccess::userCountryName($user),
         ]);
     }

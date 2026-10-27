@@ -690,6 +690,11 @@ class SheetOrderPullImporter
                 continue;
             }
 
+            if ($requireColumnC && SpreadsheetValue::text($this->cell($row, $map, 'phone')) === null) {
+                $summary['skipped']['missing_phone']++;
+                continue;
+            }
+
             $orderNo = SpreadsheetValue::text($this->cell($row, $map, 'order_no'));
 
             if ($orderNo === null) {
@@ -906,6 +911,7 @@ class SheetOrderPullImporter
             'skipped' => [
                 'has_status' => 0,
                 'missing_priority' => 0,
+                'missing_phone' => 0,
                 'existing_order' => 0,
                 'duplicate_in_sheet' => 0,
                 'blank_order_no' => 0,

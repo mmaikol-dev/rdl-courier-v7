@@ -91,25 +91,26 @@ class ChatController extends Controller
 
         $query = Chat::where('created_at', '>=', now()->subDays(90));
         $this->countryFilter($query);
-        $rawChats = $query->orderBy('created_at', 'asc')->get();
+        $chatData = Inertia::defer(function () use ($query, $currentPage, $perPage) {
+            $rawChats = $query->orderBy('created_at', 'asc')->get();
+            $sortedConversations = $this->groupAndSortChats($rawChats);
+            $total = count($sortedConversations);
+            $offset = ($currentPage - 1) * $perPage;
 
-        $sortedConversations = $this->groupAndSortChats($rawChats);
-
-        $total = count($sortedConversations);
-        $offset = ($currentPage - 1) * $perPage;
-        $paginatedConversations = array_slice($sortedConversations, $offset, $perPage);
-
-        $pagination = [
-            'current_page' => $currentPage,
-            'per_page' => $perPage,
-            'total' => $total,
-            'last_page' => (int) ceil($total / $perPage),
-            'has_more_pages' => $currentPage < ceil($total / $perPage),
-        ];
+            return [
+                'conversations' => array_slice($sortedConversations, $offset, $perPage),
+                'pagination' => [
+                    'current_page' => $currentPage,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => (int) ceil($total / $perPage),
+                    'has_more_pages' => $currentPage < ceil($total / $perPage),
+                ],
+            ];
+        });
 
         return Inertia::render('whatsapp/index', [
-            'conversations' => $paginatedConversations,
-            'pagination' => $pagination,
+            'chatData' => $chatData,
         ]);
     }
 

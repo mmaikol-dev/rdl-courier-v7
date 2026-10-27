@@ -2,8 +2,9 @@
 
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, usePage, router } from '@inertiajs/react';
+import { Deferred, Head, usePage, router } from '@inertiajs/react';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -71,14 +72,33 @@ interface SheetOrder {
   confirmed: number;
 }
 
+const EMPTY_STK_ORDERS: { data: SheetOrder[] } = { data: [] };
+
+function StkOrdersSkeleton() {
+  return (
+    <div className="space-y-3" role="status" aria-label="Loading payment orders" aria-live="polite">
+      <div className="rounded-lg border bg-card">
+        <div className="grid grid-cols-5 gap-3 border-b p-3">
+          {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}
+        </div>
+        {Array.from({ length: 7 }).map((_, row) => (
+          <div key={row} className="grid grid-cols-5 gap-3 border-b p-3 last:border-0">
+            {Array.from({ length: 5 }).map((__, column) => <Skeleton key={column} className="h-8 w-full" />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const getStatusColor = (status: string | null | undefined) => {
-  if (!status) return 'bg-gray-100 text-gray-800 border-gray-200';
+  if (!status) return 'bg-muted text-foreground border-border';
   const statusLower = status.toLowerCase();
-  if (statusLower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-  if (statusLower.includes('paid') || statusLower.includes('success')) return 'bg-green-100 text-green-800 border-green-200';
-  if (statusLower.includes('failed')) return 'bg-red-100 text-red-800 border-red-200';
-  if (statusLower.includes('processing')) return 'bg-blue-100 text-blue-800 border-blue-200';
-  return 'bg-gray-100 text-gray-800 border-gray-200';
+  if (statusLower.includes('pending')) return 'bg-warning/10 text-warning-foreground border-warning/30';
+  if (statusLower.includes('paid') || statusLower.includes('success')) return 'bg-success/10 text-success border-success/30';
+  if (statusLower.includes('failed')) return 'bg-destructive/10 text-destructive border-destructive/30';
+  if (statusLower.includes('processing')) return 'bg-accent text-foreground border-border';
+  return 'bg-muted text-foreground border-border';
 };
 
 const parseLocalDate = (value?: string) => {
@@ -92,13 +112,14 @@ const parseLocalDate = (value?: string) => {
 
 export default function Index() {
   const { props } = usePage();
-  const { orders, filters, auth, agents, callCenterUsers } = props as unknown as {
-    orders: { data: SheetOrder[] };
+  const { orders: loadedOrders, filters, auth, agents, callCenterUsers } = props as unknown as {
+    orders?: { data: SheetOrder[] };
     filters: { search?: string; agent?: string; cc_name?: string; start_date?: string; end_date?: string };
     auth?: { user?: { id: number; roles?: string } };
     agents: Array<{ id: number; name: string }>;
     callCenterUsers: Array<{ id: number; name: string; email: string }>;
   };
+  const orders = loadedOrders ?? EMPTY_STK_ORDERS;
 
   const userId = auth?.user?.id || 'guest';
   const currentUserRole = String(auth?.user?.roles ?? '').trim().toLowerCase();
@@ -156,11 +177,11 @@ export default function Index() {
     return Number(confirmed) === 1
       ? {
           label: 'Confirmed',
-          className: 'bg-green-600 text-white hover:bg-green-600',
+          className: 'bg-success text-success-foreground hover:bg-success',
         }
       : {
           label: 'Unconfirmed',
-          className: 'bg-red-600 text-white hover:bg-red-600',
+          className: 'bg-destructive text-destructive-foreground hover:bg-destructive',
         };
   };
 
@@ -598,6 +619,8 @@ export default function Index() {
           </Tabs>
         </div>
 
+        <Deferred data="orders" fallback={<StkOrdersSkeleton />}>
+        {() => <>
         {/* Orders Display */}
         {filteredOrders.length === 0 ? (
           <Card>
@@ -695,7 +718,7 @@ export default function Index() {
                                 <Button
                                   size="sm"
                                   onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
-                                  className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700"
+                                  className="h-8 w-8 p-0 bg-success hover:bg-success"
                                   title="Call"
                                   disabled={isPaying}
                                 >
@@ -850,7 +873,7 @@ export default function Index() {
                                     <Button
                                       size="sm"
                                       onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
-                                      className="h-10 w-10 p-0 bg-green-600 hover:bg-green-700 flex-shrink-0"
+                                      className="h-10 w-10 p-0 bg-success hover:bg-success flex-shrink-0"
                                       disabled={isPaying}
                                     >
                                       <PhoneCall className="h-4 w-4" />
@@ -1003,7 +1026,7 @@ export default function Index() {
                       <Button
                         size="sm"
                         onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
-                        className="flex-1 gap-2 h-9 bg-green-600 hover:bg-green-700"
+                        className="flex-1 gap-2 h-9 bg-success hover:bg-success"
                         disabled={isPaying}
                       >
                         <PhoneCall className="h-4 w-4" />
@@ -1054,6 +1077,8 @@ export default function Index() {
             })}
           </div>
         )}
+        </>}
+        </Deferred>
       </div>
 
       {/* Edit Modal */}
@@ -1096,7 +1121,7 @@ export default function Index() {
                     id="confirmed"
                     checked={editingOrder.confirmed === 1}
                     onChange={e => setEditingOrder({ ...editingOrder, confirmed: e.target.checked ? 1 : 0 })}
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary cursor-pointer"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary cursor-pointer"
                     disabled={isSaving}
                   />
                   <Label htmlFor="confirmed" className="text-sm font-normal cursor-pointer">
@@ -1215,18 +1240,18 @@ export default function Index() {
             </div>
           ) : paymentResult.status === "Success" ? (
             <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-green-100 p-3 sm:p-4">
-                <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12 text-green-600" />
+              <div className="rounded-full bg-success/10 p-3 sm:p-4">
+                <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12 text-success" />
               </div>
               <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl font-semibold text-green-600">
+                <DialogTitle className="text-lg sm:text-xl font-semibold text-success">
                   Payment Successful!
                 </DialogTitle>
                 <DialogDescription className="text-sm">
                   Your M-Pesa payment has been processed
                 </DialogDescription>
               </DialogHeader>
-              <div className="bg-green-50 rounded-lg p-3 sm:p-4 w-full space-y-2 text-xs sm:text-sm border border-green-200">
+              <div className="bg-success/10 rounded-lg p-3 sm:p-4 w-full space-y-2 text-xs sm:text-sm border border-success/30">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Hash className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
@@ -1241,13 +1266,13 @@ export default function Index() {
                   </span>
                   <span className="font-medium">KES {paymentResult.amount?.toLocaleString()}</span>
                 </div>
-                <Separator className="bg-green-200" />
+                <Separator className="bg-success/20" />
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Receipt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     Receipt:
                   </span>
-                  <span className="font-semibold text-green-700">{paymentResult.receipt}</span>
+                  <span className="font-semibold text-success">{paymentResult.receipt}</span>
                 </div>
               </div>
               <Button
@@ -1260,18 +1285,18 @@ export default function Index() {
             </div>
           ) : (
             <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-red-100 p-3 sm:p-4">
-                <XCircle className="h-10 w-10 sm:h-12 sm:w-12 text-red-600" />
+              <div className="rounded-full bg-destructive/10 p-3 sm:p-4">
+                <XCircle className="h-10 w-10 sm:h-12 sm:w-12 text-destructive" />
               </div>
               <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl font-semibold text-red-600">
+                <DialogTitle className="text-lg sm:text-xl font-semibold text-destructive">
                   Payment Failed
                 </DialogTitle>
                 <DialogDescription className="text-sm">
                   The M-Pesa payment could not be completed
                 </DialogDescription>
               </DialogHeader>
-              <div className="bg-red-50 rounded-lg p-3 sm:p-4 w-full text-xs sm:text-sm border border-red-200">
+              <div className="bg-destructive/10 rounded-lg p-3 sm:p-4 w-full text-xs sm:text-sm border border-destructive/30">
                 <p className="text-muted-foreground">
                   The transaction was declined or timed out. Please try again.
                 </p>

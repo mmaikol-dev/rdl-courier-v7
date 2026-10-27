@@ -40,6 +40,14 @@ class InventoryDeductionPaginationTest extends TestCase
         ]);
     }
 
+    private function makeDeductedOrder(string $merchant, string $country = 'Kenya'): SheetOrder
+    {
+        $order = $this->makeOrder($merchant, country: $country);
+        $order->forceFill(['inventory_deducted_at' => now()])->save();
+
+        return $order;
+    }
+
     public function test_index_requires_auth(): void
     {
         $this->get('/inventory-deductions')->assertRedirect('/login');
@@ -335,6 +343,56 @@ class InventoryDeductionPaginationTest extends TestCase
 
         $this->assertContains($kenyan->id, $ids);
         $this->assertNotContains($tanzanian->id, $ids, 'country scoping must survive pagination');
+    }
+
+    public function test_deducted_orders_are_country_scoped_except_for_god(): void
+    {
+        $kenyan = $this->makeDeductedOrder('Country Scope Merchant', 'Kenya');
+        $tanzanian = $this->makeDeductedOrder('Country Scope Merchant', 'Tanzania');
+
+        $user = User::factory()->create();
+        $user->forceFill(['roles' => 'finance', 'store_address' => 'Kenya'])->save();
+        $countryResponse = $this->actingAs($user)->get('/deducted-orders');
+        $countryResponse->assertOk();
+        $countryOrders = $countryResponse->viewData('page')['props']['orders']['data'];
+
+        $this->assertSame([$kenyan->id], array_column($countryOrders, 'id'));
+
+        $god = User::factory()->create();
+        $god->forceFill(['roles' => 'G.O.D', 'store_address' => 'Kenya'])->save();
+        $globalResponse = $this->actingAs($god)->get('/deducted-orders');
+        $globalResponse->assertOk();
+        $globalOrders = $globalResponse->viewData('page')['props']['orders']['data'];
+
+        $this->assertEqualsCanonicalizing(
+            [$kenyan->id, $tanzanian->id],
+            array_column($globalOrders, 'id')
+        );
+    }
+
+    public function test_merchant_sees_only_own_deducted_orders_in_their_country(): void
+    {
+        $own = $this->makeDeductedOrder('Own Merchant');
+        $otherMerchant = $this->makeDeductedOrder('Other Merchant');
+        $ownOtherCountry = $this->makeDeductedOrder('Own Merchant', 'Tanzania');
+
+        $merchant = User::factory()->create();
+        $merchant->forceFill([
+            'name' => 'Own Merchant',
+            'roles' => 'merchant',
+            'store_address' => 'Kenya',
+        ])->save();
+
+        $response = $this->actingAs($merchant)->get('/deducted-orders');
+        $response->assertOk();
+        $orders = $response->viewData('page')['props']['orders']['data'];
+
+        $this->assertSame([$own->id], array_column($orders, 'id'));
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('isMerchant', true)
+            ->where('selectedMerchant', 'Own Merchant'));
+        $this->assertNotContains($otherMerchant->id, array_column($orders, 'id'));
+        $this->assertNotContains($ownOtherCountry->id, array_column($orders, 'id'));
     }
 
     public function test_page_beyond_last_page_returns_empty_data_not_an_error(): void

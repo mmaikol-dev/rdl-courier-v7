@@ -93,29 +93,30 @@ class DispatchController extends Controller
             $ordersQuery->whereRaw('LOWER(country) = ?', [mb_strtolower(trim($countryFilter))]);
         }
 
-        // Paginate and format date
-        $orders = $ordersQuery->paginate(50)->through(function ($order) {
-            $order->delivery_date = $order->delivery_date
-                ? Carbon::parse($order->delivery_date)->format('Y-m-d')
-                : null;
-            return $order;
-        })->withQueryString();
-
         // Get agents for dropdown
         $agents = CountryAccess::scopeUsers(
             User::query()->where('roles', 'agent')->select('id', 'name'),
             $user
         )->get();
 
-        // ✅ Safe log (avoid undefined array key)
-        if ($orders->count() > 0) {
-            \Log::info('Sample order:', $orders->items()[0]->toArray());
-        } else {
-            \Log::info('No orders found for current filters.');
-        }
-
         return Inertia::render('dispatch/index', [
-            'orders' => $orders,
+            'orders' => Inertia::defer(function () use ($ordersQuery) {
+                $orders = $ordersQuery->paginate(50)->through(function ($order) {
+                    $order->delivery_date = $order->delivery_date
+                        ? Carbon::parse($order->delivery_date)->format('Y-m-d')
+                        : null;
+
+                    return $order;
+                })->withQueryString();
+
+                if ($orders->count() > 0) {
+                    \Log::info('Sample order:', $orders->items()[0]->toArray());
+                } else {
+                    \Log::info('No orders found for current filters.');
+                }
+
+                return $orders;
+            }),
             'agents' => $agents,
             'filters' => [
                 'search' => $search,

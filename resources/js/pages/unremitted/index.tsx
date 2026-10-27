@@ -2,7 +2,7 @@
 
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, usePage, router } from '@inertiajs/react';
+import { Deferred, Head, usePage, router } from '@inertiajs/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const BASE_COLUMNS = [
   'order_no', 'client_name', 'product_name', 'amount', 'phone',
@@ -37,13 +38,13 @@ const BASE_COLUMNS = [
 ] as const;
 
 const statusColors: Record<string, string> = {
-  Delivered: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Pending: "bg-amber-100 text-amber-700 border-amber-200",
-  Scheduled: "bg-sky-100 text-sky-700 border-sky-200",
-  Dispatched: "bg-blue-100 text-blue-700 border-blue-200",
-  Cancelled: "bg-rose-100 text-rose-700 border-rose-200",
-  Followup: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
-  WrongContact: "bg-slate-100 text-slate-700 border-slate-200",
+  Delivered: "bg-success/10 text-success border-success/30",
+  Pending: "bg-warning/10 text-warning-foreground border-warning/30",
+  Scheduled: "bg-accent text-foreground border-border",
+  Dispatched: "bg-accent text-foreground border-border",
+  Cancelled: "bg-destructive/10 text-destructive border-destructive/30",
+  Followup: "bg-accent text-foreground border-border",
+  WrongContact: "bg-muted text-foreground border-border",
 };
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -72,14 +73,36 @@ interface PaginationLinkData {
   active: boolean;
 }
 
+const EMPTY_ORDERS = { data: [] as SheetOrder[], links: [] as PaginationLinkData[] };
+
+function OrdersTableSkeleton() {
+  return (
+    <div className="mt-4 space-y-3" role="status" aria-label="Loading orders" aria-live="polite">
+      <div className="overflow-hidden rounded-xl border">
+        <div className="grid grid-cols-4 gap-3 border-b bg-muted/30 p-3 sm:grid-cols-8">
+          {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}
+        </div>
+        {Array.from({ length: 8 }).map((_, row) => (
+          <div key={row} className="grid grid-cols-4 gap-3 border-b p-3 last:border-0 sm:grid-cols-8">
+            {Array.from({ length: 8 }).map((__, column) => <Skeleton key={column} className="h-4 w-full" />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Index() {
   const isMobile = useIsMobile();
   const { props } = usePage();
-  const { orders, merchantUsers, auth } = props as unknown as {
+  const pageData = props as unknown as {
     orders: { data: SheetOrder[], links: PaginationLinkData[] },
     merchantUsers: string[],
     auth: { user: { id: number; name: string; roles: string } },
   };
+  const orders = pageData.orders ?? EMPTY_ORDERS;
+  const merchantUsers = pageData.merchantUsers ?? [];
+  const auth = pageData.auth;
 
   const hiddenRoles = ["callcenter1", "merchant", "operations"];
 
@@ -176,7 +199,7 @@ export default function Index() {
 
   const getStatusPillClass = (status: string) => {
     const normalized = status?.trim() || "New Orders";
-    return statusColors[normalized] || "bg-slate-100 text-slate-700 border-slate-200";
+    return statusColors[normalized] || "bg-muted text-foreground border-border";
   };
 
   return (
@@ -184,7 +207,7 @@ export default function Index() {
       <Head title="Unremitted Orders" />
 
       <div className="space-y-4 px-4 pt-4">
-        <div className="rounded-xl border bg-gradient-to-r from-slate-50 to-cyan-50 p-4">
+        <div className="rounded-xl border bg-gradient-to-r from-muted to-accent p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Unremitted Orders</h1>
@@ -222,15 +245,17 @@ export default function Index() {
         </div>
       </div>
 
+      <Deferred data="orders" fallback={<OrdersTableSkeleton />}>
+      {() => <>
       <div className="mt-4 border rounded-xl shadow-sm">
         <div className="scrollbar-custom w-full overflow-x-auto">
-          <Table className="min-w-[1120px] border border-slate-200">
-            <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
+          <Table className="min-w-[1120px] border border-border">
+            <TableHeader className="sticky top-0 z-10 bg-muted backdrop-blur supports-[backdrop-filter]:bg-muted">
               <TableRow>
                 {COLUMNS.map(col => (
                   <TableHead
                     key={col}
-                    className="min-w-[120px] whitespace-nowrap border border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-600 sm:text-sm"
+                    className="min-w-[120px] whitespace-nowrap border border-border text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm"
                   >
                     {col === "remit" ? "Mark Remitted" : col}
                   </TableHead>
@@ -240,11 +265,11 @@ export default function Index() {
 
             <TableBody>
               {orders.data.map(order => (
-                <TableRow key={order.id} className="hover:bg-cyan-50/35">
+                <TableRow key={order.id} className="hover:bg-accent">
                   {COLUMNS.map(col => {
                     if (col === "remit") {
                       return (
-                        <TableCell key={col} className="min-w-[120px] border border-slate-100 text-center">
+                        <TableCell key={col} className="min-w-[120px] border border-border text-center">
                           <Checkbox
                             checked={order.agent === "Remitted"}
                             disabled={remittingOrderId === order.id}
@@ -263,7 +288,7 @@ export default function Index() {
                     return (
                       <TableCell
                         key={col}
-                        className="min-w-[120px] max-w-[180px] truncate whitespace-nowrap border border-slate-100"
+                        className="min-w-[120px] max-w-[180px] truncate whitespace-nowrap border border-border"
                       >
                         {col === "status" ? (
                           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(value)}`}>
@@ -300,6 +325,9 @@ export default function Index() {
           </PaginationContent>
         </Pagination>
       </div>
+
+      </>}
+      </Deferred>
 
       {/* Filter Dialog */}
       {filterDialogOpen && (

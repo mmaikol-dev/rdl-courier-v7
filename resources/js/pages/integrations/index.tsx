@@ -1,8 +1,8 @@
 'use client';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Dialog,
@@ -25,10 +25,11 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router, useForm } from '@inertiajs/react';
-import { Loader2, PlugZap, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react';
+import { Deferred, Head, router, useForm } from '@inertiajs/react';
+import { Activity, AlertTriangle, ChevronDown, ChevronRight, Globe2, Loader2, PlugZap, Plus, RefreshCw, Store, Trash2, Unplug } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -41,6 +42,7 @@ interface Integration {
     merchant: string;
     sheets_id: number;
     country: string;
+    allowed_countries: string[];
     order_no_prefix: string;
     is_enabled: boolean;
     last_synced_at: string | null;
@@ -79,7 +81,36 @@ interface IntegrationForm {
     access_token: string;
     sheets_id: string;
     country: string;
+    allowed_countries: string[];
     order_no_prefix: string;
+}
+
+interface IntegrationOrder {
+    id: number;
+    order_no: string;
+    client_name: string | null;
+    country: string | null;
+    product_name: string | null;
+    quantity: number | null;
+    amount: number | null;
+    status: string | null;
+    created_at: string | null;
+    import_state: string;
+    error_message: string | null;
+}
+
+const IMPORT_STATE_LABELS: Record<string, string> = {
+    processed: 'Inserted',
+    pending: 'Pending',
+    processing: 'Processing',
+    failed: 'Failed',
+    skipped: 'Skipped',
+};
+
+const EMPTY_INTEGRATIONS: Integration[] = [];
+
+function IntegrationsTableSkeleton() {
+    return <div className="space-y-3 rounded-xl border p-4" role="status" aria-label="Loading integrations" aria-live="polite"><div className="grid grid-cols-3 gap-3 border-b pb-3 sm:grid-cols-7">{Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}</div>{Array.from({ length: 5 }).map((_, row) => <div key={row} className="grid grid-cols-3 gap-3 border-b py-4 last:border-0 sm:grid-cols-7">{Array.from({ length: 7 }).map((__, col) => <Skeleton key={col} className="h-4 w-full" />)}</div>)}</div>;
 }
 
 const emptyForm: IntegrationForm = {
@@ -87,22 +118,35 @@ const emptyForm: IntegrationForm = {
     access_token: '',
     sheets_id: '',
     country: '',
+    allowed_countries: [],
     order_no_prefix: '',
 };
 
-export default function IntegrationsIndex({ integrations, sheets, countryNames, prefixSuggestions, auth }: PageProps) {
+export default function IntegrationsIndex({ integrations = EMPTY_INTEGRATIONS, sheets, countryNames, prefixSuggestions, auth }: PageProps) {
     const { data, setData, post, put, reset } = useForm<IntegrationForm>(emptyForm);
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [pendingDelete, setPendingDelete] = React.useState<Integration | null>(null);
     const [busyId, setBusyId] = React.useState<number | null>(null);
+    const [expandedId, setExpandedId] = React.useState<number | null>(null);
+    const [ordersByIntegration, setOrdersByIntegration] = React.useState<Record<number, IntegrationOrder[]>>({});
+    const [ordersLoadingId, setOrdersLoadingId] = React.useState<number | null>(null);
+    const [countrySearch, setCountrySearch] = React.useState('');
 
     const isEditing = Boolean(data.id);
     const isMerchant = auth.user.roles === 'merchant';
+    const enabledCount = integrations.filter((integration) => integration.is_enabled && !integration.last_error).length;
+    const stagedOrderCount = integrations.reduce((total, integration) => total + integration.orders_synced, 0);
+    const countryCount = new Set(integrations.flatMap((integration) => integration.allowed_countries ?? [integration.country])).size;
+    const errorCount = integrations.filter((integration) => Boolean(integration.last_error)).length;
 
     // A merchant only ever sees their own sheet, so the country follows it
     // rather than being a free choice. Staff pick per store.
     const selectedSheet = sheets.find((sheet) => String(sheet.id) === data.sheets_id);
+    const canonicalCountryName = React.useCallback((country: string) => {
+        const normalized = country.trim().toLocaleLowerCase();
+        return Object.values(countryNames).find((name) => name.trim().toLocaleLowerCase() === normalized) ?? country.trim();
+    }, [countryNames]);
 
     React.useEffect(() => {
         if (isMerchant && selectedSheet && !data.country) {
@@ -112,10 +156,12 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
 
     const openCreate = () => {
         reset();
+        setCountrySearch('');
         setIsDialogOpen(true);
     };
 
     const openEdit = (integration: Integration) => {
+        setCountrySearch('');
         setData({
             id: integration.id,
             store_name: integration.store_name,
@@ -123,6 +169,7 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
             access_token: '',
             sheets_id: String(integration.sheets_id),
             country: integration.country,
+            allowed_countries: (integration.allowed_countries ?? [integration.country]).map(canonicalCountryName),
             order_no_prefix: integration.order_no_prefix,
         });
         setIsDialogOpen(true);
@@ -132,15 +179,22 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
         event.preventDefault();
         setIsSubmitting(true);
 
-        const onFinish = () => {
-            setIsSubmitting(false);
-            setIsDialogOpen(false);
+        const submitOptions = {
+            onSuccess: () => {
+                toast.success(isEditing ? 'Storeep integration updated.' : 'Storeep store connected.');
+                setIsDialogOpen(false);
+            },
+            onError: (errors: Record<string, string>) => {
+                const firstError = Object.values(errors).find((message) => typeof message === 'string');
+                toast.error(firstError ?? 'Could not save the Storeep integration. Check the form and try again.');
+            },
+            onFinish: () => setIsSubmitting(false),
         };
 
         if (isEditing) {
-            put(`/integrations/${data.id}`, { onFinish });
+            put(`/integrations/${data.id}`, submitOptions);
         } else {
-            post('/integrations', { onFinish });
+            post('/integrations', submitOptions);
         }
     };
 
@@ -169,6 +223,32 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
         });
     };
 
+    const toggleOrders = async (integration: Integration) => {
+        if (expandedId === integration.id) {
+            setExpandedId(null);
+            return;
+        }
+
+        setExpandedId(integration.id);
+        if (ordersByIntegration[integration.id]) return;
+
+        setOrdersLoadingId(integration.id);
+        try {
+            const response = await fetch(`/integrations/${integration.id}/orders`, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            if (!response.ok) throw new Error('Could not load the latest orders.');
+            const result = await response.json();
+            setOrdersByIntegration((current) => ({ ...current, [integration.id]: result.orders ?? [] }));
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Could not load the latest orders.');
+            setExpandedId(null);
+        } finally {
+            setOrdersLoadingId(null);
+        }
+    };
+
     // The prefix comes from the merchant's sheet name, and the backend sends
     // the exact candidate list it would allocate from. Show those so the chip
     // a user clicks is the prefix the server would actually choose.
@@ -184,33 +264,64 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Integrations" />
 
-            <div className="flex flex-col gap-6">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-semibold">Integrations</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Connect order platforms. Credentials are stored per store in the database, so adding a
-                            merchant never needs an environment change.
+            <div className="flex w-full min-w-0 max-w-full flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
+                <div className="relative isolate flex min-w-0 flex-col justify-between gap-4 overflow-hidden rounded-xl border bg-card px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:px-5">
+                    <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-14 -z-10 size-48 rounded-full bg-primary/10 blur-3xl" />
+                    <div className="min-w-0">
+                        <div className="mb-2 inline-flex items-center gap-2 rounded-full border bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                            <span className="size-1.5 rounded-full bg-primary" /> Store connections
+                        </div>
+                        <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
+                        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                            Manage connected stores, incoming order markets, and sync activity in one place.
                         </p>
+                        <div className="mt-3 flex max-w-3xl items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                            <PlugZap className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                            <p>
+                                <span className="font-medium text-foreground">Syncs every five minutes.</span>{' '}
+                                Only selected markets are imported, and each order is filed under its chosen merchant with a store prefix, for example <span className="font-mono text-foreground">TRI1</span>.
+                            </p>
+                        </div>
                     </div>
 
-                    <Button onClick={openCreate} className="gap-2">
+                    <Button
+                        onClick={openCreate}
+                        className="max-w-full shrink-0 gap-2 shadow-sm"
+                    >
                         <Plus className="size-4" />
                         Connect Storeep store
                     </Button>
                 </div>
 
-                <Alert>
-                    <PlugZap className="size-4" />
-                    <AlertTitle>Storeep</AlertTitle>
-                    <AlertDescription>
-                        Orders sync every five minutes and land on the orders board under the merchant you choose.
-                        Order numbers are prefixed with a short abbreviation of the store name, for example
-                        <span className="font-mono"> TRI1</span>. New orders arrive with a blank status so they show up
-                        as fresh work until they are delivered.
-                    </AlertDescription>
-                </Alert>
+                <div className="grid gap-3 sm:grid-cols-3">
+                    <Card className="border-border/70 shadow-sm">
+                        <CardContent className="flex items-center gap-3 p-4">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Store className="size-5" /></div>
+                            <div className="min-w-0"><p className="text-xs font-medium text-muted-foreground">Connected stores</p><p className="mt-0.5 text-xl font-semibold tabular-nums">{integrations.length}</p></div>
+                            <div className="ml-auto text-right">
+                                <p className="text-xs text-muted-foreground">{enabledCount} active</p>
+                                <p className="mt-1 text-xs text-muted-foreground"><span className="font-semibold text-foreground tabular-nums">{stagedOrderCount}</span> orders staged</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-border/70 shadow-sm">
+                        <CardContent className="flex items-center gap-3 p-4">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground"><Globe2 className="size-5" /></div>
+                            <div><p className="text-xs font-medium text-muted-foreground">Markets enabled</p><p className="mt-0.5 text-xl font-semibold tabular-nums">{countryCount}</p></div>
+                            <span className="ml-auto text-xs text-muted-foreground">Across all stores</span>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-border/70 shadow-sm">
+                        <CardContent className="flex items-center gap-3 p-4">
+                            <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${errorCount ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`}>{errorCount ? <AlertTriangle className="size-5" /> : <Activity className="size-5" />}</div>
+                            <div><p className="text-xs font-medium text-muted-foreground">Sync health</p><p className="mt-0.5 text-xl font-semibold">{errorCount ? `${errorCount} needs attention` : 'All clear'}</p></div>
+                            <span className="ml-auto text-xs text-muted-foreground">Every 5 min</span>
+                        </CardContent>
+                    </Card>
+                </div>
 
+                <Deferred data="integrations" fallback={<IntegrationsTableSkeleton />}>
+                {() => <>
                 {integrations.length === 0 ? (
                     <Card>
                         <CardContent className="py-14 text-center text-muted-foreground">
@@ -218,22 +329,24 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                         </CardContent>
                     </Card>
                 ) : (
-                    <Card className="border-border/60 shadow-sm">
-                        <CardHeader>
+                    <Card
+                        className="w-full min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm"
+                    >
+                        <CardHeader className="flex flex-row items-center justify-between gap-4 border-b bg-muted/20 px-5 py-4 sm:px-6">
+                            <div>
                             <CardTitle>Connected stores</CardTitle>
-                            <CardDescription>
-                                One row per store and country. A merchant trading in several countries gets one row
-                                per market.
-                            </CardDescription>
+                            <CardDescription className="mt-1">Manage access, accepted markets, and order sync.</CardDescription>
+                            </div>
+                            <Badge variant="secondary" className="shrink-0">{integrations.length} {integrations.length === 1 ? 'store' : 'stores'}</Badge>
                         </CardHeader>
-                        <CardContent>
-                            <div className="overflow-x-auto rounded-xl border">
-                                <Table>
+                        <CardContent className="min-w-0 p-3 sm:p-4">
+                            <div className="w-full min-w-0 max-w-full overflow-x-auto rounded-lg border bg-background">
+                                <Table className="min-w-[900px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Store</TableHead>
                                             <TableHead>Merchant</TableHead>
-                                            <TableHead>Country</TableHead>
+                                            <TableHead>Allowed countries</TableHead>
                                             <TableHead>Order prefix</TableHead>
                                             <TableHead>Synced</TableHead>
                                             <TableHead>State</TableHead>
@@ -242,6 +355,7 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                                     </TableHeader>
                                     <TableBody>
                                         {integrations.map((integration) => (
+                                            <React.Fragment key={integration.id}>
                                             <TableRow key={integration.id}>
                                                 <TableCell>
                                                     <div className="font-medium">{integration.store_name}</div>
@@ -250,14 +364,18 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{integration.merchant}</TableCell>
-                                                <TableCell>{integration.country}</TableCell>
+                                                <TableCell>
+                                                    <div className="max-w-48 text-sm leading-5">
+                                                        {(integration.allowed_countries ?? [integration.country]).join(', ') || 'No countries allowed'}
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell>
                                                     <Badge variant="secondary" className="font-mono">
                                                         {integration.order_no_prefix}
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-sm text-muted-foreground">
-                                                    <div>{integration.orders_synced} order(s)</div>
+                                                    <div>{integration.orders_synced} staged</div>
                                                     <div className="text-xs">
                                                         {integration.last_synced_at ?? 'never'}
                                                     </div>
@@ -275,6 +393,17 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center justify-end gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            aria-label={`${expandedId === integration.id ? 'Hide' : 'Show'} recent orders for ${integration.store_name}`}
+                                                            aria-expanded={expandedId === integration.id}
+                                                            onClick={() => void toggleOrders(integration)}
+                                                            className="gap-1.5"
+                                                        >
+                                                            {expandedId === integration.id ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                                                            Orders
+                                                        </Button>
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
@@ -317,6 +446,58 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
+                                            {expandedId === integration.id ? (
+                                                <TableRow key={`${integration.id}-orders`}>
+                                                    <TableCell colSpan={8} className="bg-muted/30 p-0">
+                                                        <div className="space-y-3 p-4">
+                                                            <div>
+                                                                <h3 className="text-sm font-medium">Recent picked orders</h3>
+                                                                <p className="text-xs text-muted-foreground">Up to 25 orders fetched from Storeep, with their import progress.</p>
+                                                            </div>
+                                                            {ordersLoadingId === integration.id ? (
+                                                                <div className="space-y-2" role="status" aria-label="Loading recent orders">
+                                                                    {[1, 2, 3].map((item) => <div key={item} className="h-8 animate-pulse rounded-md bg-muted" />)}
+                                                                </div>
+                                                            ) : (ordersByIntegration[integration.id] ?? []).length === 0 ? (
+                                                                <p className="rounded-md border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">No orders have been staged for this integration yet.</p>
+                                                            ) : (
+                                                                <div className="max-h-80 overflow-auto rounded-md border bg-card">
+                                                                    <Table>
+                                                                        <TableHeader>
+                                                                            <TableRow>
+                                                                                <TableHead>Order</TableHead><TableHead>Customer</TableHead><TableHead>Country</TableHead>
+                                                                                <TableHead>Items</TableHead><TableHead>Qty</TableHead><TableHead>Amount</TableHead><TableHead>Order status</TableHead><TableHead>Import state</TableHead>
+                                                                            </TableRow>
+                                                                        </TableHeader>
+                                                                        <TableBody>
+                                                                            {(ordersByIntegration[integration.id] ?? []).map((order) => (
+                                                                                <TableRow key={order.id}>
+                                                                                    <TableCell className="font-mono text-xs">{order.order_no}</TableCell>
+                                                                                    <TableCell>{order.client_name || '—'}</TableCell>
+                                                                                    <TableCell>{order.country || '—'}</TableCell>
+                                                                                    <TableCell className="max-w-64 truncate" title={order.product_name ?? undefined}>{order.product_name || '—'}</TableCell>
+                                                                                    <TableCell>{order.quantity ?? '—'}</TableCell>
+                                                                                    <TableCell>{order.amount == null ? '—' : Number(order.amount).toLocaleString()}</TableCell>
+                                                                                    <TableCell>{order.status || 'New order'}</TableCell>
+                                                                                    <TableCell>
+                                                                                        <Badge
+                                                                                            variant={order.import_state === 'failed' ? 'destructive' : order.import_state === 'processed' ? 'secondary' : 'outline'}
+                                                                                            title={order.error_message ?? undefined}
+                                                                                        >
+                                                                                            {IMPORT_STATE_LABELS[order.import_state] ?? order.import_state}
+                                                                                        </Badge>
+                                                                                    </TableCell>
+                                                                                </TableRow>
+                                                                            ))}
+                                                                        </TableBody>
+                                                                    </Table>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : null}
+                                            </React.Fragment>
                                         ))}
                                     </TableBody>
                                 </Table>
@@ -324,6 +505,8 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                         </CardContent>
                     </Card>
                 )}
+                </>}
+                </Deferred>
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -370,8 +553,11 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                                     // country suggested, but can still override it.
                                     const sheet = sheets.find((item) => String(item.id) === value);
 
-                                    if (sheet?.country && !Object.values(countryNames).includes(data.country)) {
+                                    if (sheet?.country && (!data.id || !Object.values(countryNames).includes(data.country))) {
                                         setData('country', sheet.country);
+                                    }
+                                    if (sheet?.country && !data.id) {
+                                        setData('allowed_countries', [canonicalCountryName(sheet.country)]);
                                     }
                                 }}
                             >
@@ -401,26 +587,43 @@ export default function IntegrationsIndex({ integrations, sheets, countryNames, 
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="country">Country</Label>
-                            <Select
-                                value={data.country}
-                                onValueChange={(value) => setData('country', value)}
-                                disabled={isMerchant}
-                            >
-                                <SelectTrigger id="country">
-                                    <SelectValue placeholder="Choose a country" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(countryNames).map(([iso, name]) => (
-                                        <SelectItem key={iso} value={name}>
-                                            {name} ({iso})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Label>Allowed order countries</Label>
+                            <Input
+                                value={countrySearch}
+                                onChange={(event) => setCountrySearch(event.target.value)}
+                                placeholder="Search countries..."
+                                aria-label="Search allowed order countries"
+                            />
+                            <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
+                                {Object.entries(countryNames)
+                                    .filter(([iso, name]) => `${name} ${iso}`.toLowerCase().includes(countrySearch.toLowerCase()))
+                                    .map(([iso, name]) => {
+                                        const checked = data.allowed_countries.includes(name);
+                                        return (
+                                            <label key={iso} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent">
+                                                <Checkbox
+                                                    checked={checked}
+                                                    onCheckedChange={(next) => {
+                                                        const countries = next
+                                                            ? [...new Set([...data.allowed_countries, name])]
+                                                            : data.allowed_countries.filter((country) => country !== name);
+                                                        setData('allowed_countries', countries);
+                                                        if (!data.country && countries.length > 0) setData('country', countries[0]);
+                                                    }}
+                                                />
+                                                <span>{name}</span><span className="ml-auto text-xs text-muted-foreground">{iso}</span>
+                                            </label>
+                                        );
+                                    })}
+                            </div>
                             <p className="text-xs text-muted-foreground">
-                                Add the store again for each new country it sells in. No code change needed.
+                                Only orders whose Storeep market matches a selected country will be inserted. With no countries selected, all incoming orders are skipped.
                             </p>
+                            {data.allowed_countries.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {data.allowed_countries.map((country) => <Badge key={country} variant="secondary">{country}</Badge>)}
+                                </div>
+                            ) : <Badge variant="outline">No countries selected</Badge>}
                         </div>
 
                         <div className="space-y-2">

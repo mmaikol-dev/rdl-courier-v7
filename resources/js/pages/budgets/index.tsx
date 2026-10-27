@@ -100,9 +100,9 @@ export default function BudgetsIndex() {
 
     const getHealthStatus = (current: number, initial: number) => {
         const percentage = (current / initial) * 100;
-        if (percentage > 50) return { color: "bg-green-100 text-green-800", label: "Healthy" };
-        if (percentage > 25) return { color: "bg-yellow-100 text-yellow-800", label: "Moderate" };
-        return { color: "bg-red-100 text-red-800", label: "Low" };
+        if (percentage > 50) return { color: "bg-success/10 text-success", label: "Healthy" };
+        if (percentage > 25) return { color: "bg-warning/10 text-warning-foreground", label: "Moderate" };
+        return { color: "bg-destructive/10 text-destructive", label: "Low" };
     };
 
     const breadcrumbs = [
@@ -118,11 +118,11 @@ export default function BudgetsIndex() {
             <Head title="Daily Budgets" />
 
             <div className="flex items-center justify-between gap-2 p-3 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-800">Daily Budgets</h1>
+                <h1 className="text-xl font-bold text-foreground">Daily Budgets</h1>
 
                 <Button
                     onClick={() => setOpenBudgetModal(true)}
-                    className="flex items-center gap-2 text-white"
+                    className="flex items-center gap-2 text-primary-foreground"
                 >
                     <PlusCircleIcon className="w-4 h-4" />
                     Create Budget
@@ -135,13 +135,13 @@ export default function BudgetsIndex() {
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-600">Total Budget</p>
-                                <p className="text-2xl font-bold text-gray-800">
+                                <p className="text-sm text-muted-foreground">Total Budget</p>
+                                <p className="text-2xl font-bold text-foreground">
                                     KES{budgetsArray.reduce((sum: number, b: any) => sum + parseFloat(b.initial_amount || 0), 0).toFixed(2)}
                                 </p>
                             </div>
-                            <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-                                <Wallet className="h-6 w-6 text-blue-600" />
+                            <div className="h-12 w-12 bg-accent rounded-full flex items-center justify-center">
+                                <Wallet className="h-6 w-6 text-muted-foreground" />
                             </div>
                         </div>
                     </CardContent>
@@ -151,13 +151,13 @@ export default function BudgetsIndex() {
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-600">Total Spent</p>
-                                <p className="text-2xl font-bold text-gray-800">
+                                <p className="text-sm text-muted-foreground">Total Spent</p>
+                                <p className="text-2xl font-bold text-foreground">
                                     KES{budgetsArray.reduce((sum: number, b: any) => sum + parseFloat(b.spent_amount || 0), 0).toFixed(2)}
                                 </p>
                             </div>
-                            <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
-                                <TrendingUp className="h-6 w-6 text-red-600" />
+                            <div className="h-12 w-12 bg-destructive/10 rounded-full flex items-center justify-center">
+                                <TrendingUp className="h-6 w-6 text-destructive" />
                             </div>
                         </div>
                     </CardContent>
@@ -167,13 +167,13 @@ export default function BudgetsIndex() {
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-600">Remaining</p>
-                                <p className="text-2xl font-bold text-gray-800">
+                                <p className="text-sm text-muted-foreground">Remaining</p>
+                                <p className="text-2xl font-bold text-foreground">
                                     KES{budgetsArray.reduce((sum: number, b: any) => sum + parseFloat(b.current_amount || 0), 0).toFixed(2)}
                                 </p>
                             </div>
-                            <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                                <Wallet className="h-6 w-6 text-green-600" />
+                            <div className="h-12 w-12 bg-success/10 rounded-full flex items-center justify-center">
+                                <Wallet className="h-6 w-6 text-success" />
                             </div>
                         </div>
                     </CardContent>
@@ -204,7 +204,7 @@ export default function BudgetsIndex() {
                                             parseFloat(budget.initial_amount || 1) // Avoid division by zero
                                         );
                                         return (
-                                            <TableRow key={budget.id} className="hover:bg-gray-50">
+                                            <TableRow key={budget.id} className="hover:bg-muted">
                                                 <TableCell>{index + 1}</TableCell>
                                                 <TableCell className="font-medium">
                                                     {new Date(budget.budget_date).toLocaleDateString()}
@@ -212,10 +212,10 @@ export default function BudgetsIndex() {
                                                 <TableCell className="font-semibold">
                                                     KES{parseFloat(budget.initial_amount || 0).toFixed(2)}
                                                 </TableCell>
-                                                <TableCell className="text-red-600 font-semibold">
+                                                <TableCell className="text-destructive font-semibold">
                                                     -KES{parseFloat(budget.spent_amount || 0).toFixed(2)}
                                                 </TableCell>
-                                                <TableCell className="text-green-600 font-bold text-lg">
+                                                <TableCell className="text-success font-bold text-lg">
                                                     KES{parseFloat(budget.current_amount || 0).toFixed(2)}
                                                 </TableCell>
                                                 <TableCell>
@@ -237,7 +237,7 @@ export default function BudgetsIndex() {
                                                         <Button
                                                             size="sm"
                                                             onClick={() => openTopUpDrawer(budget)}
-                                                            className="text-white"
+                                                            className="text-primary-foreground"
                                                         >
                                                             Top Up
                                                         </Button>
@@ -248,7 +248,7 @@ export default function BudgetsIndex() {
                                     })
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center text-gray-500 py-6">
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                                             No budgets found.
                                         </TableCell>
                                     </TableRow>
@@ -265,21 +265,21 @@ export default function BudgetsIndex() {
                     className={`
                         md:max-w-[600px] w-full h-[90vh] md:h-screen
                         md:right-0 md:left-auto md:rounded-l-2xl
-                        flex flex-col overflow-hidden bg-white
+                        flex flex-col overflow-hidden bg-card
                     `}
                 >
-                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
-                        <DrawerTitle className="text-xl font-bold text-gray-800">Create Daily Budget</DrawerTitle>
+                    <DrawerHeader className="border-b bg-card sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-xl font-bold text-foreground">Create Daily Budget</DrawerTitle>
                         <DrawerDescription className="text-sm text-muted-foreground">
                             Set up a new daily budget allocation.
                         </DrawerDescription>
                     </DrawerHeader>
 
-                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-muted">
                         <Card className="shadow-sm">
                             <CardContent className="p-4 sm:p-6 space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Budget Date *</label>
+                                    <label className="text-sm font-medium text-foreground">Budget Date *</label>
                                     <Input
                                         type="date"
                                         value={budgetData.budget_date}
@@ -288,7 +288,7 @@ export default function BudgetsIndex() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Initial Amount *</label>
+                                    <label className="text-sm font-medium text-foreground">Initial Amount *</label>
                                     <Input
                                         type="number"
                                         step="0.01"
@@ -300,16 +300,16 @@ export default function BudgetsIndex() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Created By</label>
-                                    <Input readOnly value={auth?.user?.name || ""} className="bg-gray-100" />
+                                    <label className="text-sm font-medium text-foreground">Created By</label>
+                                    <Input readOnly value={auth?.user?.name || ""} className="bg-muted" />
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
 
-                    <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
+                    <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
                         <DrawerClose asChild><Button variant="outline">Cancel</Button></DrawerClose>
-                        <Button onClick={handleCreateBudget} className="text-white">Create Budget</Button>
+                        <Button onClick={handleCreateBudget} className="text-primary-foreground">Create Budget</Button>
                     </DrawerFooter>
                 </DrawerContent>
             </Drawer>
@@ -320,29 +320,29 @@ export default function BudgetsIndex() {
                     className={`
                         md:max-w-[600px] w-full h-[90vh] md:h-screen
                         md:right-0 md:left-auto md:rounded-l-2xl
-                        flex flex-col overflow-hidden bg-white
+                        flex flex-col overflow-hidden bg-card
                     `}
                 >
-                    <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
-                        <DrawerTitle className="text-xl font-bold text-gray-800">Top Up Budget</DrawerTitle>
+                    <DrawerHeader className="border-b bg-card sticky top-0 z-10 p-4">
+                        <DrawerTitle className="text-xl font-bold text-foreground">Top Up Budget</DrawerTitle>
                         <DrawerDescription className="text-sm text-muted-foreground">
                             Add funds to the budget for {selectedBudget && new Date(selectedBudget.budget_date).toLocaleDateString()}
                         </DrawerDescription>
                     </DrawerHeader>
 
-                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-muted">
                         {selectedBudget && (
-                            <Card className="shadow-sm bg-blue-50 border-blue-200">
+                            <Card className="shadow-sm bg-accent border-border">
                                 <CardContent className="p-4 space-y-2">
                                     <div className="flex justify-between">
-                                        <span className="text-sm text-blue-700">Current Balance:</span>
-                                        <span className="font-bold text-blue-900">
+                                        <span className="text-sm text-foreground">Current Balance:</span>
+                                        <span className="font-bold text-foreground">
                                             KES{parseFloat(selectedBudget.current_amount || 0).toFixed(2)}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-sm text-blue-700">Spent:</span>
-                                        <span className="font-semibold text-blue-900">
+                                        <span className="text-sm text-foreground">Spent:</span>
+                                        <span className="font-semibold text-foreground">
                                             KES{parseFloat(selectedBudget.spent_amount || 0).toFixed(2)}
                                         </span>
                                     </div>
@@ -353,7 +353,7 @@ export default function BudgetsIndex() {
                         <Card className="shadow-sm">
                             <CardContent className="p-4 sm:p-6 space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Top Up Amount *</label>
+                                    <label className="text-sm font-medium text-foreground">Top Up Amount *</label>
                                     <Input
                                         type="number"
                                         step="0.01"
@@ -365,7 +365,7 @@ export default function BudgetsIndex() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">Reason (Optional)</label>
+                                    <label className="text-sm font-medium text-foreground">Reason (Optional)</label>
                                     <Textarea
                                         value={topUpData.reason}
                                         onChange={(e) => setTopUpData({ ...topUpData, reason: e.target.value })}
@@ -375,9 +375,9 @@ export default function BudgetsIndex() {
                                 </div>
 
                                 {topUpData.amount && selectedBudget && (
-                                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                                        <p className="text-sm text-green-700">New Balance After Top Up:</p>
-                                        <p className="text-2xl font-bold text-green-900">
+                                    <div className="p-4 bg-success/10 border border-success/30 rounded-lg">
+                                        <p className="text-sm text-success">New Balance After Top Up:</p>
+                                        <p className="text-2xl font-bold text-success">
                                             KES{(parseFloat(selectedBudget.current_amount || 0) + parseFloat(topUpData.amount || 0)).toFixed(2)}
                                         </p>
                                     </div>
@@ -386,9 +386,9 @@ export default function BudgetsIndex() {
                         </Card>
                     </div>
 
-                    <DrawerFooter className="border-t bg-white sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
+                    <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex justify-end gap-2 py-4 px-4 sm:px-6">
                         <DrawerClose asChild><Button variant="outline">Cancel</Button></DrawerClose>
-                        <Button onClick={handleTopUp} className="text-white">Confirm Top Up</Button>
+                        <Button onClick={handleTopUp} className="text-primary-foreground">Confirm Top Up</Button>
                     </DrawerFooter>
                 </DrawerContent>
             </Drawer>
