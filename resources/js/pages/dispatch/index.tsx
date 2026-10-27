@@ -44,6 +44,27 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dispatch', href: '/dispatch' },
 ];
 
+function dispatchStatusClass(status: string | null | undefined): string {
+    switch (String(status ?? '').trim().toLowerCase()) {
+        case 'scheduled':
+            return 'border-status-scheduled/40 bg-status-scheduled text-status-scheduled-foreground';
+        case 'dispatched':
+            return 'border-status-dispatched bg-status-dispatched text-status-dispatched-foreground';
+        case 'followup':
+            return 'border-status-followup/40 bg-status-followup text-status-followup-foreground';
+        case 'delivered':
+        case 'completed':
+            return 'border-success/30 bg-success/10 text-success';
+        case 'pending':
+            return 'border-warning/30 bg-warning/10 text-warning-foreground';
+        case 'cancelled':
+        case 'canceled':
+            return 'border-destructive/30 bg-destructive/10 text-destructive';
+        default:
+            return 'border-border bg-muted text-foreground';
+    }
+}
+
 function DispatchTableSkeleton() {
     return (
         <div className="space-y-4" role="status" aria-label="Loading dispatch orders" aria-live="polite">
@@ -384,11 +405,11 @@ const OrdersTable = React.memo(function OrdersTable({
                                             key={order.id}
                                             className={cn(
                                                 'transition-colors',
-                                                order.confirmed === 0 &&
-                                                    'bg-destructive/10 hover:bg-destructive/15 data-[state=selected]:bg-destructive/15',
+                                                order.agent &&
+                                                    'bg-primary/5 hover:bg-primary/10 data-[state=selected]:bg-primary/10',
                                             )}
                                         >
-                                            <TableCell className="truncate font-mono text-xs font-medium" title={order.order_no}>
+                                            <TableCell className="truncate text-xs font-medium" title={order.order_no}>
                                                 {order.order_no}
                                             </TableCell>
                                             <TableCell className="truncate font-medium" title={order.client_name}>
@@ -397,11 +418,11 @@ const OrdersTable = React.memo(function OrdersTable({
                                             <TableCell className="truncate" title={order.product_name}>
                                                 {order.product_name}
                                             </TableCell>
-                                            <TableCell className="text-right font-mono tabular-nums">{order.quantity}</TableCell>
-                                            <TableCell className="truncate text-right font-mono tabular-nums" title={order.amount}>
+                                            <TableCell className="text-right tabular-nums">{order.quantity}</TableCell>
+                                            <TableCell className="truncate text-right tabular-nums" title={order.amount}>
                                                 {order.amount}
                                             </TableCell>
-                                            <TableCell className="truncate font-mono text-xs" title={order.phone}>
+                                            <TableCell className="truncate text-xs" title={order.phone}>
                                                 {order.phone}
                                             </TableCell>
                                             <TableCell className="whitespace-nowrap text-xs" title={order.delivery_date}>
@@ -457,18 +478,9 @@ const OrdersTable = React.memo(function OrdersTable({
                                                 )}
                                             </TableCell>
                                             <TableCell>
-                                                {order.status === 'scheduled' ? (
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="whitespace-nowrap border-warning/30 bg-warning/10 text-warning-foreground"
-                                                    >
-                                                        Scheduled
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge className="whitespace-nowrap border-success/30 bg-success/10 text-success hover:bg-success/10">
-                                                        Dispatched
-                                                    </Badge>
-                                                )}
+                                                <Badge variant="outline" className={cn('whitespace-nowrap', dispatchStatusClass(order.status))}>
+                                                    {order.status || '—'}
+                                                </Badge>
                                             </TableCell>
 
                                             <TableCell className="text-right">
@@ -608,6 +620,11 @@ export default function DispatchView() {
     const [isDownloading, setIsDownloading] = React.useState<number | null>(null);
     const [updatingAgentId, setUpdatingAgentId] = React.useState<number | null>(null);
     const [togglingAgentId, setTogglingAgentId] = React.useState<number | null>(null);
+    const [displayOrders, setDisplayOrders] = React.useState<SheetOrder[]>(orders?.data ?? []);
+
+    React.useEffect(() => {
+        setDisplayOrders(orders?.data ?? []);
+    }, [orders?.data]);
 
     // Restrict merchants
     const restricted = userRole === 'merchant' || readOnly;
@@ -887,23 +904,44 @@ export default function DispatchView() {
         }, 2500);
     }, [readOnly]);
 
-    const handleAgentChange = React.useCallback((orderId: number, agentName: string | null) => {
+    const handleAgentChange = React.useCallback(async (orderId: number, agentName: string | null) => {
         if (readOnly) return handleRestrictedAction();
         setUpdatingAgentId(orderId);
-        router.put(
-            `/sheet_orders/${orderId}`,
-            { agent: agentName },
-            {
-                preserveState: true,
-                onSuccess: () => {
-                    toast.success(`Agent ${agentName ? 'assigned' : 'removed'} successfully!`);
+
+        try {
+            const response = await fetch(`/sheet_orders/${orderId}`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-XSRF-TOKEN': getXsrfToken(),
                 },
-                onError: (errors) => {
-                    toast.error('Failed to update agent. Please try again.');
-                },
-                onFinish: () => setUpdatingAgentId(null),
-            },
-        );
+                body: JSON.stringify({ agent: agentName }),
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const validationError = result.errors ? Object.values(result.errors).flat()[0] : null;
+                throw new Error(result.message ?? validationError ?? 'Failed to update agent. Please try again.');
+            }
+
+            const updatedOrder = result.order ?? {};
+            setDisplayOrders((current) => current.map((order) => order.id === orderId
+                ? {
+                    ...order,
+                    agent: updatedOrder.agent ?? agentName ?? undefined,
+                    delivery_date: updatedOrder.delivery_date
+                        ? String(updatedOrder.delivery_date).slice(0, 10)
+                        : order.delivery_date,
+                }
+                : order));
+            toast.success(`Agent ${agentName ? 'assigned' : 'removed'} successfully!`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to update agent. Please try again.');
+        } finally {
+            setUpdatingAgentId(null);
+        }
     }, [readOnly]);
 
     const handleAgentToggle = React.useCallback((order: SheetOrder, checked: boolean) => {
@@ -986,7 +1024,7 @@ export default function DispatchView() {
 
                 <Deferred data="orders" fallback={<DispatchTableSkeleton />}>
                 {() => <OrdersTable
-                    orders={orders}
+                    orders={{ ...orders, data: displayOrders }}
                     agents={agents}
                     readOnly={readOnly}
                     isBulkAssigning={isBulkAssigning}

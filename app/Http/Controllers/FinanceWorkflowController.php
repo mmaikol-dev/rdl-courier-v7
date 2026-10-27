@@ -32,9 +32,15 @@ class FinanceWorkflowController extends Controller
 
     private function merchantBaseQuery(?\App\Models\User $user)
     {
-        return CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
             ->whereNotNull('merchant')
             ->where('merchant', '!=', '');
+
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'merchant') {
+            $query->where('merchant', $user->name);
+        }
+
+        return $query;
     }
 
     private function stageQuery(string $stage, ?\App\Models\User $user)
@@ -66,14 +72,14 @@ class FinanceWorkflowController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
 
-        $statusOptions = CountryAccess::scopeByCountryName(
-            SheetOrder::query()
-                ->select('status')
-                ->distinct()
-                ->whereNotNull('status')
-                ->where('status', '!=', ''),
-            $user
-        )->orderBy('status')->pluck('status')->values();
+        $statusOptions = $this->merchantBaseQuery($user)
+            ->select('status')
+            ->distinct()
+            ->whereNotNull('status')
+            ->where('status', '!=', '')
+            ->orderBy('status')
+            ->pluck('status')
+            ->values();
 
         return Inertia::render('finance-workflow/index', [
             'workflowReport' => Inertia::defer(fn () => $this->buildWorkflowReport($user)),
@@ -218,7 +224,7 @@ class FinanceWorkflowController extends Controller
 
         $user = $request->user()?->loadMissing('country');
 
-        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $query = $this->merchantBaseQuery($user)
             ->where('merchant', $validated['merchant'])
             ->whereIn('status', ['scheduled', 'dispatched'])
             ->whereNotNull('code')
@@ -318,7 +324,7 @@ class FinanceWorkflowController extends Controller
 
         $user = $request->user()?->loadMissing('country');
 
-        $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $query = $this->merchantBaseQuery($user)
             ->where('merchant', $validated['merchant'])
             ->whereNotNull('report_generated_at')
             ->whereNull('merchant_confirmed_at')
@@ -353,7 +359,7 @@ class FinanceWorkflowController extends Controller
 
         $user = $request->user()?->loadMissing('country');
 
-        CountryAccess::scopeByCountryName(SheetOrder::query(), $user)
+        $this->merchantBaseQuery($user)
             ->where('merchant', $validated['merchant'])
             ->whereNotNull('report_generated_at')
             ->whereNotNull('merchant_confirmed_at')

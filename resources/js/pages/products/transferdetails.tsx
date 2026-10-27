@@ -202,12 +202,12 @@ export default function TransferDetails() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <PlusCircleIcon className="w-4 h-4 text-success" />
+                  <PlusCircleIcon className="w-4 h-4 text-primary" />
                   Total Transferred
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-success">{totalTransferred}</p>
+                <p className="text-2xl font-bold text-primary">{totalTransferred}</p>
                 <p className="text-sm text-muted-foreground mt-1">{transfers?.data?.length || 0} transfers</p>
               </CardContent>
             </Card>

@@ -4,7 +4,7 @@ import type { BreadcrumbItem } from '@/types';
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
     Drawer,
     DrawerContent,
@@ -19,7 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronRight, Layers3, LockOpen, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { ChevronRight, Search, ShieldCheck } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -131,47 +131,19 @@ export default function SidebarPermissionsPage() {
             <Deferred data="sidebarData" fallback={<SidebarAccessSkeleton />}>
             {() => <>
             <div className="space-y-6 p-4">
-                <Card className="overflow-hidden border-border/60 bg-gradient-to-br from-background via-background to-muted/30">
-                    <CardHeader className="relative">
-                        <div className="absolute right-4 top-4 rounded-full border border-border/60 bg-background/80 p-2 backdrop-blur">
-                            <ShieldCheck className="size-5 text-primary" />
+                <Card className="overflow-hidden border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-primary/10">
+                    <CardContent className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <ShieldCheck className="size-4 shrink-0 text-primary" />
+                            <span className="truncate text-sm font-semibold">Sidebar access</span>
+                            <span className="text-xs text-muted-foreground">{roles.length} roles · {allSidebarItems.filter((item) => item.key !== 'sidebar-permissions').length} menu items</span>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Sparkles className="size-4" />
-                            Sidebar access studio
-                        </div>
-                        <CardTitle className="text-2xl">Control what each role sees</CardTitle>
-                        <CardDescription className="max-w-2xl">
-                            Fine-tune the sidebar for every role, keep noisy pages out of view, and give each team a cleaner workspace.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
-                            <div className="rounded-xl border bg-background/80 p-3">
-                                <div className="mb-1 flex items-center gap-2 text-foreground">
-                                    <Layers3 className="size-4" />
-                                    {roles.length} roles
-                                </div>
-                                Active roles discovered from your users table.
-                            </div>
-                            <div className="rounded-xl border bg-background/80 p-3">
-                                <div className="mb-1 flex items-center gap-2 text-foreground">
-                                    <LockOpen className="size-4" />
-                                    {allSidebarItems.filter((item) => item.key !== 'sidebar-permissions').length} menu items
-                                </div>
-                                Each toggle updates a role-wide sidebar layout.
-                            </div>
-                            <div className="rounded-xl border bg-background/80 p-3">
-                                <div className="mb-1 text-foreground">Live behavior</div>
-                                Changes apply the next time that role loads a page.
-                            </div>
-                        </div>
-                        <div className="relative w-full md:max-w-xs">
+                        <div className="relative w-full sm:max-w-xs">
                             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
-                                className="pl-9"
+                                className="h-8 bg-background/80 pl-9"
                                 placeholder="Filter roles..."
                             />
                         </div>

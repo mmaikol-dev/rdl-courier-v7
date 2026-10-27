@@ -130,7 +130,7 @@ export default function WarehouseDashboard() {
       <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-6">
 
         {/* Header */}
-        <div className="flex flex-col gap-4 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-chart-2/10 p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <Badge variant="outline" className="mb-3 rounded-full border-primary/20 bg-background/80 px-3 text-primary">
               Inventory overview

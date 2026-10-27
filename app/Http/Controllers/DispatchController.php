@@ -574,6 +574,13 @@ public function bulkDownloadWaybills(Request $request)
             $order->update($validated);
         }
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Order updated successfully.',
+                'order' => $order->fresh(),
+            ]);
+        }
+
         return redirect()->back()->with('success', 'Order updated successfully');
     }
 

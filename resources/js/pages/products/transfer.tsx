@@ -95,7 +95,7 @@ function StatTile({
     <div
       className={cn(
         "rounded-xl border border-transparent bg-muted/50 px-2.5 py-2 transition-colors",
-        tone === "positive" && "border-success/30 bg-success",
+        tone === "positive" && "border-primary/30 bg-primary/10",
         tone === "warning" && "border-warning/30 bg-primary"
       )}
     >
@@ -106,7 +106,7 @@ function StatTile({
       <p
         className={cn(
           "mt-0.5 text-sm font-bold tabular-nums",
-          tone === "positive" && "text-success",
+          tone === "positive" && "text-primary",
           tone === "warning" && "text-warning-foreground"
         )}
       >
@@ -658,7 +658,7 @@ export default function TransferIndex() {
                         className={cn(
                           "h-full rounded-full transition-all duration-500",
                           stock > 0
-                            ? "bg-gradient-to-r from-success/30 to-success"
+                            ? "bg-gradient-to-r from-primary/40 to-primary"
                             : "bg-gradient-to-r from-warning/30 to-primary"
                         )}
                         style={{
@@ -1226,7 +1226,7 @@ export default function TransferIndex() {
 
             {returnStep === "done" && returnResult ? (
               <div className="flex flex-col items-center gap-4 py-8 text-center animate-in fade-in-0 zoom-in-95 duration-200">
-                <div className="flex size-16 items-center justify-center rounded-full bg-success text-success">
+                <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <CircleCheckIcon className="size-8" />
                 </div>
                 <div>

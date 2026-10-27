@@ -329,7 +329,7 @@ export default function TransactionsView() {
                                     ) : (
                                         list.map((txn) => (
                                             <TableRow key={txn.id} className="h-10 transition-colors hover:bg-muted/40">
-                                                <TableCell className="whitespace-nowrap px-2 py-1 font-mono text-xs font-medium">
+                                                <TableCell className="whitespace-nowrap px-2 py-1 text-xs font-medium">
                                                     <span className="block max-w-[200px] truncate" title={txn.transaction_id}>
                                                         {txn.transaction_id}
                                                     </span>
@@ -339,17 +339,17 @@ export default function TransactionsView() {
                                                         {txn.account_number}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="whitespace-nowrap px-2 py-1 font-mono text-sm font-medium tabular-nums">
+                                                <TableCell className="whitespace-nowrap px-2 py-1 text-sm font-medium tabular-nums">
                                                     <span title={txn.amount}>{txn.amount}</span>
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap px-2 py-1">
-                                                    <span className="block max-w-[180px] truncate font-mono text-xs" title={txn.payer_phone}>
+                                                    <span className="block max-w-[180px] truncate text-xs" title={txn.payer_phone}>
                                                         {txn.payer_phone || '—'}
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap px-2 py-1">
                                                     <span
-                                                        className="block max-w-[180px] truncate font-mono text-xs"
+                                                        className="block max-w-[180px] truncate text-xs"
                                                         title={txn.business_shortcode}
                                                     >
                                                         {txn.business_shortcode || '—'}
@@ -357,12 +357,12 @@ export default function TransactionsView() {
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap px-2 py-1">
                                                     {txn.processed ? (
-                                                        <Badge className="border-success/30 bg-success/10 text-success hover:bg-success/10">
+                                                        <Badge variant="secondary">
                                                             Processed
                                                         </Badge>
                                                     ) : (
-                                                        <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning-foreground">
-                                                            Pending
+                                                        <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
+                                                            Incoming Trans.
                                                         </Badge>
                                                     )}
                                                 </TableCell>

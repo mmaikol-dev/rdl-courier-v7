@@ -6,7 +6,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
@@ -81,9 +81,9 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const statusColors: Record<string, string> = {
-    Scheduled: 'bg-accent text-foreground border-border',
-    Dispatched: 'bg-accent text-foreground border-border',
-    Followup: 'bg-accent text-foreground border-border',
+    Scheduled: 'bg-status-scheduled text-status-scheduled-foreground border-status-scheduled/40',
+    Dispatched: 'bg-status-dispatched text-status-dispatched-foreground border-status-dispatched',
+    Followup: 'bg-status-followup text-status-followup-foreground border-status-followup/40',
     Duplicate: 'bg-accent text-foreground border-border',
     Cancelled: 'bg-destructive/10 text-destructive border-destructive/30',
     Pending: 'bg-warning/10 text-warning-foreground border-warning/30',
@@ -182,7 +182,15 @@ interface PaginationLinkData {
     active: boolean;
 }
 
-const EMPTY_ORDERS: { data: SheetOrder[]; links: PaginationLinkData[] } = { data: [], links: [] };
+interface PaginatedOrders {
+    data: SheetOrder[];
+    links: PaginationLinkData[];
+    current_page?: number;
+    per_page?: number;
+    total?: number;
+}
+
+const EMPTY_ORDERS: PaginatedOrders = { data: [], links: [], current_page: 1, per_page: 50, total: 0 };
 
 function OrdersTableSkeleton() {
     return (
@@ -287,7 +295,7 @@ const TableRowMemo = React.memo(
                             <span className="block truncate">{value || '—'}</span>
                             <Badge
                                 variant="outline"
-                                className="pointer-events-none absolute right-0 top-0 h-4 min-w-4 justify-center rounded-full border-foreground bg-foreground px-1 text-[9px] font-semibold leading-none text-background"
+                                className="pointer-events-none absolute right-0 top-0 h-4 min-w-4 justify-center rounded-full border-primary/50 bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
                                 title={`${order.instructions_edits_count} instruction edits`}
                             >
                                 {order.instructions_edits_count}
@@ -444,7 +452,7 @@ export default function Index() {
         filters: initialFilters,
     } = props as unknown as {
         orderResults?: {
-            orders: { data: SheetOrder[]; links: PaginationLinkData[] };
+            orders: PaginatedOrders;
             totalOrders: number;
         };
         merchantUsers: string[];
@@ -454,6 +462,10 @@ export default function Index() {
     };
     const orders = orderResults?.orders ?? EMPTY_ORDERS;
     const totalOrders = orderResults?.totalOrders ?? 0;
+    const currentPage = orders.current_page ?? Number(orders.links.find((link) => link.active)?.label ?? 1);
+    const pageSize = orders.per_page ?? 50;
+    const showingFrom = totalOrders === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const showingTo = Math.min(currentPage * pageSize, totalOrders);
 
     // ✅ Optimized state management
     const [filters, setFilters] = React.useState<Record<string, string | string[]>>(initialFilters || {});
@@ -985,77 +997,68 @@ export default function Index() {
                 </div>
             </div>
 
-            <div className="mx-2 mb-2 mt-1 flex items-center justify-between gap-2 rounded-lg border bg-card px-2 py-1">
-                <p className="text-xs text-muted-foreground">
-                    Page <span className="font-medium text-foreground">{orders.links.find((link) => link.active)?.label ?? '1'}</span>
-                </p>
-                <Pagination className="mx-0 w-auto flex-none justify-end">
-                    <PaginationContent>
-                        {/* Previous */}
-                        <PaginationItem>
-                            {(() => {
-                                const prev = orders.links.find((l) => l.label.includes('Previous'))?.url ?? null;
-                                const disabled = !prev;
-                                return (
-                                    <PaginationPrevious
-                                        href={prev ?? '#'}
-                                        aria-disabled={disabled}
-                                        className={disabled ? 'pointer-events-none opacity-50' : ''}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            if (prev) {
-                                                router.get(prev, {}, { preserveState: true, preserveScroll: true });
-                                            }
-                                        }}
-                                    />
-                                );
-                            })()}
-                        </PaginationItem>
-
-                        {/* Page Numbers */}
-                        {orders.links
-                            .filter((l) => !l.label.includes('Previous') && !l.label.includes('Next'))
-                            .map((link) => (
-                                <PaginationItem key={link.label}>
-                                    <PaginationLink
-                                        href={link.url ?? '#'}
-                                        isActive={link.active}
-                                        aria-current={link.active ? 'page' : undefined}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            if (link.url) {
-                                                router.get(link.url, {}, { preserveState: true, preserveScroll: true });
-                                            }
-                                        }}
-                                    >
-                                        {link.label}
-                                    </PaginationLink>
-                                </PaginationItem>
-                            ))}
-
-                        {/* Next */}
-                        <PaginationItem>
-                            {(() => {
-                                const next = orders.links.find((l) => l.label.includes('Next'))?.url ?? null;
-                                const disabled = !next;
-                                return (
-                                    <PaginationNext
-                                        href={next ?? '#'}
-                                        aria-disabled={disabled}
-                                        className={disabled ? 'pointer-events-none opacity-50' : ''}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            if (next) {
-                                                router.get(next, {}, { preserveState: true, preserveScroll: true });
-                                            }
-                                        }}
-                                    />
-                                );
-                            })()}
-                        </PaginationItem>
-                    </PaginationContent>
-                </Pagination>
-            </div>
+            {totalOrders > pageSize && orders.links.length > 0 && (
+                <div className="border-t">
+                    <Pagination>
+                        <PaginationContent className="flex-wrap">
+                            <PaginationItem>
+                                {(() => {
+                                    const previous = orders.links.find((link) => link.label.includes('Previous'))?.url ?? null;
+                                    return (
+                                        <PaginationPrevious
+                                            href={previous ?? '#'}
+                                            className={!previous ? 'pointer-events-none opacity-50' : ''}
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                if (previous) router.get(previous, {}, { preserveState: true, preserveScroll: true });
+                                            }}
+                                        />
+                                    );
+                                })()}
+                            </PaginationItem>
+                            {orders.links
+                                .filter((link) => !link.label.includes('Previous') && !link.label.includes('Next'))
+                                .map((link, index) => (
+                                    <PaginationItem key={`${link.label}-${index}`}>
+                                        {link.url === null ? (
+                                            <PaginationEllipsis />
+                                        ) : (
+                                            <PaginationLink
+                                                href={link.url}
+                                                isActive={link.active}
+                                                aria-current={link.active ? 'page' : undefined}
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    router.get(link.url!, {}, { preserveState: true, preserveScroll: true });
+                                                }}
+                                            >
+                                                {link.label}
+                                            </PaginationLink>
+                                        )}
+                                    </PaginationItem>
+                                ))}
+                            <PaginationItem>
+                                {(() => {
+                                    const next = orders.links.find((link) => link.label.includes('Next'))?.url ?? null;
+                                    return (
+                                        <PaginationNext
+                                            href={next ?? '#'}
+                                            className={!next ? 'pointer-events-none opacity-50' : ''}
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                if (next) router.get(next, {}, { preserveState: true, preserveScroll: true });
+                                            }}
+                                        />
+                                    );
+                                })()}
+                            </PaginationItem>
+                        </PaginationContent>
+                    </Pagination>
+                    <p className="pb-3 text-center text-xs text-muted-foreground">
+                        Showing {showingFrom}–{showingTo} of {totalOrders} orders
+                    </p>
+                </div>
+            )}
             </>}
             </Deferred>
 
