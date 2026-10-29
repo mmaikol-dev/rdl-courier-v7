@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\MerchantDataController;
+use App\Http\Middleware\AuthenticateMerchantApi;
 use App\Http\Controllers\AppScriptController;
 use App\Http\Controllers\C2BTransactionController;
 use App\Http\Controllers\StkController;
@@ -75,3 +77,9 @@ Route::prefix('webhooks')->group(function () {
 
 // routes/api.php
 Route::post('/update-order-timestamp', [AppScriptController::class, 'updateTimestamp']);
+
+Route::prefix('merchant/v1')->middleware([AuthenticateMerchantApi::class, 'throttle:60,1'])->group(function (): void {
+    Route::get('/orders', [MerchantDataController::class, 'orders']);
+    Route::get('/products', [MerchantDataController::class, 'products']);
+    Route::get('/transfers', [MerchantDataController::class, 'transfers']);
+});

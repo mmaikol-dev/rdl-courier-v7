@@ -5,8 +5,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Deferred, Head, router, useForm, usePage } from '@inertiajs/react';
 import {
   Card,
-  CardHeader,
-  CardTitle,
+  CardContent,
 } from '@/components/ui/card';
 import {
   Dialog,
@@ -25,16 +24,39 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Check, ChevronsUpDown, Edit, Eye, EyeOff, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { CalendarDays, Check, ChevronsUpDown, Edit, Eye, EyeOff, Loader2, MapPin, Phone, Plus, Search, Store, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Dashboard', href: '/dashboard' },
   { title: 'Users', href: '/users' },
 ];
+
+function roleBadgeClass(role?: string | null): string {
+  switch ((role || 'admin').trim().toLowerCase()) {
+    case 'g.o.d':
+    case 'superadmin':
+      return 'border-primary/30 bg-primary/10 text-primary';
+    case 'admin':
+      return 'border-accent bg-accent text-accent-foreground';
+    case 'merchant':
+      return 'border-success/30 bg-success/10 text-success';
+    case 'finance':
+      return 'border-warning/30 bg-warning/10 text-warning-foreground';
+    case 'operations':
+      return 'border-secondary bg-secondary text-secondary-foreground';
+    case 'callcenter1':
+      return 'border-primary/20 bg-primary/5 text-primary';
+    case 'agent':
+      return 'border-muted-foreground/20 bg-muted text-muted-foreground';
+    case 'warehouse':
+      return 'border-destructive/20 bg-destructive/10 text-destructive';
+    default:
+      return 'border-border bg-background text-foreground';
+  }
+}
 
 const africanCountries = [
   'Algeria',
@@ -160,9 +182,8 @@ interface UsersPageProps {
 const EMPTY_USERS: PaginatedUsers = { data: [], current_page: 1, last_page: 1, per_page: 20, total: 0, links: [] };
 
 function UsersTableSkeleton() {
-  return <div className="space-y-3 p-4" role="status" aria-label="Loading users" aria-live="polite">
-    <div className="grid grid-cols-3 gap-3 border-b pb-3 sm:grid-cols-7">{Array.from({ length: 7 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}</div>
-    {Array.from({ length: 7 }).map((_, row) => <div key={row} className="grid grid-cols-3 gap-3 border-b py-3 last:border-0 sm:grid-cols-7">{Array.from({ length: 7 }).map((__, column) => <Skeleton key={column} className="h-5 w-full" />)}</div>)}
+  return <div className="grid grid-cols-1 gap-3 p-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5" role="status" aria-label="Loading users" aria-live="polite">
+    {Array.from({ length: 10 }).map((_, index) => <Skeleton key={index} className="h-48 rounded-xl" />)}
   </div>;
 }
 
@@ -372,111 +393,118 @@ export default function UsersPage() {
           ) : null}
         </div>
 
-        <Card className="overflow-hidden border-border/70 shadow-sm">
-          <CardHeader className="flex flex-col gap-1 border-b px-2 py-0.5 md:flex-row md:items-center md:justify-start">
-            <div className="flex shrink-0 items-center gap-1.5">
-              <CardTitle className="text-sm">Accounts</CardTitle>
-              <Badge variant="secondary" className="h-5 px-1.5 text-[11px] tabular-nums">{users.total}</Badge>
-            </div>
-            <div className="grid w-full gap-1.5 md:w-auto md:grid-cols-[220px_130px_140px_auto]">
-              <div className="relative min-w-0">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && doSearch()}
-                  placeholder="Search name or email"
-                  className="h-8 pl-9 text-xs"
-                />
+        <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
+              <div className="space-y-1.5">
+                <Label htmlFor="user-search" className="text-xs font-medium text-muted-foreground">Search users</Label>
+                <div className="relative min-w-0">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="user-search"
+                    value={filter}
+                    onChange={(event) => setFilter(event.target.value)}
+                    onKeyDown={(event) => event.key === 'Enter' && doSearch()}
+                    placeholder="Name or email"
+                    className="h-9 bg-background pl-9"
+                  />
+                </div>
               </div>
-              <Select value={selectedRole || 'all'} onValueChange={(value) => {
-                const nextRole = value === 'all' ? '' : value;
-                setSelectedRole(nextRole);
-                doSearch(nextRole, selectedCountry);
-              }}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All roles" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All roles</SelectItem>
-                  {roleOptions.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={selectedCountry || 'all'} onValueChange={(value) => {
-                const nextCountry = value === 'all' ? '' : value;
-                setSelectedCountry(nextCountry);
-                doSearch(selectedRole, nextCountry);
-              }}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All countries" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All countries</SelectItem>
-                  {countries.map((country) => <SelectItem key={country.id} value={String(country.id)}>{country.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button onClick={() => doSearch()} variant="secondary" className="h-8 gap-1.5 px-2.5 text-xs">
-                <Search className="size-4" /><span className="hidden sm:inline">Search</span>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Role</Label>
+                <Select value={selectedRole || 'all'} onValueChange={(value) => {
+                  const nextRole = value === 'all' ? '' : value;
+                  setSelectedRole(nextRole);
+                  doSearch(nextRole, selectedCountry);
+                }}>
+                  <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All roles" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All roles</SelectItem>
+                    {roleOptions.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Country</Label>
+                <Select value={selectedCountry || 'all'} onValueChange={(value) => {
+                  const nextCountry = value === 'all' ? '' : value;
+                  setSelectedCountry(nextCountry);
+                  doSearch(selectedRole, nextCountry);
+                }}>
+                  <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All countries" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All countries</SelectItem>
+                    {countries.map((country) => <SelectItem key={country.id} value={String(country.id)}>{country.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={() => doSearch()} className="h-9 gap-2 sm:col-span-2 lg:col-span-1 lg:self-end">
+                <Search className="size-4" />Search
               </Button>
-            </div>
-          </CardHeader>
+        </div>
 
-          <Deferred data="users" fallback={<UsersTableSkeleton />}>
+        <Deferred data="users" fallback={<UsersTableSkeleton />}>
             {() => <>
               {users.data.length === 0 ? (
-                <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-                  No users found for the current search.
+                <div className="flex min-h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed bg-card text-center">
+                  <Search className="mb-1 size-5 text-muted-foreground" />
+                  <p className="font-medium">No users found</p>
+                  <p className="text-sm text-muted-foreground">Try changing your search or filters.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[850px]">
-                    <TableHeader>
-                      <TableRow className="h-8 bg-muted/30 hover:bg-muted/30">
-                        <TableHead className="h-8 pl-2">User</TableHead>
-                        <TableHead className="h-8">Role</TableHead>
-                        <TableHead className="h-8">Country</TableHead>
-                        <TableHead className="h-8">Store</TableHead>
-                        <TableHead className="h-8">Phone</TableHead>
-                        <TableHead className="h-8">Joined</TableHead>
-                        {canManageUsers ? <TableHead className="h-8 pr-2 text-right">Actions</TableHead> : null}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.data.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="px-2 py-1">
-                            <div className="flex min-w-48 items-center gap-2">
-                              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                                {user.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate font-medium text-foreground">{user.name}</p>
-                                <p className="truncate text-xs text-muted-foreground">{user.username ? `@${user.username} · ` : ''}{user.email}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-2 py-1"><Badge variant="secondary" className="h-5 px-1.5 text-[11px] capitalize">{user.roles || 'admin'}</Badge></TableCell>
-                          <TableCell className="px-2 py-1 text-sm">{user.country?.name || '—'}</TableCell>
-                          <TableCell className="max-w-40 truncate px-2 py-1 text-sm" title={user.store_name ?? undefined}>{user.store_name || '—'}</TableCell>
-                          <TableCell className="whitespace-nowrap px-2 py-1 text-sm">{user.store_phone || '—'}</TableCell>
-                          <TableCell className="whitespace-nowrap px-2 py-1 text-sm text-muted-foreground">{new Date(user.created_at).toLocaleDateString()}</TableCell>
-                          {canManageUsers ? (
-                            <TableCell className="px-2 py-1">
-                              <div className="flex justify-end gap-1">
-                                <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => openEdit(user)}>
-                                  <Edit className="size-3.5" />Edit
-                                </Button>
-                                <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive" aria-label={`Delete ${user.name}`} onClick={() => setDeletingUser(user)}>
-                                  <Trash2 className="size-3.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          ) : null}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+                  {users.data.map((user) => (
+                    <Card key={user.id} className="group overflow-hidden border-border/70 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                      <CardContent className="flex h-full flex-col p-3">
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/15">
+                            {user.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'}
+                          </div>
+                          <div className="min-w-0 flex-1 pt-0.5">
+                            <p className="truncate text-sm font-semibold text-foreground" title={user.name}>{user.name}</p>
+                            <p className="truncate text-xs text-muted-foreground" title={user.email}>{user.username ? `@${user.username} · ` : ''}{user.email}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-2.5">
+                          <Badge variant="outline" className={cn('capitalize', roleBadgeClass(user.roles))}>{user.roles || 'admin'}</Badge>
+                        </div>
+
+                        <div className="my-3 grid flex-1 grid-cols-2 gap-x-2 gap-y-2 border-y py-3">
+                          <div className="min-w-0">
+                            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><MapPin className="size-3" />Country</span>
+                            <p className="mt-0.5 truncate text-xs font-medium" title={user.country?.name || ''}>{user.country?.name || '—'}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><CalendarDays className="size-3" />Joined</span>
+                            <p className="mt-0.5 truncate text-xs font-medium">{new Date(user.created_at).toLocaleDateString()}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><Store className="size-3" />Store</span>
+                            <p className="mt-0.5 truncate text-xs font-medium" title={user.store_name || ''}>{user.store_name || '—'}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><Phone className="size-3" />Phone</span>
+                            <p className="mt-0.5 truncate text-xs font-medium" title={user.store_phone || ''}>{user.store_phone || '—'}</p>
+                          </div>
+                        </div>
+
+                        {canManageUsers ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2.5" onClick={() => openEdit(user)}>
+                              <Edit className="size-4" />Edit
+                            </Button>
+                            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" aria-label={`Delete ${user.name}`} onClick={() => setDeletingUser(user)}>
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               )}
 
               {users.last_page > 1 && (
-                <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
                     Showing {(users.current_page - 1) * users.per_page + 1}&ndash;{Math.min(users.current_page * users.per_page, users.total)} of {users.total}
                   </p>
@@ -506,7 +534,6 @@ export default function UsersPage() {
               )}
             </>}
           </Deferred>
-        </Card>
       </div>
 
       <Dialog open={creatingUser || !!editingUser} onOpenChange={(open) => (!open ? closeFormDialog() : undefined)}>

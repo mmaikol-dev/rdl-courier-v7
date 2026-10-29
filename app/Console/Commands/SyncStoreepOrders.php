@@ -73,17 +73,29 @@ class SyncStoreepOrders extends Command
             return 0;
         }
 
-        $cursor = $this->option('full')
-            ? null
-            : $integration->last_synced_at_remote?->format('Y-m-d H:i:s');
+        $storedCursorBefore = $integration->last_synced_at_remote?->format('Y-m-d H:i:s');
+        $cursor = $this->option('full') ? null : $storedCursorBefore;
 
+        $startedAt = microtime(true);
         $staged = 0;
         $skipped = 0;
+        $ordersVisited = 0;
         $newestRemote = null;
         $seenIds = [];
 
+        Log::info('Storeep sync started', [
+            'store' => $integration->store_name,
+            'integration_id' => $integration->id,
+            'cursor_before' => $cursor,
+            'stored_cursor_before' => $storedCursorBefore,
+            'full_sync' => (bool) $this->option('full'),
+            'stage_limit' => $limit,
+        ]);
+
         try {
             foreach ($api->ordersSince($integration, $cursor, $seenIds) as $order) {
+                $ordersVisited++;
+
                 if ($importer->stage($integration, $order) !== null) {
                     $staged++;
                 } else {
@@ -101,9 +113,12 @@ class SyncStoreepOrders extends Command
                 }
             }
 
+            $cursorAfter = $newestRemote
+                ?? $integration->last_synced_at_remote?->format('Y-m-d H:i:s');
+
             $integration->forceFill([
                 'last_synced_at' => now(),
-                'last_synced_at_remote' => $newestRemote ?? $integration->last_synced_at_remote,
+                'last_synced_at_remote' => $cursorAfter,
                 'orders_synced' => $integration->orders_synced + $staged,
                 'last_error' => null,
                 'last_error_at' => null,
@@ -112,9 +127,14 @@ class SyncStoreepOrders extends Command
             $this->line("[{$integration->store_name}] staged {$staged} order(s), skipped {$skipped} outside the selected countries.");
             Log::info('✓ Storeep sync completed', [
                 'store' => $integration->store_name,
+                'integration_id' => $integration->id,
+                'orders_visited' => $ordersVisited,
                 'staged' => $staged,
                 'skipped_country' => $skipped,
-                'cursor' => $newestRemote,
+                'stored_cursor_before' => $storedCursorBefore,
+                'cursor_after' => $integration->last_synced_at_remote?->format('Y-m-d H:i:s'),
+                'cursor_advanced' => $cursorAfter !== $storedCursorBefore,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             ]);
         } catch (\Throwable $exception) {
             $integration->forceFill([
@@ -127,6 +147,13 @@ class SyncStoreepOrders extends Command
             // One broken store must not stop the others from syncing.
             Log::error('❌ Storeep sync failed', [
                 'store' => $integration->store_name,
+                'integration_id' => $integration->id,
+                'cursor_before' => $cursor,
+                'stored_cursor_before' => $storedCursorBefore,
+                'orders_visited' => $ordersVisited,
+                'staged' => $staged,
+                'skipped_country' => $skipped,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 'error' => $exception->getMessage(),
             ]);
         } finally {

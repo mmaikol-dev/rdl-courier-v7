@@ -10,11 +10,13 @@ import {
     FileX,
     HandCoins,
     LayoutGrid,
+    KeyRound,
     LineChartIcon,
     ListCheckIcon,
     MapIcon,
     MessagesSquareIcon,
     PackageSearch,
+    PackageCheck,
     PenLineIcon,
     PlugZap,
     PlusIcon,
@@ -49,6 +51,7 @@ export type SidebarItemKey =
     | 'incoming-sheet-orders'
     | 'whatsapp'
     | 'products'
+    | 'shipments'
     | 'inventory-deductions'
     | 'deducted-orders'
     | 'order-scans'
@@ -67,6 +70,8 @@ export type SidebarItemKey =
     | 'unremitted'
     | 'stk'
     | 'integrations'
+    | 'merchant-api-access'
+    | 'api-dashboard'
     | 'sidebar-permissions'
     | 'users'
     | 'bulk-expire';
@@ -108,6 +113,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         label: 'Inventory',
         items: [
             { key: 'products', title: 'Products', href: '/products', icon: BoxesIcon, group: 'Inventory' },
+            { key: 'shipments', title: 'Shipments', href: '/shipments', icon: PackageCheck, group: 'Inventory' },
             { key: 'inventory-deductions', title: 'Inventory Deductions', href: '/inventory-deductions', icon: PackageSearch, group: 'Inventory' },
             { key: 'deducted-orders', title: 'Deducted Orders', href: '/deducted-orders', icon: FileX, group: 'Inventory' },
             { key: 'order-scans', title: 'QR Scan Out', href: '/order-scans', icon: ScanLine, group: 'Inventory' },
@@ -139,6 +145,8 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         items: [
             { key: 'users', title: 'Users', href: '/users', icon: Users, group: 'Administration' },
             { key: 'integrations', title: 'Integrations', href: '/integrations', icon: PlugZap, group: 'Administration' },
+            { key: 'api-dashboard', title: 'API Dashboard', href: '/api-dashboard', icon: LineChartIcon, group: 'Administration' },
+            { key: 'merchant-api-access', title: 'Merchant API Access', href: '/merchant-api-access', icon: KeyRound, group: 'Administration' },
         ],
     },
 ];

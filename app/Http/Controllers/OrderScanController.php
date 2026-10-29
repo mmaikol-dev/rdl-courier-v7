@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\OrderHistory;
 use App\Models\OrderScan;
 use App\Models\SheetOrder;
 use App\Support\CountryAccess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class OrderScanController extends Controller
@@ -88,17 +90,41 @@ class OrderScanController extends Controller
         $productName = $validated['product_name'] ?? $order->product_name ?? $order->item;
         $quantity = $validated['quantity'] ?? $order->quantity;
 
-        $scan = OrderScan::create([
-            'order_id' => $order->id,
-            'order_no' => $order->order_no,
-            'product_name' => $productName,
-            'quantity' => $quantity,
-            'scan_type' => $validated['scan_type'],
-            'reason' => $validated['reason'],
-            'scanned_by' => $user->name,
-            'user_id' => $user->id,
-            'scanned_at' => now(),
-        ]);
+        DB::transaction(function () use ($order, $validated, $productName, $quantity, $user): void {
+            OrderScan::create([
+                'order_id' => $order->id,
+                'order_no' => $order->order_no,
+                'product_name' => $productName,
+                'quantity' => $quantity,
+                'scan_type' => $validated['scan_type'],
+                'reason' => $validated['reason'],
+                'scanned_by' => $user->name,
+                'user_id' => $user->id,
+                'scanned_at' => now(),
+            ]);
+
+            $oldStatus = $order->status;
+            $newStatus = $validated['scan_type'] === 'out' ? 'Dispatched' : 'Returned';
+
+            // A scan-out must never move a completed delivery back to Dispatched.
+            if ($validated['scan_type'] === 'out' && mb_strtolower(trim((string) $oldStatus)) === 'delivered') {
+                return;
+            }
+
+            if ((string) $oldStatus === $newStatus) {
+                return;
+            }
+
+            $order->update(['status' => $newStatus]);
+
+            OrderHistory::create([
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'attribute' => 'status',
+                'old_value' => $oldStatus,
+                'new_value' => $newStatus,
+            ]);
+        });
 
         return back()->with('success', "Order {$order->order_no} scanned as {$validated['scan_type']}");
     }

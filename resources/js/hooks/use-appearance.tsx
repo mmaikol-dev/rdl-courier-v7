@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export type Appearance = 'light' | 'dark' | 'system';
-export type ThemeName = 'amber-minimal' | 'candyland' | 'nature' | 'tangerine' | 'doom-64';
+export type ThemeName = 'amber-minimal' | 'candyland' | 'nature' | 'tangerine' | 'doom-64' | 'valorant' | 'red' | 'neo-brutalism' | 'claude' | 'ghibli-studio' | 'spotify';
 
-const DEFAULT_THEME: ThemeName = 'amber-minimal';
-const THEMES: ThemeName[] = ['amber-minimal', 'candyland', 'nature', 'tangerine', 'doom-64'];
+const DEFAULT_THEME: ThemeName = 'doom-64';
+const THEMES: ThemeName[] = ['amber-minimal', 'candyland', 'nature', 'tangerine', 'doom-64', 'valorant', 'red', 'neo-brutalism', 'claude', 'ghibli-studio', 'spotify'];
 
 const prefersDark = () => {
     if (typeof window === 'undefined') return false;

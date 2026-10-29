@@ -11,6 +11,8 @@ use App\Models\Deduction;
 use App\Models\Unit;
 use App\Models\Sheet;
 use App\Models\Transfer;
+use App\Models\Shipment;
+use App\Models\ShipmentItem;
 use App\Support\CountryAccess;
 use App\Services\ProductStockAlertService;
 use Inertia\Inertia;
@@ -47,15 +49,26 @@ class ProductController extends Controller
         ->selectRaw('SUM(CASE WHEN quantity_added < 0 THEN ABS(quantity_added) ELSE 0 END) as total_stock_deducted')
         ->groupBy('product_code');
 
+    $inboundTotals = ShipmentItem::query()
+        ->join('shipments', 'shipments.id', '=', 'shipment_items.shipment_id')
+        ->whereIn('shipments.status', [Shipment::EXPECTED, Shipment::ARRIVED, Shipment::RECEIVING])
+        ->select('shipment_items.product_id')
+        ->selectRaw('SUM(shipment_items.expected_quantity) as inbound_quantity')
+        ->groupBy('shipment_items.product_id');
+
     $productsQuery = CountryAccess::scopeProducts(
         Product::query()
             ->with(['user:id,name,store_address,country_id'])
             ->leftJoinSub($inventoryTotals, 'inventory_totals', function ($join): void {
                 $join->on('inventory_totals.product_code', '=', 'products.code');
             })
+            ->leftJoinSub($inboundTotals, 'shipment_inbound', function ($join): void {
+                $join->on('shipment_inbound.product_id', '=', 'products.id');
+            })
             ->select('products.*')
             ->selectRaw('COALESCE(inventory_totals.total_stock_added, 0) as total_stock_added')
-            ->selectRaw('COALESCE(inventory_totals.total_stock_deducted, 0) as total_stock_deducted'),
+            ->selectRaw('COALESCE(inventory_totals.total_stock_deducted, 0) as total_stock_deducted')
+            ->selectRaw('COALESCE(shipment_inbound.inbound_quantity, 0) as inbound_quantity'),
         $user
     );
 
@@ -64,8 +77,9 @@ class ProductController extends Controller
         $productsQuery->where('merchant', $user->name);
     }
 
-    // Country filter applies to everyone including merchants
-    if ($request->filled('country')) {
+    // Global roles use the shared dashboard country selector; never fall back
+    // to an account's saved country or a stale page-level country query.
+    if (! CountryAccess::hasGlobalAccess($user) && $request->filled('country')) {
         $country = mb_strtolower(trim($request->string('country')->toString()));
         $productsQuery->whereRaw('LOWER(country) = ?', [$country]);
     }
@@ -91,7 +105,10 @@ class ProductController extends Controller
         'units' => $units,
         'merchantUsers' => $merchantUsers,
         'filters' => [
-            ...$request->only(['country', 'search']),
+            'country' => CountryAccess::hasGlobalAccess($user)
+                ? $request->session()->get('selected_country')
+                : $request->input('country'),
+            'search' => $request->input('search'),
             'per_page' => $perPage,
         ],
     ]);
@@ -213,11 +230,12 @@ class ProductController extends Controller
 
         $product->update(['quantity' => $newQuantity]);
 
-        app(ProductStockAlertService::class)->maybeSend(
+        app(ProductStockAlertService::class)->notifyQuantityChange(
             $product,
             $previousQuantity,
+            $change,
             $newQuantity,
-            'Manual quantity update'
+            $user->name,
         );
 
         InventoryLog::create([
@@ -278,15 +296,22 @@ class ProductController extends Controller
             'product_image' => 'nullable|string',
             'category_id' => 'nullable|integer|exists:categories,id',
             'unit_id' => 'nullable|integer|exists:units,id',
+            'country' => 'nullable|string|max:255',
         ]);
 
         $user = $request->user()->loadMissing('country');
+        $country = CountryAccess::resolveCountryNameForWrite($user, $request->input('country'));
+
+        if (! $country) {
+            return back()->withErrors([
+                'country' => 'Select a country before creating this product.',
+            ]);
+        }
 
         // Auto-generate fields
         $slug = $this->generateSlug($request->name);
         $code = $this->generateUniqueCode();
         $storeName = $user->name . ' Store'; // Auto-generate store name from user
-        $country = trim((string) $user->store_address) ?: null;
 
         $data = [
             'user_id' => $user->id,

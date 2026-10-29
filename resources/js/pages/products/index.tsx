@@ -65,6 +65,7 @@ interface Product {
     selling_price: number;
     total_stock_added: number;
     total_stock_deducted: number;
+    inbound_quantity: number;
     quantity_alert: number;
     tax: number;
     tax_type: string;
@@ -298,9 +299,11 @@ export default function ProductsPage() {
             user?: {
                 id: number;
                 name: string;
+                roles?: string;
                 store_address?: string | null;
             } | null;
         };
+        selectedCountry?: string | null;
     }>().props;
     const products = pageProps.products ?? EMPTY_PRODUCTS;
     const categories = pageProps.categories ?? [];
@@ -310,9 +313,13 @@ export default function ProductsPage() {
     const filters = pageProps.filters;
 
     const userStoreAddress = auth?.user?.store_address || '';
+    const isGlobalCountryUser = ['g.o.d', 'merchant'].includes((auth?.user?.roles || '').trim().toLowerCase());
+    const dashboardCountry = pageProps.selectedCountry || '';
 
     const [filter, setFilter] = React.useState(filters?.search || '');
-    const [selectedCountry, setSelectedCountry] = React.useState(filters?.country || 'all');
+    const [selectedCountry, setSelectedCountry] = React.useState(
+        isGlobalCountryUser ? dashboardCountry || 'all' : filters?.country || 'all',
+    );
     const [pageSize, setPageSize] = React.useState(String(filters?.per_page ?? products.per_page ?? 10));
     const [isLoading, setIsLoading] = React.useState(false);
     const [countryFilterOpen, setCountryFilterOpen] = React.useState(false);
@@ -347,6 +354,12 @@ export default function ProductsPage() {
     const overviewRequest = React.useRef<AbortController | null>(null);
 
     React.useEffect(() => {
+        if (isGlobalCountryUser) {
+            setSelectedCountry(dashboardCountry || 'all');
+        }
+    }, [dashboardCountry, isGlobalCountryUser]);
+
+    React.useEffect(() => {
         const removeStart = router.on('start', () => setIsLoading(true));
         const removeFinish = router.on('finish', () => setIsLoading(false));
         const removeCancel = router.on('cancel', () => setIsLoading(false));
@@ -369,6 +382,7 @@ export default function ProductsPage() {
 
     const barcodeInputRef = React.useRef<HTMLInputElement>(null);
     const merchantOptions = React.useMemo(() => merchantUsers.map((merchant) => ({ value: merchant.name, label: merchant.name })), [merchantUsers]);
+    const countryOptions = React.useMemo(() => EAST_AFRICAN_COUNTRIES.map((country) => ({ value: country, label: country })), []);
     const categoryOptions = React.useMemo(() => categories.map((category) => ({ value: String(category.id), label: category.name })), [categories]);
     const unitOptions = React.useMemo(() => units.map((unit) => ({ value: String(unit.id), label: `${unit.name} (${unit.short_code})` })), [units]);
 
@@ -380,7 +394,7 @@ export default function ProductsPage() {
     const handleSearch = () => {
         const params: Record<string, string> = { per_page: pageSize };
         if (filter) params.search = filter;
-        if (selectedCountry && selectedCountry !== 'all') params.country = selectedCountry;
+        if (!isGlobalCountryUser && selectedCountry && selectedCountry !== 'all') params.country = selectedCountry;
         router.get('/products', params, { preserveState: true, preserveScroll: true });
     };
 
@@ -397,7 +411,7 @@ export default function ProductsPage() {
             '/products',
             {
                 ...formValues,
-                country: userStoreAddress,
+                country: dashboardCountry || formValues.country || userStoreAddress,
             },
             {
                 preserveState: true,
@@ -525,7 +539,7 @@ export default function ProductsPage() {
     const handlePageChange = (url: string | null) => {
         if (!url) return;
         const params: Record<string, string> = {};
-        if (selectedCountry && selectedCountry !== 'all') params.country = selectedCountry;
+        if (!isGlobalCountryUser && selectedCountry && selectedCountry !== 'all') params.country = selectedCountry;
         if (filter) params.search = filter;
         params.per_page = pageSize;
         router.get(url, params, { preserveState: true, preserveScroll: true });
@@ -648,7 +662,7 @@ export default function ProductsPage() {
                                         <span className="hidden sm:inline">Search</span>
                                     </Button>
                                 </div>
-                                <Popover open={countryFilterOpen} onOpenChange={setCountryFilterOpen}>
+                                {!isGlobalCountryUser ? <Popover open={countryFilterOpen} onOpenChange={setCountryFilterOpen}>
                                     <PopoverTrigger asChild>
                                         <Button
                                             variant="outline"
@@ -708,7 +722,7 @@ export default function ProductsPage() {
                                             </CommandList>
                                         </Command>
                                     </PopoverContent>
-                                </Popover>
+                                </Popover> : null}
                                 <Popover open={pageSizeOpen} onOpenChange={setPageSizeOpen}>
                                     <PopoverTrigger asChild>
                                         <Button
@@ -744,7 +758,7 @@ export default function ProductsPage() {
                                                                         const nextSize = String(count);
                                                                         setPageSize(nextSize);
                                                                         const params: Record<string, string> = { per_page: nextSize };
-                                                                        if (selectedCountry !== 'all') params.country = selectedCountry;
+                                                                        if (!isGlobalCountryUser && selectedCountry !== 'all') params.country = selectedCountry;
                                                                         if (filter) params.search = filter;
                                                                         router.get('/products', params, {
                                                                             preserveState: true,
@@ -770,7 +784,7 @@ export default function ProductsPage() {
                                     className="shrink-0"
                                     onClick={() => {
                                         setEditingProduct(null);
-                                        setFormValues({});
+                                        setFormValues({ country: dashboardCountry });
                                         setCreatingProduct(true);
                                     }}
                                 >
@@ -844,6 +858,9 @@ export default function ProductsPage() {
                                                         <p className="text-xs text-muted-foreground">
                                                             Alert at {product.quantity_alert.toLocaleString()}
                                                         </p>
+                                                    )}
+                                                    {Number(product.inbound_quantity || 0) > 0 && (
+                                                        <p className="text-xs text-primary">Inbound: {Number(product.inbound_quantity).toLocaleString()}</p>
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="py-1">{product.country || '—'}</TableCell>
@@ -1331,8 +1348,23 @@ export default function ProductsPage() {
                             />
                         </div>
                         <div>
-                            <label className="mb-1 block text-xs font-medium text-muted-foreground">Country</label>
-                            <Input value={userStoreAddress} readOnly placeholder="Country will be picked from your store address" />
+                            {isGlobalCountryUser && dashboardCountry ? (
+                                <Input value={dashboardCountry} readOnly />
+                            ) : isGlobalCountryUser ? (
+                                <SearchableSelect
+                                    label="Country"
+                                    placeholder="Select country"
+                                    emptyMessage="No country found."
+                                    value={String(formValues.country || '')}
+                                    options={countryOptions}
+                                    onChange={(value) => setFormValues({ ...formValues, country: value })}
+                                />
+                            ) : (
+                                <>
+                                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Country</label>
+                                    <Input value={userStoreAddress} readOnly placeholder="Country comes from your account" />
+                                </>
+                            )}
                         </div>
                         <SearchableSelect
                             label="Merchant"

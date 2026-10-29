@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronRight, Search, ShieldCheck } from 'lucide-react';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -116,6 +117,15 @@ export default function SidebarPermissionsPage() {
             },
             {
                 preserveScroll: true,
+                onSuccess: () => toast.success(`Sidebar permissions saved for ${role}.`),
+                onError: (errors) => {
+                    const message = Object.values(errors).flat()[0];
+                    toast.error(typeof message === 'string' ? message : 'Could not save sidebar permissions.');
+                },
+                onHttpException: (response) => {
+                    toast.error(`Could not save sidebar permissions (${response.status}).`);
+                },
+                onNetworkError: () => toast.error('Network error while saving sidebar permissions.'),
                 onFinish: () => setSavingRole(null),
             },
         );
@@ -123,6 +133,7 @@ export default function SidebarPermissionsPage() {
 
     const selectedRoleItems = selectedRole ? state[selectedRole] ?? [] : [];
     const selectedRoleCoverage = Math.round((selectedRoleItems.length / Math.max(allSidebarItems.length - 1, 1)) * 100);
+    const selectedRoleIsGod = selectedRole ? normalizeRole(selectedRole) === 'g.o.d' : false;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -154,7 +165,6 @@ export default function SidebarPermissionsPage() {
                     {filteredRoles.map((role) => {
                         const enabledItems = state[role] ?? [];
                         const coverage = Math.round((enabledItems.length / Math.max(allSidebarItems.length - 1, 1)) * 100);
-
                         return (
                             <button
                                 key={role}
@@ -166,9 +176,7 @@ export default function SidebarPermissionsPage() {
                                     <CardContent className="flex h-full flex-col justify-between p-4">
                                         <div className="space-y-3">
                                             <div className="flex items-start justify-between gap-2">
-                                                <Badge variant="secondary" className="max-w-full truncate">
-                                                    {role}
-                                                </Badge>
+                                                <Badge variant="secondary" className="max-w-full truncate">{role}</Badge>
                                                 <ChevronRight className="size-4 text-muted-foreground" />
                                             </div>
                                             <div>
@@ -176,7 +184,6 @@ export default function SidebarPermissionsPage() {
                                                 <p className="mt-1 text-xs text-muted-foreground">Tap to edit sidebar access</p>
                                             </div>
                                         </div>
-
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between text-xs text-muted-foreground">
                                                 <span>{enabledItems.length} links enabled</span>
@@ -210,7 +217,9 @@ export default function SidebarPermissionsPage() {
                                     <Badge variant="secondary">{selectedRoleItems.length} links enabled</Badge>
                                 </div>
                                 <DrawerDescription>
-                                    Turn individual sidebar links on or off for this role. Changes affect every user with this exact `roles` value.
+                                    {selectedRoleIsGod
+                                        ? 'G.O.D always has access to every page and cannot be restricted here.'
+                                        : 'Turn individual sidebar links on or off for this role. Changes affect every user with this exact roles value.'}
                                 </DrawerDescription>
                                 <div className="mt-3 max-w-sm space-y-2">
                                     <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -223,23 +232,24 @@ export default function SidebarPermissionsPage() {
 
                             <div className="mx-auto grid w-full max-w-6xl gap-6 overflow-y-auto px-4 pb-4">
                                 <div className="flex flex-wrap gap-2">
-                                    <Button variant="outline" onClick={() => setAllForRole(selectedRole, true)}>
+                                    <Button variant="outline" onClick={() => setAllForRole(selectedRole, true)} disabled={selectedRoleIsGod}>
                                         Enable all
                                     </Button>
-                                    <Button variant="outline" onClick={() => setAllForRole(selectedRole, false)}>
+                                    <Button variant="outline" onClick={() => setAllForRole(selectedRole, false)} disabled={selectedRoleIsGod}>
                                         Hide all
                                     </Button>
                                 </div>
 
-                                {Object.entries(groupedItems).map(([group, items], groupIndex) => (
+                                {Object.entries(groupedItems).map(([group, items], groupIndex) => {
+                                    const visibleCount = items.filter((item) => selectedRoleItems.includes(item.key)).length;
+
+                                    return (
                                     <div key={group} className="space-y-3">
                                         {groupIndex > 0 ? <Separator /> : null}
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h3 className="font-medium">{group}</h3>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {items.filter((item) => selectedRoleItems.includes(item.key)).length} of {items.length} visible
-                                                </p>
+                                                <p className="text-sm text-muted-foreground">{visibleCount} of {items.length} visible</p>
                                             </div>
                                             <Badge variant="outline">{group}</Badge>
                                         </div>
@@ -250,30 +260,36 @@ export default function SidebarPermissionsPage() {
                                                 const requiredForMerchant = normalizeRole(selectedRole) === 'merchant' && item.key === 'transfer';
 
                                                 return (
-                                                    <label
+                                                    <div
                                                         key={`${selectedRole}-${item.key}`}
                                                         className={cn(
                                                             'flex items-start justify-between gap-3 rounded-2xl border p-4 transition-colors',
                                                             checked ? 'border-primary/50 bg-primary/5' : 'bg-background',
                                                         )}
                                                     >
-                                                        <div className="space-y-1">
+                                                        <button
+                                                            type="button"
+                                                            className="min-w-0 flex-1 space-y-1 text-left disabled:cursor-not-allowed"
+                                                            disabled={requiredForMerchant || selectedRoleIsGod || savingRole === selectedRole}
+                                                            onClick={() => toggleItem(selectedRole, item.key, !checked)}
+                                                        >
                                                             <div className="font-medium">{item.title}</div>
                                                             <div className="text-sm text-muted-foreground">
                                                                 {requiredForMerchant ? 'Required for merchant access' : item.href}
                                                             </div>
-                                                        </div>
+                                                        </button>
                                                         <Switch
                                                             checked={checked}
-                                                            disabled={requiredForMerchant}
+                                                            disabled={requiredForMerchant || selectedRoleIsGod || savingRole === selectedRole}
                                                             onCheckedChange={(nextChecked) => toggleItem(selectedRole, item.key, nextChecked)}
                                                         />
-                                                    </label>
+                                                    </div>
                                                 );
                                             })}
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
 
                             <DrawerFooter className="mx-auto w-full max-w-6xl border-t bg-background/95">
@@ -281,8 +297,8 @@ export default function SidebarPermissionsPage() {
                                     <Button variant="outline" onClick={() => setSelectedRole(null)}>
                                         Close
                                     </Button>
-                                    <Button onClick={() => saveRole(selectedRole)} disabled={savingRole === selectedRole}>
-                                        {savingRole === selectedRole ? 'Saving...' : 'Save changes'}
+                                    <Button onClick={() => saveRole(selectedRole)} disabled={savingRole === selectedRole || selectedRoleIsGod}>
+                                        {savingRole === selectedRole ? 'Saving...' : selectedRoleIsGod ? 'Always full access' : 'Save changes'}
                                     </Button>
                                 </div>
                             </DrawerFooter>

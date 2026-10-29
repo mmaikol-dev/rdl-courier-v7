@@ -3,8 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Exports\OrdersExport;
+use App\Exports\RemittedOrdersExport;
+use App\Models\OrderHistory;
 use App\Models\SheetOrder;
+use App\Models\User;
 use App\Support\CountryAccess;
+use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +19,62 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class FinanceWorkflowController extends Controller
 {
+    /** Update each eligible order individually so every changed field is auditable. */
+    private function updateOrdersWithHistory(Builder $query, array $attributes, ?User $user): int
+    {
+        $updated = 0;
+
+        (clone $query)->chunkById(250, function ($orders) use ($attributes, $user, &$updated): void {
+            $history = [];
+            $now = now();
+
+            foreach ($orders as $order) {
+                $changed = [];
+
+                foreach ($attributes as $attribute => $newValue) {
+                    $oldValue = $order->getRawOriginal($attribute);
+
+                    if ($this->historyValue($oldValue) === $this->historyValue($newValue)) {
+                        continue;
+                    }
+
+                    $changed[$attribute] = $newValue;
+                    $history[] = [
+                        'order_id' => $order->id,
+                        'user_id' => $user?->id,
+                        'attribute' => $attribute,
+                        'old_value' => $this->historyValue($oldValue),
+                        'new_value' => $this->historyValue($newValue),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                if ($changed !== []) {
+                    $order->forceFill($changed)->save();
+                    $updated++;
+                }
+            }
+
+            if ($history !== []) {
+                OrderHistory::insert($history);
+            }
+        });
+
+        return $updated;
+    }
+
+    private function historyValue(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return $value instanceof DateTimeInterface
+            ? $value->format('Y-m-d H:i:s')
+            : (string) $value;
+    }
+
     private function activeWorkflowScope($query)
     {
         return $query->where(function ($query): void {
@@ -176,7 +237,11 @@ class FinanceWorkflowController extends Controller
 
         $orders = $this->stageQuery($validated['stage'], $user)
             ->where('merchant', $validated['merchant'])
-            ->orderByDesc('delivery_date')
+            ->when(
+                $validated['stage'] === 'history',
+                fn ($query) => $query->orderByDesc('remitted_at'),
+                fn ($query) => $query->orderByDesc('delivery_date'),
+            )
             ->limit(200)
             ->get([
                 'id',
@@ -189,6 +254,8 @@ class FinanceWorkflowController extends Controller
                 'agent',
                 'code',
                 'delivery_date',
+                'remitted_at',
+                'country',
                 'phone',
                 'address',
             ])
@@ -205,6 +272,8 @@ class FinanceWorkflowController extends Controller
                 'delivery_date' => $order->getRawOriginal('delivery_date')
                     ? substr((string) $order->getRawOriginal('delivery_date'), 0, 10)
                     : null,
+                'remitted_at' => $order->getRawOriginal('remitted_at'),
+                'country' => $order->country,
                 'phone' => $order->phone,
                 'address' => $order->address,
             ]);
@@ -212,6 +281,25 @@ class FinanceWorkflowController extends Controller
         return response()->json([
             'orders' => $orders,
         ]);
+    }
+
+    public function downloadRemittedHistory(Request $request)
+    {
+        $validated = $request->validate([
+            'merchant' => ['required', 'string', 'max:255'],
+        ]);
+
+        $user = $request->user()?->loadMissing('country');
+        $merchant = $validated['merchant'];
+        $orders = $this->stageQuery('history', $user)
+            ->where('merchant', $merchant)
+            ->orderByDesc('remitted_at')
+            ->orderBy('id');
+
+        return Excel::download(
+            new RemittedOrdersExport($orders),
+            'remitted_orders_' . str()->slug($merchant) . '.xlsx',
+        );
     }
 
     public function markDelivered(Request $request): RedirectResponse
@@ -234,11 +322,11 @@ class FinanceWorkflowController extends Controller
             $query->whereIn('id', $validated['order_ids']);
         }
 
-        $updated = $query->update([
-                'status' => 'Delivered',
-                'delivered_at' => now(),
-                'delivered_by' => $user?->id,
-            ]);
+        $updated = $this->updateOrdersWithHistory($query, [
+            'status' => 'Delivered',
+            'delivered_at' => now(),
+            'delivered_by' => $user?->id,
+        ], $user);
 
         if ($updated === 0) {
             return back()->withErrors([
@@ -262,6 +350,7 @@ class FinanceWorkflowController extends Controller
         ]);
 
         $user = $request->user()?->loadMissing('country');
+        $selectedCountry = $request->session()->get('selected_country');
         $merchant = $validated['merchant'];
         $extraStatuses = collect($validated['extra_statuses'] ?? [])
             ->map(fn ($status): string => trim((string) $status))
@@ -295,7 +384,9 @@ class FinanceWorkflowController extends Controller
 
         $response = Excel::download(new OrdersExport([
             'merchant' => $merchant,
-            'country' => CountryAccess::userCountryName($user),
+            'country' => CountryAccess::hasGlobalAccess($user)
+                ? ($selectedCountry ?: null)
+                : CountryAccess::userCountryName($user),
             'workflow_order_ids' => $workflowOrderIds,
             'extra_statuses' => $extraStatuses,
             'from' => $validated['from'] ?? null,
@@ -305,11 +396,10 @@ class FinanceWorkflowController extends Controller
         // Only mark the orders as reported once the workbook has been built. Doing this
         // first (as it used to be) stranded orders whenever the export threw, leaving
         // them silently excluded from every future report.
-        $workflowOrdersQuery
-            ->update([
-                'report_generated_at' => now(),
-                'report_generated_by' => $user?->id,
-            ]);
+        $this->updateOrdersWithHistory($workflowOrdersQuery, [
+            'report_generated_at' => now(),
+            'report_generated_by' => $user?->id,
+        ], $user);
 
         return $response;
     }
@@ -336,11 +426,10 @@ class FinanceWorkflowController extends Controller
             $query->whereIn('id', $validated['order_ids']);
         }
 
-        $updated = $query
-            ->update([
-                'merchant_confirmed_at' => now(),
-                'merchant_confirmed_by' => $user?->id,
-            ]);
+        $updated = $this->updateOrdersWithHistory($query, [
+            'merchant_confirmed_at' => now(),
+            'merchant_confirmed_by' => $user?->id,
+        ], $user);
 
         if ($updated === 0) {
             return back()->withErrors([
@@ -359,19 +448,20 @@ class FinanceWorkflowController extends Controller
 
         $user = $request->user()?->loadMissing('country');
 
-        $this->merchantBaseQuery($user)
+        $query = $this->merchantBaseQuery($user)
             ->where('merchant', $validated['merchant'])
             ->whereNotNull('report_generated_at')
             ->whereNotNull('merchant_confirmed_at')
             ->where(function ($query): void {
                 $query->whereNull('agent')->orWhere('agent', '!=', 'Remitted');
-            })
-            ->update([
-                'agent' => 'Remitted',
-                'remitted_at' => now(),
-                'remitted_by' => $user?->id,
-            ]);
+            });
 
-        return back()->with('success', 'Orders marked as remitted.');
+        $updated = $this->updateOrdersWithHistory($query, [
+            'agent' => 'Remitted',
+            'remitted_at' => now(),
+            'remitted_by' => $user?->id,
+        ], $user);
+
+        return back()->with('success', $updated . ' order(s) marked as remitted.');
     }
 }

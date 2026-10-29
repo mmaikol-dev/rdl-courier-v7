@@ -16,12 +16,15 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\IncomingSheetOrderController;
 use App\Http\Controllers\InventoryDeductionController;
 use App\Http\Controllers\MapController;
+use App\Http\Controllers\MerchantApiAccessController;
+use App\Http\Controllers\MerchantApiDashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RequisitionCategoryController;
 use App\Http\Controllers\RequisitionController;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\SheetOrderController;
+use App\Http\Controllers\ShipmentController;
 use App\Http\Controllers\SidebarRolePermissionController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\StkController;
@@ -50,6 +53,9 @@ Route::get('/', function () {
         'status' => session('status'),
     ]);
 })->name('home');
+
+Route::get('/developers/api', fn () => Inertia::render('developers/api'))
+    ->name('developers.api');
 
 // no auth routes
 // appscript api
@@ -94,6 +100,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('products.updateQuantity');
 
     Route::resource('products', ProductController::class);
+    Route::get('/shipments/products', [ShipmentController::class, 'productOptions'])->name('shipments.products');
+    Route::get('/shipments/create', [ShipmentController::class, 'create'])->name('shipments.create');
+    Route::post('/shipments', [ShipmentController::class, 'store'])->name('shipments.store');
+    Route::get('/shipments', [ShipmentController::class, 'index'])->name('shipments.index');
+    Route::get('/shipments/{shipment}', [ShipmentController::class, 'show'])->name('shipments.show');
+    Route::post('/shipments/{shipment}/arrive', [ShipmentController::class, 'markArrived'])->name('shipments.arrive');
+    Route::put('/shipments/{shipment}/receipt', [ShipmentController::class, 'saveReceipt'])->name('shipments.receipt');
     Route::get('/inventory-deductions', [InventoryDeductionController::class, 'index'])->name('inventory-deductions.index');
     Route::post('/inventory-deductions', [InventoryDeductionController::class, 'store'])->name('inventory-deductions.store');
 
@@ -186,6 +199,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/report/download', [ReportController::class, 'download'])->name('report.download');
     Route::get('/finance-workflow', [FinanceWorkflowController::class, 'index'])->name('finance-workflow.index');
     Route::get('/finance-workflow/orders', [FinanceWorkflowController::class, 'merchantOrders'])->name('finance-workflow.orders');
+    Route::get('/finance-workflow/download-remitted-history', [FinanceWorkflowController::class, 'downloadRemittedHistory'])->name('finance-workflow.download-remitted-history');
     Route::post('/finance-workflow/mark-delivered', [FinanceWorkflowController::class, 'markDelivered'])->name('finance-workflow.mark-delivered');
     Route::get('/finance-workflow/download-report', [FinanceWorkflowController::class, 'downloadMerchantReport'])->name('finance-workflow.download-report');
     Route::post('/finance-workflow/mark-confirmed', [FinanceWorkflowController::class, 'markConfirmed'])->name('finance-workflow.mark-confirmed');
@@ -219,6 +233,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // storeep integrations (credentials live in the DB, one row per store/market)
     Route::get('/integrations', [StoreepIntegrationController::class, 'index'])->name('integrations.index');
+    Route::get('/merchant-api-access', [MerchantApiAccessController::class, 'index'])->name('merchant-api-access.index');
+    Route::get('/api-dashboard', [MerchantApiDashboardController::class, 'index'])->name('api-dashboard.index');
+    Route::post('/merchant-api-access', [MerchantApiAccessController::class, 'store'])->name('merchant-api-access.store');
+    Route::put('/merchant-api-access/{integration}', [MerchantApiAccessController::class, 'update'])->name('merchant-api-access.update');
+    Route::post('/merchant-api-access/{integration}/test-webhook', [MerchantApiAccessController::class, 'testWebhook'])->name('merchant-api-access.test-webhook');
+    Route::post('/merchant-api-access/{integration}/rotate', [MerchantApiAccessController::class, 'rotate'])->name('merchant-api-access.rotate');
+    Route::delete('/merchant-api-access/{integration}', [MerchantApiAccessController::class, 'destroy'])->name('merchant-api-access.destroy');
+    Route::patch('/merchant-api-access/merchants/{user}/access', [MerchantApiAccessController::class, 'updateMerchantAccess'])->name('merchant-api-access.merchants.access');
     Route::get('/integrations/{integration}/orders', [StoreepIntegrationController::class, 'orders'])->name('integrations.orders');
     Route::post('/integrations', [StoreepIntegrationController::class, 'store'])->name('integrations.store');
     Route::put('/integrations/{integration}', [StoreepIntegrationController::class, 'update'])->name('integrations.update');

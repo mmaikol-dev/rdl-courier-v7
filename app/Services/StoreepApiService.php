@@ -63,6 +63,21 @@ class StoreepApiService
             $rows = data_get($payload, 'data', []);
             $rows = is_array($rows) ? $rows : [];
 
+            $pagination = data_get($payload, 'meta.pagination', []);
+
+            Log::info('Storeep orders page received', [
+                'store' => $integration->store_name,
+                'page' => $page,
+                'http_status' => $response->status(),
+                'response_keys' => array_keys($payload),
+                'data_key_present' => array_key_exists('data', $payload),
+                'rows_received' => count($rows),
+                'reported_total' => data_get($pagination, 'total'),
+                'current_page' => data_get($pagination, 'current_page', $page),
+                'total_pages' => data_get($pagination, 'total_pages'),
+                'updated_at_cursor' => $sinceUpdatedAt,
+            ]);
+
             if ($rows === []) {
                 return;
             }
@@ -137,7 +152,9 @@ class StoreepApiService
 
         Log::info('✓ Storeep connection test succeeded', [
             'store' => $integration->store_name,
+            'http_status' => $status,
             'total' => $total,
+            'response_keys' => array_keys((array) $response->json()),
         ]);
 
         return [

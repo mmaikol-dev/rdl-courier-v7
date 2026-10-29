@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
 import { Deferred, Head, usePage } from "@inertiajs/react";
@@ -67,6 +67,7 @@ export default function ImportOrdersPage() {
     sheets: Sheet[];
     countries?: Country[];
     userCountry?: string | null;
+    selectedCountry?: string | null;
     auth?: {
       user: {
         name?: string;
@@ -82,12 +83,13 @@ export default function ImportOrdersPage() {
   const countries = props.countries || [];
   const flash = props.flash;
 
-  const isMerchant = props.auth?.user?.roles === "merchant";
+  const role = (props.auth?.user?.roles || "").trim().toLowerCase();
+  const isMerchant = role === "merchant";
   const merchantIdentity = props.auth?.user?.name || props.auth?.user?.username || "";
   // Mirrors CountryAccess::userCountryName(): store_address wins, country.name is the fallback.
   const userCountry =
     props.userCountry || props.auth?.user?.store_address || props.auth?.user?.country?.name || "";
-  const canPickCountry = props.auth?.user?.roles === "g.o.d";
+  const canPickCountry = role === "g.o.d";
 
   const normalizeCountry = (value?: string | null) => (value || "").trim().toLowerCase();
 
@@ -105,15 +107,23 @@ export default function ImportOrdersPage() {
   // Sheet records store countries with inconsistent casing (UGANDA vs Uganda), while
   // Radix Select matches option values exactly. Always map onto the canonical option
   // so the control renders instead of falling back to the placeholder.
-  const matchCountryOption = (raw?: string | null) => {
+  const matchCountryOption = useCallback((raw?: string | null) => {
     const key = normalizeCountry(raw);
     if (!key) return "";
     return countryOptions.find((c) => normalizeCountry(c) === key) ?? (raw as string);
-  };
+  }, [countryOptions]);
 
   const [selectedSheet, setSelectedSheet] = useState<Sheet | null>(null);
   const [sheetName, setSheetName] = useState("orders");
-  const [country, setCountry] = useState(isMerchant ? "" : matchCountryOption(userCountry));
+  const getDefaultCountry = () => isMerchant ? "" : canPickCountry
+    ? matchCountryOption(props.selectedCountry)
+    : matchCountryOption(userCountry);
+  const [country, setCountry] = useState(getDefaultCountry);
+  useEffect(() => {
+    if (!canPickCountry) return;
+    setCountry(matchCountryOption(props.selectedCountry));
+    setSelectedSheet(null);
+  }, [canPickCountry, matchCountryOption, props.selectedCountry]);
   const [file, setFile] = useState<File | null>(null);
   const [open, setOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -159,7 +169,7 @@ export default function ImportOrdersPage() {
   const clearForm = () => {
     setSelectedSheet(null);
     setSheetName("orders");
-    setCountry(isMerchant ? "" : matchCountryOption(userCountry));
+    setCountry(getDefaultCountry());
     setFile(null);
   };
 
@@ -406,7 +416,7 @@ export default function ImportOrdersPage() {
                   <Select
                     value={country}
                     onValueChange={handleCountryChange}
-                    disabled={!canPickCountry}
+                    disabled={!canPickCountry || Boolean(props.selectedCountry)}
                   >
                     <SelectTrigger id="import_country" className="h-10">
                       <SelectValue placeholder="Select a country" />
@@ -421,7 +431,9 @@ export default function ImportOrdersPage() {
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {canPickCountry
-                      ? "Selecting a country loads its default sheet ID."
+                      ? props.selectedCountry
+                        ? "Using the country selected in the dashboard header."
+                        : "Select a country to load its default sheet ID."
                       : isMerchant
                         ? "Set from the merchant you select — merchants trade across all countries."
                         : "Fixed to your assigned country."}

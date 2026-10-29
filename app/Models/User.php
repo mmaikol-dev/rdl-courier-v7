@@ -30,6 +30,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'country_id',
         "store_email",
         "email_verified_at",
+        'merchant_api_enabled',
+        'merchant_api_scopes',
     ];
 
     protected $hidden = [
@@ -40,7 +42,9 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $casts = [
         'country_id' => 'integer',
         'created_at' => 'datetime',
-        'updated_at' => 'datetime'
+        'updated_at' => 'datetime',
+        'merchant_api_enabled' => 'boolean',
+        'merchant_api_scopes' => 'array',
     ];
 
     public function scopeSearch($query, $value): void

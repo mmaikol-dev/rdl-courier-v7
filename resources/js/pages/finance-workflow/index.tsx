@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { ArrowRight, CalendarIcon, Check, CheckCircle2, ChevronsUpDown, Download, Eye, LoaderCircle, ReceiptText, WalletCards } from 'lucide-react';
+import { ArrowRight, CalendarDays, CalendarIcon, Check, CheckCircle2, ChevronsUpDown, Download, Eye, LoaderCircle, ReceiptText, WalletCards } from 'lucide-react';
 import * as React from 'react';
 import { type DateRange } from 'react-day-picker';
 
@@ -54,6 +54,9 @@ interface FinanceWorkflowReport {
 interface FinanceWorkflowPageProps {
   workflowReport?: FinanceWorkflowReport;
   statusOptions: string[];
+  selectedCountry?: string | null;
+  selectedCurrency?: string | null;
+  countries?: { id: number; name: string; currency?: string | null }[];
 }
 
 const EMPTY_WORKFLOW_REPORT: FinanceWorkflowReport = {
@@ -75,6 +78,8 @@ interface WorkflowOrder {
   agent: string | null;
   code: string | null;
   delivery_date: string | null;
+  remitted_at: string | null;
+  country: string | null;
   phone: string | null;
   address: string | null;
 }
@@ -86,10 +91,26 @@ function formatMoney(amount: number) {
   }).format(amount);
 }
 
+function formatCurrencyTotal(amount: number, currency?: string | null) {
+  return currency ? `${currency.toUpperCase()} ${formatMoney(amount)}` : formatMoney(amount);
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
 
   return new Date(value).toLocaleString();
+}
+
+function statusBadgeClass(status?: string | null): string {
+  const normalized = status?.trim().toLowerCase() ?? '';
+
+  if (normalized === 'delivered') return 'border-success/30 bg-success/10 text-success';
+  if (normalized === 'scheduled') return 'border-status-scheduled/40 bg-status-scheduled text-status-scheduled-foreground';
+  if (normalized === 'dispatched') return 'border-secondary bg-secondary text-secondary-foreground';
+  if (normalized.includes('follow')) return 'border-primary/40 bg-primary/15 text-primary';
+  if (normalized.includes('expired') || normalized.includes('cancel')) return 'border-destructive/30 bg-destructive/10 text-destructive';
+
+  return 'border-border bg-muted text-foreground';
 }
 
 /**
@@ -103,6 +124,17 @@ function formatDateOnly(value?: string | null): string {
   // Split on either 'T' (ISO) or a space (common database format)
   const datePart = value.split(/[T\s]/)[0];
   return datePart;
+}
+
+function formatRemittanceDay(value?: string | null): string {
+  const date = formatDateOnly(value);
+  if (date === '-') return 'Date not recorded';
+
+  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -149,7 +181,7 @@ function TruncatedCell({
 }
 
 export default function FinanceWorkflowPage() {
-  const { workflowReport, statusOptions } = usePage<FinanceWorkflowPageProps>().props;
+  const { workflowReport, statusOptions, selectedCountry, selectedCurrency, countries } = usePage<FinanceWorkflowPageProps>().props;
   const { readyForDelivery, awaitingConfirmation, readyToRemit, remittedHistory, summary } =
     workflowReport ?? EMPTY_WORKFLOW_REPORT;
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
@@ -168,6 +200,42 @@ export default function FinanceWorkflowPage() {
   const [merchantPickerOpen, setMerchantPickerOpen] = React.useState(false);
   const isDeliveryDrawer = drawerStage === 'delivery';
   const isConfirmationDrawer = drawerStage === 'confirmation';
+  const isHistoryDrawer = drawerStage === 'history';
+  const currencyByCountry = React.useMemo(
+    () => new Map((countries ?? []).map((country) => [country.name.trim().toLowerCase(), country.currency ?? null])),
+    [countries],
+  );
+  const drawerOrderGroups = React.useMemo(() => {
+    if (!isHistoryDrawer) {
+      return [{
+        key: 'orders',
+        label: null as string | null,
+        orders: drawerOrders,
+        quantity: drawerOrders.reduce((total, order) => total + Number(order.quantity ?? 0), 0),
+        amount: drawerOrders.reduce((total, order) => total + Number(order.amount ?? 0), 0),
+      }];
+    }
+
+    const groups = new Map<string, { date: string; country: string; orders: WorkflowOrder[] }>();
+    drawerOrders.forEach((order) => {
+      const date = formatDateOnly(order.remitted_at);
+      const country = order.country?.trim() || 'Unknown country';
+      const key = `${date === '-' ? 'unknown' : date}::${country.toLowerCase()}`;
+      const group = groups.get(key) ?? { date: date === '-' ? 'unknown' : date, country, orders: [] };
+      group.orders.push(order);
+      groups.set(key, group);
+    });
+
+    return Array.from(groups, ([key, group]) => ({
+      key,
+      label: `${group.date === 'unknown' ? 'Date not recorded' : formatRemittanceDay(group.date)} · ${group.country}`,
+      orders: group.orders,
+      quantity: group.orders.reduce((total, order) => total + Number(order.quantity ?? 0), 0),
+      amount: group.orders.reduce((total, order) => total + Number(order.amount ?? 0), 0),
+      currency: currencyByCountry.get(group.country.toLowerCase())
+        ?? (selectedCountry ? selectedCurrency : null),
+    }));
+  }, [currencyByCountry, drawerOrders, isHistoryDrawer, selectedCountry, selectedCurrency]);
   const allDeliverySelected = isDeliveryDrawer
     && drawerOrders.length > 0
     && selectedDeliveryOrderIds.length === drawerOrders.length;
@@ -288,6 +356,14 @@ export default function FinanceWorkflowPage() {
       visitWorkflow();
     }, 900);
   }, [reportDateRange, reportMerchant, reportOrderIds, selectedStatuses, visitWorkflow]);
+
+  const downloadRemittedHistory = React.useCallback(() => {
+    if (!drawerMerchant) return;
+
+    const params = new URLSearchParams({ merchant: drawerMerchant });
+    window.location.href = `/finance-workflow/download-remitted-history?${params.toString()}`;
+    toast.success(`Remitted order history for ${drawerMerchant} is downloading`);
+  }, [drawerMerchant]);
 
   const renderActionButton = (
     actionKey: string,
@@ -748,6 +824,16 @@ export default function FinanceWorkflowPage() {
           </DrawerHeader>
 
           <div className="mx-auto w-full max-w-6xl overflow-y-auto px-3 pb-4 sm:px-4">
+            {drawerStage === 'history' ? (
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">Download the full remitted order history for this merchant.</p>
+                <Button variant="outline" onClick={downloadRemittedHistory} className="gap-2">
+                  <Download className="size-4" />
+                  Download Excel history
+                </Button>
+              </div>
+            ) : null}
+
             {drawerLoading ? (
               <div className="flex min-h-48 items-center justify-center">
                 <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
@@ -826,8 +912,23 @@ export default function FinanceWorkflowPage() {
                   </div>
                 ) : null}
 
-                  <div className="space-y-2 sm:hidden">
-                  {drawerOrders.map((order) => (
+                  <div className="space-y-4 sm:hidden">
+                  {drawerOrderGroups.map((group) => (
+                    <section key={group.key} className="space-y-2">
+                    {group.label ? (
+                      <div className="flex flex-col gap-2 rounded-md border border-primary/15 bg-primary/5 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 className="flex items-center gap-2 text-sm font-medium">
+                          <CalendarDays className="size-4 text-primary" />
+                          {group.label}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                          <Badge variant="secondary" className="tabular-nums">{group.orders.length} orders</Badge>
+                          <Badge variant="outline" className="tabular-nums">{group.quantity.toLocaleString()} units</Badge>
+                          <Badge variant="outline" className="tabular-nums">Total {formatCurrencyTotal(group.amount, group.currency)}</Badge>
+                        </div>
+                      </div>
+                    ) : null}
+                    {group.orders.map((order) => (
                     <Card key={order.id} className="border-border/60 shadow-none">
                       <CardContent className="space-y-2 p-3 text-sm">
                         <div className="flex items-start justify-between gap-3">
@@ -847,7 +948,7 @@ export default function FinanceWorkflowPage() {
                               <div className="truncate font-medium" title={order.order_no}>{order.order_no}</div>
                             </div>
                           </div>
-                          <Badge variant="outline" className="max-w-[45%] truncate" title={order.status ?? '-'}>
+                          <Badge variant="outline" className={`max-w-[45%] truncate ${statusBadgeClass(order.status)}`} title={order.status ?? '-'}>
                             {order.status ?? '-'}
                           </Badge>
                         </div>
@@ -886,9 +987,17 @@ export default function FinanceWorkflowPage() {
                             {/* FIX: Use formatDateOnly to avoid timezone off-by-one */}
                             <div className="truncate" title={formatDateOnly(order.delivery_date)}>{formatDateOnly(order.delivery_date)}</div>
                           </div>
+                          {isHistoryDrawer ? (
+                            <div className="col-span-2 min-w-0">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground">Remitted At</div>
+                              <div className="truncate" title={formatDateTime(order.remitted_at)}>{formatDateTime(order.remitted_at)}</div>
+                            </div>
+                          ) : null}
                         </div>
                       </CardContent>
                     </Card>
+                    ))}
+                    </section>
                   ))}
                 </div>
 
@@ -906,10 +1015,29 @@ export default function FinanceWorkflowPage() {
                         <TableHead className="w-[9%]">Agent</TableHead>
                         <TableHead className="w-[9%]">Code</TableHead>
                         <TableHead className="w-[12%]">Delivery Date</TableHead>
+                        {isHistoryDrawer ? <TableHead className="w-[16%]">Remitted At</TableHead> : null}
                       </TableRow>
                     </TableHeader>
 	                    <TableBody>
-	                      {drawerOrders.map((order) => (
+	                      {drawerOrderGroups.flatMap((group) => [
+	                        ...(group.label ? [
+	                          <TableRow key={`group-${group.key}`} className="bg-primary/5 hover:bg-primary/5">
+	                            <TableCell colSpan={(isDeliveryDrawer || isConfirmationDrawer ? 10 : 9) + (isHistoryDrawer ? 1 : 0)} className="py-2">
+	                              <div className="flex flex-wrap items-center justify-between gap-2">
+	                                <span className="flex items-center gap-2 font-medium">
+	                                  <CalendarDays className="size-4 text-primary" />
+	                                  {group.label}
+	                                </span>
+	                                <div className="flex flex-wrap items-center gap-1.5">
+	                                  <Badge variant="secondary" className="tabular-nums">{group.orders.length} orders</Badge>
+	                                  <Badge variant="outline" className="tabular-nums">{group.quantity.toLocaleString()} units</Badge>
+	                                  <Badge variant="outline" className="tabular-nums">Total {formatCurrencyTotal(group.amount, group.currency)}</Badge>
+	                                </div>
+	                              </div>
+	                            </TableCell>
+	                          </TableRow>,
+	                        ] : []),
+	                        ...group.orders.map((order) => (
 	                        <TableRow key={order.id}>
                           {isDeliveryDrawer || isConfirmationDrawer ? (
                             <TableCell>
@@ -939,7 +1067,9 @@ export default function FinanceWorkflowPage() {
                             <TruncatedCell value={formatMoney(Number(order.amount ?? 0))} />
                           </TableCell>
                           <TableCell>
-                            <TruncatedCell value={order.status} />
+                            <Badge variant="outline" className={statusBadgeClass(order.status)}>
+                              {order.status ?? '-'}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <TruncatedCell value={order.agent} />
@@ -951,8 +1081,10 @@ export default function FinanceWorkflowPage() {
                             {/* FIX: Use formatDateOnly to avoid timezone off-by-one */}
                             <TruncatedCell value={formatDateOnly(order.delivery_date)} />
                           </TableCell>
+	                          {isHistoryDrawer ? <TableCell><TruncatedCell value={formatDateTime(order.remitted_at)} /></TableCell> : null}
                         </TableRow>
-                      ))}
+	                        )),
+	                      ])}
                     </TableBody>
                   </Table>
                 </div>

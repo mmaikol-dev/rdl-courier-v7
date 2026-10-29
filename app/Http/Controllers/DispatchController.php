@@ -19,6 +19,24 @@ use App\Support\CountryAccess;
 
 class DispatchController extends Controller
 {
+    private function markDispatchedUnlessDelivered(SheetOrder $order, ?User $user): void
+    {
+        $oldStatus = $order->getRawOriginal('status');
+        if (mb_strtolower(trim((string) $oldStatus)) === 'delivered' || mb_strtolower(trim((string) $oldStatus)) === 'dispatched') {
+            return;
+        }
+
+        $order->update(['status' => 'Dispatched']);
+
+        OrderHistory::create([
+            'order_id' => $order->id,
+            'user_id' => $user?->id,
+            'attribute' => 'status',
+            'old_value' => $oldStatus,
+            'new_value' => 'Dispatched',
+        ]);
+    }
+
     public function index(Request $request)
     {
         $today = Carbon::today()->toDateString();
@@ -241,7 +259,7 @@ class DispatchController extends Controller
     // Update orders
     $user = $request->user()->loadMissing('country');
     $affectedOrders = CountryAccess::scopeByCountryName(
-        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'agent', 'clearance_status']),
+        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'agent', 'clearance_status', 'order_type', 'status']),
         $user
     )->get();
 
@@ -253,7 +271,10 @@ class DispatchController extends Controller
         $oldAgent = $order->getRawOriginal('agent');
         $oldClearance = $order->getRawOriginal('clearance_status');
         $oldOrderType = $order->getRawOriginal('order_type');
+        $oldStatus = $order->getRawOriginal('status');
         $agentChanged = $oldAgent !== $validated['agent_name'];
+        $delivered = mb_strtolower(trim((string) $oldStatus)) === 'delivered';
+        $statusChanged = ! $delivered && mb_strtolower(trim((string) $oldStatus)) !== 'dispatched';
 
         $assignDate = $now->toDateString();
         $oldDeliveryDate = $order->getRawOriginal('delivery_date');
@@ -264,6 +285,7 @@ class DispatchController extends Controller
             'order_type' => $validated['order_type'],
             'clearance_status' => 'not_cleared',
             ...($agentChanged ? ['delivery_date' => $assignDate] : []),
+            ...($statusChanged ? ['status' => 'Dispatched'] : []),
         ]);
         $updatedCount++;
 
@@ -298,6 +320,18 @@ class DispatchController extends Controller
                 'attribute' => 'clearance_status',
                 'old_value' => $oldClearance,
                 'new_value' => 'not_cleared',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if ($statusChanged) {
+            $history[] = [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'attribute' => 'status',
+                'old_value' => $oldStatus,
+                'new_value' => 'Dispatched',
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -395,7 +429,7 @@ class DispatchController extends Controller
 
         abort_unless($order, 404, 'Order not found');
 
-        $order->update(['status' => 'Dispatched']);
+        $this->markDispatchedUnlessDelivered($order, request()->user());
 
         $pdf = Pdf::loadView('waybill', compact('order'));
 
@@ -460,11 +494,9 @@ public function bulkDownloadWaybills(Request $request)
             ]);
 
         // Update all orders to dispatched (more efficient bulk update)
-        CountryAccess::scopeByCountryName(
-            \App\Models\SheetOrder::query()->whereIn('order_no', $orderNumbers),
-            $user
-        )
-            ->update(['status' => 'Dispatched']);
+        foreach ($orders as $order) {
+            $this->markDispatchedUnlessDelivered($order, $user);
+        }
 
         $fileName = 'waybills_' . now()->format('Ymd_His') . '.pdf';
         return $pdf->download($fileName);
@@ -536,11 +568,15 @@ public function bulkDownloadWaybills(Request $request)
             $oldClearance = $order->getRawOriginal('clearance_status');
             $oldDeliveryDate = $order->getRawOriginal('delivery_date');
             $oldDeliveryDate = $oldDeliveryDate !== null ? substr((string) $oldDeliveryDate, 0, 10) : null;
+            $oldStatus = $order->getRawOriginal('status');
+            $delivered = mb_strtolower(trim((string) $oldStatus)) === 'delivered';
+            $statusChanged = ! $delivered && mb_strtolower(trim((string) $oldStatus)) !== 'dispatched';
 
             $order->update([
                 ...$validated,
                 'delivery_date' => $assignDate,
                 'clearance_status' => 'not_cleared',
+                ...($statusChanged ? ['status' => 'Dispatched'] : []),
             ]);
 
             OrderHistory::create([
@@ -558,6 +594,16 @@ public function bulkDownloadWaybills(Request $request)
                     'attribute' => 'clearance_status',
                     'old_value' => $oldClearance,
                     'new_value' => 'not_cleared',
+                ]);
+            }
+
+            if ($statusChanged) {
+                OrderHistory::create([
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'attribute' => 'status',
+                    'old_value' => $oldStatus,
+                    'new_value' => 'Dispatched',
                 ]);
             }
 

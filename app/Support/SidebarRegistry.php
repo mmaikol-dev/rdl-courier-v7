@@ -24,6 +24,7 @@ class SidebarRegistry
             ['key' => 'whatsapp', 'title' => 'Whatsapp Chats', 'href' => '/whatsapp', 'group' => 'Operations'],
             ['key' => 'bulk-expire', 'title' => 'Bulk Expire', 'href' => '/orders/bulk-expire', 'group' => 'Operations'],
             ['key' => 'products', 'title' => 'Products', 'href' => '/products', 'group' => 'Inventory'],
+            ['key' => 'shipments', 'title' => 'Shipments', 'href' => '/shipments', 'group' => 'Inventory'],
             ['key' => 'order-scans', 'title' => 'QR Scan Out', 'href' => '/order-scans', 'group' => 'Inventory'],
             ['key' => 'inventory-deductions', 'title' => 'Inventory Deductions', 'href' => '/inventory-deductions', 'group' => 'Inventory'],
             ['key' => 'deducted-orders', 'title' => 'Deducted Orders', 'href' => '/deducted-orders', 'group' => 'Inventory'],
@@ -43,6 +44,8 @@ class SidebarRegistry
             ['key' => 'stk', 'title' => 'STK push', 'href' => '/stk', 'group' => 'Finance'],
             ['key' => 'users', 'title' => 'Users', 'href' => '/users', 'group' => 'Administration'],
             ['key' => 'integrations', 'title' => 'Integrations', 'href' => '/integrations', 'group' => 'Administration'],
+            ['key' => 'api-dashboard', 'title' => 'API Dashboard', 'href' => '/api-dashboard', 'group' => 'Administration'],
+            ['key' => 'merchant-api-access', 'title' => 'Merchant API Access', 'href' => '/merchant-api-access', 'group' => 'Administration'],
         ];
     }
 
@@ -101,15 +104,22 @@ class SidebarRegistry
 
         if (is_array($saved)) {
             $visible = array_values(array_intersect($saved, self::allKeys()));
-
-            if (self::normalizeRole($role) === 'merchant' && ! in_array('transfer', $visible, true)) {
-                $visible[] = 'transfer';
-            }
-
-            return $visible;
+        } else {
+            $visible = self::defaultVisibleKeysForRole($role);
         }
 
-        return self::defaultVisibleKeysForRole($role);
+        if (self::normalizeRole($role) === 'merchant') {
+            foreach (['transfer', 'merchant-api-access', 'api-dashboard'] as $requiredKey) {
+                if (! in_array($requiredKey, $visible, true)) {
+                    $visible[] = $requiredKey;
+                }
+            }
+        } else {
+            // Merchant API credentials must stay hidden from unrelated roles.
+            $visible = array_values(array_diff($visible, ['merchant-api-access', 'api-dashboard']));
+        }
+
+        return $visible;
     }
 
     public static function titleForKey(string $key): ?string

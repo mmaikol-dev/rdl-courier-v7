@@ -14,7 +14,8 @@ class DashboardController extends Controller
     {
         $user = $request->user()->loadMissing('country');
 
-        $range = $request->query('range', $request->query('period', 'last30Days'));
+        $defaultRange = strtolower(trim((string) $user->roles)) === 'merchant' ? 'allTime' : 'last30Days';
+        $range = $request->query('range', $request->query('period', $defaultRange));
         $allowed = ['today', 'last7Days', 'last30Days', 'thisMonth', 'allTime'];
         $range = in_array($range, $allowed, true) ? $range : 'last30Days';
         $period = $range === 'allTime' ? null : $range;

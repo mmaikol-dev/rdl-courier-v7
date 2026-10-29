@@ -15,21 +15,14 @@ class DeductedOrdersController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
         $role = strtolower(trim((string) ($user?->roles ?? '')));
-        $isGod = $role === 'g.o.d';
         $isMerchant = $role === 'merchant';
         $selectedMerchant = $isMerchant ? trim((string) ($user?->name ?? '')) : trim((string) $request->string('merchant'));
         $search = trim((string) $request->string('search'));
 
-        $baseQuery = SheetOrder::query()->whereNotNull('inventory_deducted_at');
-
-        if (! $isGod) {
-            $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
-            if ($countryName === null) {
-                $baseQuery->whereRaw('1 = 0');
-            } else {
-                $baseQuery->whereRaw('LOWER(TRIM(country)) = ?', [$countryName]);
-            }
-        }
+        $baseQuery = CountryAccess::scopeByCountryName(
+            SheetOrder::query()->whereNotNull('inventory_deducted_at'),
+            $user,
+        );
 
         if ($isMerchant) {
             if ($selectedMerchant === '') {
@@ -82,15 +75,10 @@ class DeductedOrdersController extends Controller
             ->filter()
             ->unique()
             ->values();
-        $productsQuery = Product::with('category')->whereIn('id', $productIds);
-        if (! $isGod) {
-            $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
-            if ($countryName === null) {
-                $productsQuery->whereRaw('1 = 0');
-            } else {
-                $productsQuery->whereRaw('LOWER(TRIM(products.country)) = ?', [$countryName]);
-            }
-        }
+        $productsQuery = CountryAccess::scopeProducts(
+            Product::with('category')->whereIn('id', $productIds),
+            $user,
+        );
         if ($isMerchant && $selectedMerchant !== '') {
             $productsQuery->whereRaw('LOWER(TRIM(products.merchant)) = ?', [mb_strtolower($selectedMerchant)]);
         }

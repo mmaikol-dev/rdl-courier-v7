@@ -110,6 +110,7 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                     </div>
                 )}
             </Form>
+            <p className="mt-5 text-center text-sm text-muted-foreground">Integrating with Realdeal? <TextLink href="/developers/api">Read the developer guide</TextLink></p>
         </AuthLayout>
     );
 }
