@@ -27,7 +27,10 @@ class SheetOrderImportService
 
         if (! empty($data['sheet_id'])) {
             $sheet = Sheet::where('sheet_id', $data['sheet_id'])->first();
-            $data['store_name'] = ! empty($sheet?->store_name) ? $sheet->store_name : 'RDL1';
+            $isMerchantApiOrder = str_starts_with((string) $data['sheet_id'], 'merchant-api:');
+            $data['store_name'] = $sheet
+                ? (! empty($sheet->store_name) ? $sheet->store_name : 'RDL1')
+                : ($isMerchantApiOrder ? ($data['store_name'] ?? 'RDL1') : 'RDL1');
         }
 
         $validatedData = Validator::make($data, [
@@ -35,6 +38,7 @@ class SheetOrderImportService
             'amount' => 'required|numeric',
             'quantity' => 'required|integer',
             'client_name' => 'nullable|string|max:255',
+            'client_city' => 'nullable|string|max:255',
             'address' => 'nullable|string',
             'city' => 'nullable|string',
             'store_name' => 'nullable|string',
@@ -42,6 +46,7 @@ class SheetOrderImportService
             'country' => 'nullable|string',
             'phone' => 'nullable|string|max:30',
             'product_name' => 'nullable|string|max:255',
+            'code' => 'nullable|string|max:255',
             'status' => 'nullable|string',
             'delivery_date' => 'nullable|date',
             'order_date' => 'nullable|date',
@@ -49,6 +54,7 @@ class SheetOrderImportService
             'sheet_id' => 'nullable|string',
             'sheet_name' => 'nullable|string',
             'merchant' => 'nullable|string',
+            'instructions' => 'nullable|string|max:2000',
         ])->validate();
 
         $validatedData['store_name'] = $validatedData['store_name'] ?: 'RDL1';
@@ -140,7 +146,7 @@ class SheetOrderImportService
         ];
     }
 
-    private function resolveCcEmail(?Sheet $sheet, array $validatedData): ?string
+    public function resolveCcEmail(?Sheet $sheet, array $validatedData): ?string
     {
         if (! $sheet || empty($sheet->cc_agents)) {
             return null;
@@ -186,6 +192,7 @@ class SheetOrderImportService
         $orderNo = $this->normalizeIdentityValue($validatedData['order_no'] ?? null);
         $sheetId = $this->normalizeIdentityValue($validatedData['sheet_id'] ?? null);
         $sheetName = $this->normalizeIdentityValue($validatedData['sheet_name'] ?? null);
+        $merchant = $this->normalizeIdentityValue($validatedData['merchant'] ?? null);
 
         if ($orderNo === null) {
             Log::warning('AppScript order received with no order_no - skipping dedup.', [
@@ -199,6 +206,8 @@ class SheetOrderImportService
             ->where('order_no', $orderNo)
             ->when($sheetId !== null, fn ($query) => $query->where('sheet_id', $sheetId))
             ->when($sheetName !== null, fn ($query) => $query->where('sheet_name', $sheetName))
+            ->when($sheetId === null && $sheetName === null && $merchant !== null,
+                fn ($query) => $query->whereRaw('LOWER(TRIM(merchant)) = ?', [$merchant]))
             ->orderBy('id')
             ->get();
 

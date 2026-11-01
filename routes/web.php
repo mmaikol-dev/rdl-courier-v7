@@ -221,6 +221,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // whatsapp
     Route::resource('whatsapp', ChatController::class);
+    Route::get('/api/whatsapp/media/{filename}', [ChatController::class, 'serveMedia'])->name('whatsapp.media');
     Route::put('/chats/{phone}', [ChatController::class, 'updateStatus']);
     Route::get('/chats/{phone}', [ChatController::class, 'show'])->name('chats.show');
     Route::get('/api/whatsapp/conversations', [ChatController::class, 'getConversations']);

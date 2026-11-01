@@ -14,7 +14,7 @@ use Inertia\Inertia;
 
 class MerchantApiAccessController extends Controller
 {
-    private const SCOPES = ['orders:read', 'products:read', 'transfers:read'];
+    private const SCOPES = ['orders:read', 'orders:write', 'products:read', 'transfers:read'];
 
     private const EVENTS = ['order.created', 'order.updated', 'product.created', 'product.updated', 'transfer.created', 'transfer.returned'];
 

@@ -7,6 +7,8 @@ use App\Models\Whatsapp;
 use App\Services\WhatsAppFallbackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class WhatsappController extends Controller
 {
@@ -105,17 +107,38 @@ class WhatsappController extends Controller
      */
     public function sendChat(Request $request)
     {
-        Log::info('📤 Sending custom WhatsApp chat message', $request->all());
+        $validated = $request->validate([
+            'to' => ['required', 'string'],
+            'message' => ['nullable', 'string', 'max:4096', 'required_without:media'],
+            'media' => ['nullable', 'file', 'max:2048', 'mimes:jpg,jpeg,png,webp,mp4,3gp,mp3,ogg,aac,m4a,pdf,doc,docx,xls,xlsx,ppt,pptx,txt'],
+            'country' => ['nullable', 'string'],
+        ]);
+
+        Log::info('📤 Sending custom WhatsApp chat message', [
+            'to' => $validated['to'],
+            'has_media' => $request->hasFile('media'),
+        ]);
+
+        $storedMediaPath = null;
 
         try {
-            $validated = $request->validate([
-                'to' => 'required|string',
-                'message' => 'required|string|max:4096',
-                'country' => 'nullable|string',
-            ]);
-
             $to = $validated['to'];
-            $messageText = $validated['message'];
+            $messageText = trim((string) ($validated['message'] ?? ''));
+            $mediaFile = $request->file('media');
+
+            if ($mediaFile && mb_strlen($messageText) > 1024) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Media captions cannot exceed 1,024 characters.',
+                ], 422);
+            }
+
+            if ($mediaFile && str_starts_with((string) $mediaFile->getMimeType(), 'audio/') && $messageText !== '') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'WhatsApp audio messages cannot include a caption. Remove the text or send it separately.',
+                ], 422);
+            }
 
             $country = $validated['country'] ?? null;
 
@@ -154,13 +177,33 @@ class WhatsappController extends Controller
 
             Log::info("📞 Formatted phone: {$formattedPhone}");
 
-            $templateParams = [
-                ['type' => 'text', 'text' => $messageText],
-            ];
+            $mediaType = null;
+            $mimeType = null;
+            if ($mediaFile) {
+                $mimeType = (string) $mediaFile->getMimeType();
+                $mediaType = match (true) {
+                    str_starts_with($mimeType, 'image/') => 'image',
+                    str_starts_with($mimeType, 'video/') => 'video',
+                    str_starts_with($mimeType, 'audio/') => 'audio',
+                    default => 'document',
+                };
 
-            $result = $this->whatsAppService->sendTemplate($formattedPhone, $this->chatTemplateName, 'en_US', $templateParams, [
-                'country_code' => $countryCode,
-            ]);
+                $fileName = Str::uuid().'.'.$mediaFile->extension();
+                $storedMediaPath = $mediaFile->storeAs('whatsapp-media', $fileName);
+                if (! $storedMediaPath) {
+                    throw new \RuntimeException('Could not store the WhatsApp attachment.');
+                }
+
+                $result = $this->whatsAppService->sendMedia($formattedPhone, $mediaFile, $messageText ?: null);
+            } else {
+                $templateParams = [
+                    ['type' => 'text', 'text' => $messageText],
+                ];
+
+                $result = $this->whatsAppService->sendTemplate($formattedPhone, $this->chatTemplateName, 'en_US', $templateParams, [
+                    'country_code' => $countryCode,
+                ]);
+            }
 
             Log::info('✅ WhatsApp send response', [
                 'provider' => $result['provider'],
@@ -177,15 +220,25 @@ class WhatsappController extends Controller
             $clientName = $existingChat->client_name ?? 'Customer';
             $storeName = $existingChat->store_name ?? $country;
             $ccAgents = $existingChat->cc_agents ?? null;
+            $mediaPlaceholder = match ($mediaType) {
+                'document' => '[Document sent: '.$mediaFile->getClientOriginalName().']',
+                'image' => '[Image sent]',
+                'video' => '[Video sent]',
+                'audio' => '[Audio sent]',
+                default => '',
+            };
 
             $whatsapp = Whatsapp::create([
                 'to' => $result['to'],
                 'client_name' => $clientName,
                 'store_name' => $storeName,
                 'cc_agents' => $ccAgents,
-                'message' => $messageText,
+                'message' => $messageText !== '' ? $messageText : $mediaPlaceholder,
                 'status' => 'sent',
                 'sid' => $messageId,
+                'media_type' => $mediaType,
+                'mime_type' => $mimeType,
+                'media_path' => $storedMediaPath,
             ]);
 
             Log::info('💾 Message saved to database', [
@@ -200,10 +253,18 @@ class WhatsappController extends Controller
                 'id' => $whatsapp->id,
                 'sid' => $messageId,
                 'provider' => $result['provider'],
+                'media_type' => $mediaType,
+                'mime_type' => $mimeType,
+                'media_path' => $storedMediaPath,
+                'message_text' => $whatsapp->message,
                 'data' => $whatsapp,
             ]);
 
         } catch (\Throwable $e) {
+            if ($storedMediaPath) {
+                Storage::delete($storedMediaPath);
+            }
+
             Log::error('❌ WhatsApp provider error', [
                 'error' => $e->getMessage(),
                 'to' => $request->to ?? 'unknown',

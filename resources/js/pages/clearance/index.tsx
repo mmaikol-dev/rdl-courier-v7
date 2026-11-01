@@ -33,7 +33,7 @@ import { format } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 const statusColors: Record<string, string> = {
     Delivered: "bg-success/10 text-success border-success/30",

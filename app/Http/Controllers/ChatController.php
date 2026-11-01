@@ -225,6 +225,8 @@ class ChatController extends Controller
      */
     public function serveMedia(string $filename)
     {
+        abort_unless(basename($filename) === $filename, 404);
+
         $path = "whatsapp-media/{$filename}";
 
         if (! Storage::exists($path)) {
@@ -259,10 +261,10 @@ class ChatController extends Controller
         $headers = [
             'Content-Type' => $contentType,
             'Content-Disposition' => 'inline; filename="'.$filename.'"',
-            'Cache-Control' => 'public, max-age=86400',
+            'Cache-Control' => 'private, max-age=86400',
         ];
 
-        return Storage::download($path, $filename, $headers);
+        return Storage::response($path, $filename, $headers, 'inline');
     }
 
     /**

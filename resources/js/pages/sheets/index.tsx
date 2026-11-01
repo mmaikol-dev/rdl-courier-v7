@@ -20,7 +20,7 @@ import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { csrfHeaders } from '@/lib/csrf';
 import { ChevronLeft, ChevronRight, Download, Edit, EyeIcon, Loader2, Maximize2, Minimize2, Plus, Search, Trash2, X } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -92,7 +92,7 @@ function SheetsGridSkeleton() {
     return (
         <div className="space-y-3" role="status" aria-label="Loading spreadsheets" aria-live="polite">
             <div className="@container">
-                <div className="grid auto-rows-min grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[46rem]:grid-cols-3 @[60rem]:grid-cols-4 @[72rem]:grid-cols-5">
+                <div className="grid auto-rows-min grid-cols-2 gap-3 @[30rem]:grid-cols-2 @[46rem]:grid-cols-3 @[60rem]:grid-cols-4 @[72rem]:grid-cols-5">
                     {Array.from({ length: 8 }).map((_, index) => (
                         <div key={index} className="space-y-3 rounded-lg border bg-card p-3.5">
                             <div className="flex justify-between"><Skeleton className="h-5 w-16" /><Skeleton className="h-4 w-20" /></div>
@@ -857,7 +857,7 @@ export default function SheetsView() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Sheets" />
 
-            <div className="flex w-full flex-col gap-4 p-4">
+            <div className="flex w-full min-w-0 max-w-full flex-col gap-4 overflow-x-clip p-4">
                 {/* Top Controls */}
                 <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div className="flex flex-1 flex-col gap-2 sm:flex-row">
@@ -937,8 +937,8 @@ export default function SheetsView() {
                     // the cards a predictable ~220-240px wide either way, and the
                     // grid always fills the width available instead of sitting
                     // in a centred column of fixed maximum width.
-                    <div className="@container">
-                        <div className="grid auto-rows-min grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[46rem]:grid-cols-3 @[60rem]:grid-cols-4 @[72rem]:grid-cols-5 @[86rem]:grid-cols-6 @[100rem]:grid-cols-7 @[112rem]:grid-cols-8">
+                    <div className="@container min-w-0 w-full max-w-full">
+                        <div className="grid auto-rows-min grid-cols-2 gap-3 @[30rem]:grid-cols-2 @[46rem]:grid-cols-3 @[60rem]:grid-cols-4 @[72rem]:grid-cols-5 @[86rem]:grid-cols-6 @[100rem]:grid-cols-7 @[112rem]:grid-cols-8">
                             {visibleSheets.map((sheet) => (
                                 <Card
                                     key={sheet.id}

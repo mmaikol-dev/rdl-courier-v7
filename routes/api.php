@@ -23,7 +23,6 @@ Route::post('/end-call', [CallcenterController::class, 'endCall']);
 
 Route::post('/callcenter/make-call', [CallcenterController::class, 'makeCall']);
 Route::post('/whatsapp/send-chat', [WhatsappController::class, 'sendChat'])->name('whatsapp.sendChat');
-Route::get('/whatsapp/media/{filename}', [ChatController::class, 'serveMedia'])->name('whatsapp.media');
 // ============================================
 // WasenderAPI Webhook Routes
 // ============================================
@@ -79,6 +78,8 @@ Route::prefix('webhooks')->group(function () {
 Route::post('/update-order-timestamp', [AppScriptController::class, 'updateTimestamp']);
 
 Route::prefix('merchant/v1')->middleware([AuthenticateMerchantApi::class, 'throttle:60,1'])->group(function (): void {
+    Route::post('/orders', [MerchantDataController::class, 'storeOrder']);
+    Route::get('/orders/import-status/{externalOrderId}', [MerchantDataController::class, 'incomingOrderStatus']);
     Route::get('/orders', [MerchantDataController::class, 'orders']);
     Route::get('/products', [MerchantDataController::class, 'products']);
     Route::get('/transfers', [MerchantDataController::class, 'transfers']);

@@ -21,27 +21,27 @@ export default function AuthSplitLayout({ children, title, description }: PropsW
 
     return (
         <div className="relative grid h-dvh flex-col items-center justify-center px-8 sm:px-0 lg:max-w-none lg:grid-cols-2 lg:px-0">
-            <div className="relative hidden h-full overflow-hidden border-r border-background/10 bg-foreground text-background lg:flex lg:flex-col">
-                {/* A restrained theme-colored wash keeps the branded panel calm. */}
-                <div className="absolute inset-0 bg-gradient-to-br from-warning/10 via-transparent to-background/10" />
+            <div className="relative hidden h-full overflow-hidden border-r border-primary-foreground/15 bg-primary text-primary-foreground lg:flex lg:flex-col">
+                {/* Use the active theme's primary colors for the branded panel. */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary-foreground/10 via-transparent to-primary-foreground/5" />
                 {/* Soft edge blend into the form side */}
-                <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-28 bg-gradient-to-l from-foreground to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-28 bg-gradient-to-l from-primary to-transparent" />
 
                 <div className="relative z-30 flex h-full w-full flex-col p-10 xl:p-14">
                     {/* Brand mark */}
                     <div className="flex items-center gap-3.5">
                         <div className="relative">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-background/15 bg-background/5 shadow-lg shadow-foreground/10 backdrop-blur-xl">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary-foreground/20 bg-primary-foreground/10 shadow-lg shadow-primary/10 backdrop-blur-xl">
                                 <BrandLogo className="h-8 w-8" />
                             </div>
-                            <div className="pointer-events-none absolute -inset-0.5 -z-10 rounded-[1.1rem] bg-gradient-to-br from-primary to-primary opacity-60 blur-md" />
+                            <div className="pointer-events-none absolute -inset-0.5 -z-10 rounded-[1.1rem] bg-primary-foreground/50 opacity-50 blur-md" />
                         </div>
                         <div>
                             <p className="text-xl font-bold leading-tight tracking-tight">
                                 RealDeal{' '}
-                                <span className="bg-gradient-to-r from-warning/30 to-accent bg-clip-text text-transparent">Courier</span>
+                                <span className="text-primary-foreground/80">Courier</span>
                             </p>
-                            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.34em] text-muted-foreground">
+                            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.34em] text-primary-foreground/65">
                                 Logistics &amp; Delivery Services
                             </p>
                         </div>
@@ -49,12 +49,12 @@ export default function AuthSplitLayout({ children, title, description }: PropsW
 
                     {/* Center headline block */}
                     <div className="flex flex-1 flex-col justify-center">
-                        <div className="inline-flex w-fit items-center gap-2.5 rounded-full border border-background/10 bg-background/5 px-4 py-2 backdrop-blur-xl">
+                        <div className="inline-flex w-fit items-center gap-2.5 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-4 py-2 backdrop-blur-xl">
                             <span className="relative flex h-2 w-2">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning/30 opacity-80" />
-                                <span className="relative inline-flex h-2 w-2 rounded-full bg-warning/30" />
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground opacity-60" />
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />
                             </span>
-                            <span className="text-xs font-semibold uppercase tracking-[0.22em] text-background/75">Delivery Services</span>
+                            <span className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-foreground/80">Delivery Services</span>
                         </div>
 
                         <h1 className="mt-8 text-5xl font-semibold leading-[1.05] tracking-tight xl:text-6xl">
@@ -62,23 +62,23 @@ export default function AuthSplitLayout({ children, title, description }: PropsW
                             <br />
                             <span
                                 key={wordIndex}
-                                className="inline-block bg-gradient-to-r from-warning/30 via-warning/20 to-accent bg-clip-text text-transparent motion-safe:animate-fade-in-out"
+                                className="inline-block bg-gradient-to-r from-primary-foreground via-primary-foreground/85 to-primary-foreground/65 bg-clip-text text-transparent motion-safe:animate-fade-in-out"
                             >
                                 {CYCLING_WORDS[wordIndex]}
                             </span>
                         </h1>
 
-                        <p className="mt-6 max-w-md text-base leading-7 text-background/75">
+                        <p className="mt-6 max-w-md text-base leading-7 text-primary-foreground/75">
                             From order intake to final delivery — track every package, coordinate every dispatch, and collect every payment
                             from one control room.
                         </p>
                     </div>
 
                     {/* Bottom strip */}
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-background/60">
+                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-primary-foreground/65">
                         <span>Across 4 African countries</span>
                         <span className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-success/30" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
                             Systems online
                         </span>
                     </div>

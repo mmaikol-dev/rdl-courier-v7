@@ -96,26 +96,35 @@ class OrderExpireController extends Controller
 
         $query = $this->buildQuery($request, $validated);
 
-        $orderIds = (clone $query)->pluck('id');
-        $count = $orderIds->count();
+        $count = (clone $query)->count();
 
         if ($count === 0) {
             return back()->withErrors(['no_results' => 'No orders match the given filters.']);
         }
 
-        $query->update(['status' => 'Expired', 'updated_at' => now()]);
+        $query->orderBy('id')->chunkById(200, function ($orders) use ($user): void {
+            $now = now();
+            $history = [];
 
-        $history = $orderIds->map(fn (int $id) => [
-            'order_id' => $id,
-            'user_id' => $user?->id,
-            'attribute' => 'status',
-            'old_value' => 'various',
-            'new_value' => 'Expired',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            foreach ($orders as $order) {
+                $oldStatus = $order->status;
+                $order->update(['status' => 'Expired']);
 
-        OrderHistory::insert($history->all());
+                $history[] = [
+                    'order_id' => $order->id,
+                    'user_id' => $user?->id,
+                    'attribute' => 'status',
+                    'old_value' => $oldStatus ?? 'various',
+                    'new_value' => 'Expired',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            if ($history !== []) {
+                OrderHistory::insert($history);
+            }
+        });
 
         return back()->with('success', "{$count} order(s) marked as Expired.");
     }

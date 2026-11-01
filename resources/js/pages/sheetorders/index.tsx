@@ -44,7 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import VoicePanel from '@/components/voice/voice-panel';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 // ✅ Move constants outside component to prevent recreation
 const COLUMNS = [
@@ -278,7 +278,7 @@ const TableRowMemo = React.memo(
                     const colorClass = col === 'status' ? '' : hasCode ? 'text-success font-semibold' : '';
 
                     const baseCellClass = cn(
-                        'max-w-[130px] min-w-[130px] whitespace-nowrap cursor-pointer truncate px-3 py-2',
+                        'max-w-[130px] min-w-[130px] whitespace-nowrap cursor-pointer truncate border-b border-border/70 px-3 py-2',
                         highlighted[key] ? 'bg-success/20' : '',
                         colorClass,
                     );
@@ -349,7 +349,7 @@ const TableRowMemo = React.memo(
                     );
                 })}
 
-                <TableCell className="sticky right-0 z-10 flex justify-end space-x-1 bg-card pl-2 pr-1 text-right shadow-[-2px_0_4px_-3px_rgba(0,0,0,0.15)]">
+                <TableCell className="flex justify-end space-x-1 border-b border-border/70 bg-card pl-2 pr-1 text-right">
                     {/* Copy Row */}
                     <Button
                         className="flex h-5 w-5 items-center justify-center p-0"
@@ -442,7 +442,8 @@ const getCurrentDateTimePrefix = () => {
 
 export default function Index() {
     const { props } = usePage();
-    const authUser = (props as { auth?: { user?: { roles?: string } } }).auth?.user;
+    const authUser = (props as { auth?: { user?: { roles?: string; name?: string } } }).auth?.user;
+    const isMerchant = authUser?.roles === 'merchant';
 
     const {
         orderResults,
@@ -767,6 +768,22 @@ export default function Index() {
         setNewOrder((prev) => ({ ...prev, [field]: value }));
     }, []);
 
+    const openCreateOrder = React.useCallback(() => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const merchant = authUser?.name || Object.keys(merchantData)[0] || '';
+        const merchantRecord = merchantData[merchant];
+        setNewOrder((previous) => ({
+            ...previous,
+            order_date: previous.order_date || today,
+            ...(isMerchant ? {
+                merchant,
+                sheet_id: previous.sheet_id || merchantRecord?.sheet_id || '',
+                sheet_name: previous.sheet_name || merchantRecord?.sheet_names[0] || '',
+            } : {}),
+        }));
+        setCreateModalOpen(true);
+    }, [authUser?.name, isMerchant, merchantData]);
+
     const handleCreateOrder = React.useCallback(() => {
         setIsCreating(true);
         router.post('/sheetorders', newOrder, {
@@ -931,7 +948,7 @@ export default function Index() {
                         <span>Refresh</span>
                     </Button>
 
-                    <Button size="sm" className="h-9 gap-2 rounded-lg shadow-sm" onClick={() => setCreateModalOpen(true)}>
+                    <Button size="sm" className="h-9 gap-2 rounded-lg shadow-sm" onClick={openCreateOrder}>
                         <PlusIcon className="h-4 w-4" />
                         <span>New order</span>
                     </Button>
@@ -940,30 +957,27 @@ export default function Index() {
 
             <Deferred data="orderResults" fallback={<OrdersTableSkeleton />}>
             {() => <>
-            <div className="mx-4 mt-4 overflow-hidden rounded-xl border bg-card shadow-sm">
-                <div className="scrollbar-custom overflow-x-auto">
-                    <div className="inline-block min-w-full">
-                        <div className="max-h-[min(68vh,720px)] overflow-y-auto">
-                            <Table className="min-w-full border-separate border-spacing-0">
-                                <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="mx-4 mt-4 overflow-hidden border bg-card shadow-sm">
+                            <Table containerClassName="scrollbar-custom max-h-[min(68vh,720px)] overflow-auto" className="min-w-full border-separate border-spacing-0">
+                                <TableHeader className="bg-muted">
                                     <TableRow className="h-10 hover:bg-transparent">
                                         {COLUMNS.map((col) => (
                                             <TableHead
                                                 key={col}
                                                 scope="col"
-                                                className="min-w-[130px] whitespace-nowrap border-b bg-muted/70 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                                                className="sticky top-0 z-10 min-w-[130px] whitespace-nowrap border-b bg-muted px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                                                 title={attributeLabels[col] ?? col}
                                             >
                                                 {attributeLabels[col] ?? col}
                                             </TableHead>
                                         ))}
-                                        <TableHead scope="col" className="sticky right-0 z-20 min-w-[76px] whitespace-nowrap border-b bg-muted/70 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                        <TableHead scope="col" className="sticky top-0 z-10 min-w-[76px] whitespace-nowrap border-b bg-muted px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                             Actions
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
 
-                                <TableBody>
+                                <TableBody className="[&_tr:last-child>td]:border-b-0">
                                     {localOrders.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={COLUMNS.length + 1} className="h-40 text-center text-muted-foreground">
@@ -992,9 +1006,6 @@ export default function Index() {
                                     )}
                                 </TableBody>
                             </Table>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             {totalOrders > pageSize && orders.links.length > 0 && (
@@ -1071,7 +1082,7 @@ export default function Index() {
                             <DialogDescription className="text-xs">Choose fields to narrow down your orders.</DialogDescription>
                         </DialogHeader>
                         <div className="grid max-h-[65vh] grid-cols-1 gap-x-3 gap-y-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
-                            {FILTER_FIELDS.map((col) =>
+                            {FILTER_FIELDS.filter((col) => !isMerchant || !['merchant', 'country'].includes(col)).map((col) =>
                                 col === 'delivery_date' ? (
                                     // ✅ Date Range Filter
                                     <Popover key={col}>
@@ -1446,15 +1457,6 @@ export default function Index() {
 
                     <div className="grid max-h-[72vh] grid-cols-2 gap-3 overflow-y-auto pr-1">
                         {/* --- Order Info --- */}
-                        <Input
-                            required
-                            className="h-9 text-sm"
-                            placeholder="Order No"
-                            value={newOrder.order_no || ''}
-                            onChange={(e) => handleNewOrderChange('order_no', e.target.value)}
-                            disabled={isCreating}
-                        />
-
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="h-9 w-full justify-start text-left text-sm font-normal" disabled={isCreating}>
@@ -1533,16 +1535,8 @@ export default function Index() {
                             disabled={isCreating}
                         />
 
-                        <Input
-                            className="h-9 text-sm"
-                            placeholder="Store Name"
-                            value={newOrder.store_name || ''}
-                            onChange={(e) => handleNewOrderChange('store_name', e.target.value)}
-                            disabled={isCreating}
-                        />
-
                         {/* --- Merchant Select --- */}
-                        <Popover open={createMerchantOpen} onOpenChange={setCreateMerchantOpen}>
+                        {!isMerchant && <Popover open={createMerchantOpen} onOpenChange={setCreateMerchantOpen}>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm" disabled={isCreating}>
                                     <span className="truncate">{newOrder.merchant || 'Select Merchant'}</span>
@@ -1579,7 +1573,7 @@ export default function Index() {
                                     </CommandList>
                                 </Command>
                             </PopoverContent>
-                        </Popover>
+                        </Popover>}
 
                         {/* --- Sheet ID (auto filled, readonly) --- */}
                         <Input className="h-9 text-sm" placeholder="Sheet ID" value={newOrder.sheet_id || ''} readOnly />
@@ -1624,7 +1618,6 @@ export default function Index() {
 
                         {/* --- Status --- */}
                         <Select
-                            required
                             value={newOrder.status || ''}
                             onValueChange={(val) => handleNewOrderChange('status', val)}
                             disabled={isCreating}

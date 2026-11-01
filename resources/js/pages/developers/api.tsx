@@ -260,6 +260,7 @@ const apiResponseExamples = {
     "phone": "+254700000000",
     "alt_no": null,
     "status": "Dispatched",
+    "call_count": 3,
     "code": "SKU-123",
     "confirmed": 1,
     "created_at": "2026-10-28T09:30:00.000000Z",
@@ -294,54 +295,39 @@ const apiResponseExamples = {
   "current_page": 1,
   "data": [
     {
-      "movement_type": "returned",
-      "id": 391,
-      "product_id": 72,
-      "product_name": "Windproof Lighter",
-      "product_code": "SKU-123",
-      "merchant": "Example Merchant",
-      "quantity": 2,
-      "agent_id": 15,
-      "agent_name": "Sam Agent",
-      "date": "2026-10-29",
-      "country": "Kenya",
-      "reason": "Customer return",
-      "performed_by": "Warehouse User",
-      "code": "RET-0391",
-      "created_at": "2026-10-29T08:15:00.000000Z",
-      "updated_at": "2026-10-29T08:15:00.000000Z"
-    },
-    {
-      "movement_type": "sent",
-      "id": 842,
-      "product_id": 72,
-      "product_name": "Windproof Lighter",
-      "product_code": "SKU-123",
-      "merchant": "Example Merchant",
-      "quantity": 10,
-      "agent_id": 15,
-      "agent_name": "Sam Agent",
-      "date": "2026-10-28",
-      "region": "Nairobi",
+      "id": 15,
+      "name": "Sam Agent",
       "store_name": "Westlands",
-      "from": "Main warehouse",
-      "country": "Kenya",
-      "reason": null,
-      "performed_by": "Warehouse User",
-      "code": null,
-      "created_at": "2026-10-28T11:00:00.000000Z",
-      "updated_at": "2026-10-28T11:00:00.000000Z"
+      "store_phone": "+254700000000",
+      "transfer_count": 5,
+      "total_transferred": 38,
+      "total_deducted": 4,
+      "remaining_quantity": 34,
+      "last_transfer_at": "2026-10-29T08:15:00.000000Z",
+      "products": [
+        {
+          "product_id": 72,
+          "product_name": "Windproof Lighter",
+          "product_code": "SKU-123",
+          "merchant": "Example Merchant",
+          "transfer_count": 3,
+          "total_quantity": 20,
+          "total_deducted": 2,
+          "remaining_quantity": 18,
+          "first_transfer_date": "2026-10-20T09:00:00.000000Z",
+          "last_transfer_date": "2026-10-29T08:15:00.000000Z"
+        }
+      ]
     }
   ],
   "per_page": 50,
-  "next_page_url": null,
-  "total": 2
+  "total": 1
 }`,
 };
 
 const webhookEventExamples = {
-    'order.created': `{"id":1842,"order_no":"ORD-2026-1042","status":"Pending","updated_at":"2026-10-29T08:15:00+00:00"}`,
-    'order.updated': `{"id":1842,"order_no":"ORD-2026-1042","status":"Dispatched","updated_at":"2026-10-29T08:15:00+00:00"}`,
+    'order.created': `{"id":1842,"order_no":"ORD-2026-1042","status":"Pending","call_count":0,"updated_at":"2026-10-29T08:15:00+00:00"}`,
+    'order.updated': `{"id":1842,"order_no":"ORD-2026-1042","status":"Dispatched","call_count":3,"updated_at":"2026-10-29T08:15:00+00:00"}`,
     'product.created': `{"id":72,"sku":"SKU-123","name":"Windproof Lighter","quantity":20,"updated_at":"2026-10-29T08:15:00+00:00"}`,
     'product.updated': `{"id":72,"sku":"SKU-123","name":"Windproof Lighter","quantity":18,"updated_at":"2026-10-29T08:20:00+00:00"}`,
     'transfer.created': `{"id":842,"movement_type":"sent","product_id":72,"quantity":10,"agent_id":15,"created_at":"2026-10-29T08:15:00+00:00"}`,
@@ -454,28 +440,123 @@ export default function ApiDeveloperGuide() {
             </section>
 
             <section id="endpoints" className="scroll-mt-8 border-b py-12 sm:py-16">
-                <SectionTitle eyebrow="02 / AVAILABLE DATA" title="Three read endpoints">Each key needs the matching permission. Records are automatically limited to the merchant account connected to that key.</SectionTitle>
+                <SectionTitle eyebrow="02 / AVAILABLE DATA" title="Read and submit orders">Each key needs the matching permission. Records are automatically limited to the merchant account connected to that key.</SectionTitle>
                 <div className="overflow-hidden rounded-xl border">
                     <div className="hidden grid-cols-[100px_1.1fr_1fr_1fr] gap-4 bg-muted/40 px-4 py-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:grid"><span>Method</span><span>Endpoint</span><span>Permission</span><span>Returns</span></div>
                     {[
                         ['GET', '/api/merchant/v1/orders', 'orders:read', 'Merchant orders and their current statuses'],
+                        ['POST', '/api/merchant/v1/orders', 'orders:write', 'Submit a new order for processing'],
+                        ['GET', '/api/merchant/v1/orders/import-status/{external_order_id}', 'orders:write', 'Check an incoming order import status'],
                         ['GET', '/api/merchant/v1/products', 'products:read', 'Product details and available quantities'],
-                        ['GET', '/api/merchant/v1/transfers', 'transfers:read', 'Sent stock and returned stock movements'],
+                        ['GET', '/api/merchant/v1/transfers', 'transfers:read', 'Agents with their product transfer summaries in one response'],
                     ].map(([method, path, scope, description]) => <div key={path} className="grid gap-2 border-t p-4 sm:grid-cols-[100px_1.1fr_1fr_1fr] sm:items-center sm:gap-4"><span className="w-fit rounded border px-2 py-1 font-mono text-[10px]">{method}</span><code className="break-all text-xs">{path}</code><code className="text-xs text-muted-foreground">{scope}</code><p className="text-xs text-muted-foreground">{description}</p></div>)}
+                </div>
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl border bg-card p-4">
+                        <h3 className="text-sm font-semibold">Submit an order</h3>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Send the documented order fields plus a stable <code>external_order_id</code> from your system. The external ID makes retries safe. Realdeal assigns the merchant and initial status from the API key.</p>
+                        <div className="mt-3"><CodeBlock language="JSON" code={`{
+  "external_order_id": "shop-58192",
+  "order_no": "R-58192",
+  "order_date": "2026-10-30",
+  "amount": 2450.00,
+  "quantity": 2,
+  "product_name": "Example product",
+  "delivery_date": "2026-11-01",
+  "client_name": "Jane Customer",
+  "client_city": "Nairobi",
+  "address": "Westlands, Nairobi",
+  "city": "Nairobi",
+  "country": "Kenya",
+  "phone": "+254700000000",
+  "alt_no": null,
+  "code": "SKU-01",
+  "instructions": "Call on arrival"
+}`} /></div>
+                    </div>
+                    <div className="rounded-xl border bg-card p-4">
+                        <h3 className="text-sm font-semibold">Queued response · HTTP 202 Accepted</h3>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">A new order returns <code>HTTP 202 Accepted</code> while it is queued for processing. This confirms acceptance, not that processing has finished. Poll the status route using the same external ID to check the final result. Repeating the same ID and payload is safe; reusing it with changed data returns HTTP 409.</p>
+                        <div className="mt-3"><CodeBlock language="JSON" code={`{
+  "accepted": true,
+  "duplicate": false,
+  "external_order_id": "shop-58192",
+  "order_no": "R-58192",
+  "status": "pending",
+  "request_id": 812
+}`} /></div>
+                        <p className="mt-3 text-xs leading-5 text-muted-foreground">The status route returns <code>pending</code>, <code>processing</code>, <code>processed</code>, <code>failed</code>, or <code>skipped</code>. Failed or skipped submissions can be retried with the same ID and payload.</p>
+                    </div>
+                </div>
+                <div className="mt-5 rounded-xl border bg-card p-4">
+                    <h3 className="text-sm font-semibold">Transfers page data in one request</h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Call <code>GET /api/merchant/v1/transfers</code> to receive all agents who have transfers for this merchant, with each agent’s product totals nested under them. This matches the Transfers page’s agent cards and product summary. It includes transferred, deducted and remaining quantities, plus first and last transfer dates. Results remain limited to products belonging to the API key’s merchant.</p>
+                    <div className="mt-3"><CodeBlock language="JSON" code={`{
+  "data": [
+    {
+      "id": 15,
+      "name": "Sam Agent",
+      "store_name": "Westlands",
+      "store_phone": "+254700000000",
+      "transfer_count": 5,
+      "total_transferred": 38,
+      "total_deducted": 4,
+      "last_transfer_at": "2026-10-29T08:15:00.000000Z",
+      "remaining_quantity": 34,
+      "products": [
+        {
+          "product_id": 72,
+          "product_name": "Windproof Lighter",
+          "product_code": "SKU-123",
+          "merchant": "Example Merchant",
+          "transfer_count": 3,
+          "total_quantity": 20,
+          "total_deducted": 2,
+          "remaining_quantity": 18,
+          "first_transfer_date": "2026-10-20T09:00:00.000000Z",
+          "last_transfer_date": "2026-10-29T08:15:00.000000Z"
+        }
+      ]
+    }
+  ],
+  "current_page": 1,
+  "per_page": 50,
+  "total": 1
+}`} /></div>
+                    <p className="mt-3 text-xs leading-5 text-muted-foreground">Use <code>?per_page=50</code> to paginate agents. Add <code>?agent_id=15</code> to return only one agent. Use <code>?view=movements</code> for the flat sent/returned movement feed.</p>
+                    <div className="mt-4 border-t pt-4">
+                        <p className="mb-2 text-xs font-semibold">Read and display the nested response</p>
+                        <CodeBlock language="JavaScript" code={`const response = await fetch(
+  'https://your-domain.example/api/merchant/v1/transfers?per_page=50',
+  { headers: { Authorization: \`Bearer \${process.env.RDL_API_TOKEN}\`, Accept: 'application/json' } }
+);
+
+if (!response.ok) throw new Error(\`Transfers API returned \${response.status}\`);
+const page = await response.json();
+
+for (const agent of page.data) {
+  console.log(agent.name, agent.total_transferred, agent.remaining_quantity);
+  for (const product of agent.products) {
+    console.log(product.product_name, product.transfer_count,
+      product.total_quantity, product.total_deducted, product.remaining_quantity);
+  }
+}`} />
+                    </div>
+                    <p className="mt-4 border-t pt-4 text-xs leading-5 text-muted-foreground">This is a live summary: each request recalculates the totals from transfer and deduction records, so new activity appears in the next response. The endpoint returns agents who have transfers for this merchant, with each agent’s product rows nested in the same response. Add <code>?agent_id=15</code> to fetch just one agent.</p>
                 </div>
                 <div className="mt-5 overflow-hidden rounded-xl border bg-card">
                     <div className="border-b p-3"><h3 className="text-sm font-semibold">Example API response payloads</h3><p className="mt-1 text-xs text-muted-foreground">These are representative paginated responses. Your actual records and values will differ.</p><div className="mt-3 flex flex-wrap gap-1">{(Object.keys(apiResponseExamples) as ApiResource[]).map((resource) => <button key={resource} type="button" onClick={() => setApiResource(resource)} className={`rounded-md px-3 py-1.5 text-xs capitalize ${apiResource === resource ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted'}`}>{resource}</button>)}</div></div>
                     <div className="p-3"><CodeBlock language="JSON" code={apiResponseExamples[apiResource]} /></div>
-                    <p className="border-t px-4 py-3 text-xs leading-5 text-muted-foreground">The transfers response combines sent and returned stock records. Its <code>movement_type</code> is <code>sent</code> or <code>returned</code>. Transfer fields follow the integration’s saved field permissions.</p>
+                    <p className="border-t px-4 py-3 text-xs leading-5 text-muted-foreground">The default transfers response groups products under each agent. Add <code>?view=movements</code> to get individual sent and returned records with a <code>movement_type</code> of <code>sent</code> or <code>returned</code>.</p>
                 </div>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">Pagination and incremental sync</h3><p className="mt-2 text-xs leading-5 text-muted-foreground">Responses include <code>data</code>, <code>current_page</code>, <code>next_page_url</code>, and other pagination details. Use <code>?per_page=50</code> (maximum 100) to choose page size. Use <code>&amp;updated_since=2026-10-01T00:00:00Z</code> to fetch records changed since a timestamp.</p><CodeBlock language="URL" code="GET /api/merchant/v1/orders?per_page=50&amp;updated_since=2026-10-01T00:00:00Z" /></div>
-                    <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">Transfers include returns</h3><p className="mt-2 text-xs leading-5 text-muted-foreground">The transfers endpoint returns both outgoing stock and returns in one paginated list. Use <code>movement_type</code> to tell them apart: <code>sent</code> or <code>returned</code>. A return may include a reason and return code.</p><div className="mt-3 flex gap-2"><span className="rounded-full border px-2.5 py-1 font-mono text-[10px]">sent</span><span className="rounded-full border px-2.5 py-1 font-mono text-[10px]">returned</span></div></div>
+                    <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">Optional movement feed</h3><p className="mt-2 text-xs leading-5 text-muted-foreground">Use <code>?view=movements</code> when you need individual outgoing stock and return records. The <code>movement_type</code> distinguishes <code>sent</code> from <code>returned</code>; a return may include a reason and return code.</p><div className="mt-3 flex gap-2"><span className="rounded-full border px-2.5 py-1 font-mono text-[10px]">sent</span><span className="rounded-full border px-2.5 py-1 font-mono text-[10px]">returned</span></div></div>
                 </div>
             </section>
 
             <section id="webhooks" className="scroll-mt-8 border-b py-12 sm:py-16">
-                <SectionTitle eyebrow="03 / EVENT DELIVERY" title="Use webhooks for changes">Webhooks notify your server when selected order, product, or stock movement events happen. Configure a public HTTPS receiver and choose events in Merchant API access.</SectionTitle>
+                <SectionTitle eyebrow="03 / EVENT DELIVERY" title="Use webhooks for changes">Webhooks notify your server when selected order, product, or stock movement events happen. For transfers, use the event to know when to refresh the agent and product summary from the transfers endpoint. Configure a public HTTPS receiver and choose events in Merchant API access.</SectionTitle>
                 <div className="mb-5 rounded-xl border bg-muted/20 p-4 sm:p-5">
                     <h3 className="text-sm font-semibold">Connect the receiver to Realdeal</h3>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
@@ -489,20 +570,20 @@ export default function ApiDeveloperGuide() {
                 <div className="grid gap-5 lg:grid-cols-2">
                     <div className="space-y-4">
                         <div className="rounded-xl border p-4"><div className="flex items-center gap-2"><Webhook className="size-4 text-primary" /><h3 className="text-sm font-semibold">Events you can subscribe to</h3></div><div className="mt-3 grid gap-2 sm:grid-cols-2">{['order.created', 'order.updated', 'product.created', 'product.updated', 'transfer.created', 'transfer.returned'].map((event) => <code key={event} className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">{event}</code>)}</div></div>
-                        <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">What your server receives</h3><p className="mt-1 text-xs text-muted-foreground">Realdeal sends a POST with JSON and these headers:</p><div className="mt-3 space-y-2 font-mono text-[11px]"><p className="rounded bg-muted/50 p-2">X-RDL-Event: order.updated</p><p className="rounded bg-muted/50 p-2">X-RDL-Signature: sha256=&lt;signature&gt;</p></div></div>
+                        <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">What your server receives</h3><p className="mt-1 text-xs text-muted-foreground">Realdeal sends a POST with JSON. Order events include call_count, the number of instruction history entries recorded for that order.</p><div className="mt-3 space-y-2 font-mono text-[11px]"><p className="rounded bg-muted/50 p-2">X-RDL-Event: order.updated</p><p className="rounded bg-muted/50 p-2">X-RDL-Signature: sha256=&lt;signature&gt;</p></div></div>
                     </div>
-                    <div className="rounded-xl border bg-card p-4"><h3 className="text-sm font-semibold">Webhook payload example</h3><p className="mt-1 text-xs text-muted-foreground">The event type and data identify what changed.</p><div className="mt-3"><CodeBlock language="JSON" code={`{
+                    <div className="rounded-xl border bg-card p-4"><h3 className="text-sm font-semibold">Order webhook payload example</h3><p className="mt-1 text-xs text-muted-foreground">Order events include <code>call_count</code>, the number of instruction history entries recorded for the order.</p><div className="mt-3"><CodeBlock language="JSON" code={`{
   "id": "event-uuid",
-  "type": "transfer.returned",
+  "type": "order.updated",
   "created_at": "2026-10-29T08:15:00+00:00",
   "data": {
-    "movement_type": "returned",
-    "id": 391,
-    "product_name": "Windproof Lighter",
-    "quantity": 2,
-    "reason": "Customer return"
+    "id": 1842,
+    "order_no": "ORD-2026-1042",
+    "status": "Dispatched",
+    "call_count": 3,
+    "updated_at": "2026-10-29T08:15:00+00:00"
   }
-}`} /></div><p className="mt-3 text-xs leading-5 text-muted-foreground">Verify the signature using the raw request body and the webhook signing secret. Return a 2xx response promptly; non-2xx responses are retried.</p></div>
+}`} /></div><p className="mt-3 text-xs leading-5 text-muted-foreground">Verify the signature using the raw request body and the webhook signing secret. Return a 2xx response promptly; non-2xx responses are retried. Transfer events are listed in the event examples below.</p></div>
                 </div>
                 <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4"><p className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4" />Verify the signature before processing</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Compute HMAC-SHA256 over the exact raw JSON body using your webhook secret. Compare it with the hex value after <code>sha256=</code> in <code>X-RDL-Signature</code>, using a constant-time comparison. The test button sends the signed event <code>integration.test</code>.</p></div>
                 <div className="mt-5 overflow-hidden rounded-xl border bg-card">

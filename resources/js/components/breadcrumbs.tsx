@@ -19,7 +19,7 @@ export function Breadcrumbs({ breadcrumbs }: { breadcrumbs: BreadcrumbItemType[]
                                             <BreadcrumbPage className="block max-w-[42vw] truncate sm:max-w-56">{item.title}</BreadcrumbPage>
                                         ) : (
                                             <BreadcrumbLink asChild>
-                                                <Link href={item.href} className="block max-w-28 truncate sm:max-w-40">{item.title}</Link>
+                                                <Link href={item.href} className="block max-w-28 truncate font-semibold sm:max-w-40">{item.title}</Link>
                                             </BreadcrumbLink>
                                         )}
                                     </BreadcrumbItem>

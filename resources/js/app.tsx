@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { route as ziggyRoute } from 'ziggy-js';
 import { NetworkStatusToast } from './components/network-status-toast';
 import { LocationTracker } from './components/location-tracker';
-import { Toaster } from './components/ui/sonner';
+import { Toaster as SileoToaster } from 'sileo';
 import { initializeTheme } from './hooks/use-appearance';
 import type { SharedData } from './types';
 import { registerSW } from 'virtual:pwa-register';
@@ -34,7 +34,7 @@ createInertiaApp({
         root.render(
             <>
                 <App {...props} />
-                <Toaster />
+                <SileoToaster position="top-center" theme="system" options={{ fill: 'var(--primary)' }} />
                 <NetworkStatusToast />
                 <LocationTracker auth={props.initialPage.props.auth as SharedData['auth'] | undefined} />
                 <PwaInstallPrompt />

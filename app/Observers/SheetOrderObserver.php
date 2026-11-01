@@ -28,6 +28,7 @@ class SheetOrderObserver implements ShouldHandleEventsAfterCommit
             'id' => $order->id,
             'order_no' => $order->order_no,
             'status' => $order->status,
+            'call_count' => $order->histories()->where('attribute', 'instructions')->count(),
             'updated_at' => $order->updated_at?->toIso8601String(),
         ]);
     }

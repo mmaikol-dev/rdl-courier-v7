@@ -8,7 +8,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Deferred, Head, Link } from '@inertiajs/react';
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Check, Clipboard, Clock3, KeyRound, Search, ShieldCheck, Waypoints, X } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 interface Stats { requests: number; errors: number; latency: number; success_rate: number | null; active_integrations: number; total_integrations: number; }
 interface ChartPoint { time: string; requests: number; errors: number; latency: number; }

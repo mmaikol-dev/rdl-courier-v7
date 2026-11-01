@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { Check, ChevronsUpDown, LoaderCircle, PackageSearch, Warehouse } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [

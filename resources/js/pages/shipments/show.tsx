@@ -9,7 +9,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, Check, LoaderCircle, ScanBarcode, Truck } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 interface ShipmentItem {
     id: number;

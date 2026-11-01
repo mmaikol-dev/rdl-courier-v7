@@ -14,9 +14,9 @@ import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
-import { Check, ChevronsUpDown, FilterIcon, RefreshCwIcon, UserCheck, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronsUpDown, FilterIcon, RefreshCwIcon, UserCheck, X } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const BASE_COLUMNS = [
@@ -104,6 +104,7 @@ export default function Index() {
     const [selectedCcAgents, setSelectedCcAgents] = React.useState<string[]>([]);
     const [localFilters, setLocalFilters] = React.useState<Record<string, string>>(filters || {});
     const [selectedOrders, setSelectedOrders] = React.useState<number[]>([]);
+    const [expandedOrderIds, setExpandedOrderIds] = React.useState<number[]>([]);
     const allSelected = orders.data.length > 0 && selectedOrders.length === orders.data.length;
 
     React.useEffect(() => {
@@ -268,13 +269,13 @@ export default function Index() {
 
             <Deferred data="orders" fallback={<ReassignTableSkeleton />}>
             {() => <>
-            <div className="rounded-lg border">
+            <div className="hidden rounded-lg border md:block">
                 <div className="scrollbar-custom overflow-x-auto">
-                    <Table className="min-w-full table-fixed border border-border">
+                    <Table className="min-w-[900px] border border-border md:min-w-[1050px]">
                         <TableHeader className="sticky top-0 z-10 bg-background">
                             <TableRow>
                                 {COLUMNS.map((col) => (
-                                    <TableHead key={col} className="w-[10%] border border-border text-sm font-medium">
+                                        <TableHead key={col} className="whitespace-nowrap border border-border text-sm font-bold">
                                         {col === 'checkbox' ? (
                                             <div className="flex items-center justify-center">
                                                 <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleSelectAll(!!checked)} />
@@ -301,7 +302,7 @@ export default function Index() {
                                         {COLUMNS.map((col) => {
                                             if (col === 'checkbox') {
                                                 return (
-                                                    <TableCell key={col} className="w-[10%] text-center">
+                                                    <TableCell key={col} className="text-center">
                                                         <Checkbox
                                                             checked={selectedOrders.includes(order.id)}
                                                             onCheckedChange={(checked) => toggleSingle(order.id, !!checked)}
@@ -318,7 +319,7 @@ export default function Index() {
                                             return (
                                                 <TableCell
                                                     key={col}
-                                                    className={`w-[10%] truncate ${col === 'status' ? statusColors[value] || '' : ''}`}
+                                                    className={`max-w-56 truncate ${col === 'status' ? statusColors[value] || '' : ''}`}
                                                 >
                                                     {value}
                                                 </TableCell>
@@ -330,6 +331,57 @@ export default function Index() {
                         </TableBody>
                     </Table>
                 </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border md:hidden">
+                <Table className="w-full table-fixed">
+                    <TableHeader className="bg-background">
+                        <TableRow>
+                            <TableHead className="w-10 font-bold">
+                                <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleSelectAll(!!checked)} aria-label="Select all orders" />
+                            </TableHead>
+                            <TableHead className="font-bold">Order</TableHead>
+                            <TableHead className="font-bold">Client</TableHead>
+                            <TableHead className="w-10" />
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {orders.data.length === 0 ? (
+                            <TableRow><TableCell colSpan={4} className="py-4 text-center text-muted-foreground">No orders found.</TableCell></TableRow>
+                        ) : orders.data.map((order) => {
+                            const expanded = expandedOrderIds.includes(order.id);
+                            const status = order.status?.trim() || 'New Orders';
+                            return <React.Fragment key={order.id}>
+                                <TableRow className="hover:bg-muted/10">
+                                    <TableCell className="w-10 px-2">
+                                        <Checkbox checked={selectedOrders.includes(order.id)} onCheckedChange={(checked) => toggleSingle(order.id, !!checked)} aria-label={`Select order ${order.order_no}`} />
+                                    </TableCell>
+                                    <TableCell className="truncate px-2 font-medium">{order.order_no}</TableCell>
+                                    <TableCell className="truncate px-2">{order.client_name}</TableCell>
+                                    <TableCell className="w-10 px-1">
+                                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={`${expanded ? 'Hide' : 'Show'} details for ${order.order_no}`} aria-expanded={expanded} onClick={() => setExpandedOrderIds((ids) => expanded ? ids.filter((id) => id !== order.id) : [...ids, order.id])}>
+                                            <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                                {expanded && <TableRow>
+                                    <TableCell colSpan={4} className="bg-muted/20 px-4 py-3">
+                                        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                                            <div className="min-w-0"><dt className="text-muted-foreground">Product</dt><dd className="truncate">{order.product_name || '—'}</dd></div>
+                                            <div><dt className="text-muted-foreground">Amount</dt><dd className="truncate">{order.amount || '—'}</dd></div>
+                                            <div><dt className="text-muted-foreground">Phone</dt><dd className="truncate">{order.phone || '—'}</dd></div>
+                                            <div><dt className="text-muted-foreground">Status</dt><dd className={cn('truncate', statusColors[status] || '')}>{status}</dd></div>
+                                            <div><dt className="text-muted-foreground">Delivery date</dt><dd className="truncate">{order.delivery_date || '—'}</dd></div>
+                                            <div className="min-w-0"><dt className="text-muted-foreground">Merchant</dt><dd className="truncate">{order.merchant || '—'}</dd></div>
+                                            <div className="min-w-0"><dt className="text-muted-foreground">Code</dt><dd className="truncate">{order.code || '—'}</dd></div>
+                                            <div className="col-span-2 min-w-0"><dt className="text-muted-foreground">Call center</dt><dd className="truncate">{order.cc_email || '—'}</dd></div>
+                                        </dl>
+                                    </TableCell>
+                                </TableRow>}
+                            </React.Fragment>;
+                        })}
+                    </TableBody>
+                </Table>
             </div>
 
             <div className="mt-4 flex justify-center">

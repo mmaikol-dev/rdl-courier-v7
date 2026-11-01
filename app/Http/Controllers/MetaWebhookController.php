@@ -189,7 +189,9 @@ class MetaWebhookController extends Controller
             $downloaded = $this->metaService->downloadMedia($mediaInfo['url'], $mediaInfo['mime_type']);
 
             return [
-                'media_url' => $mediaInfo['url'],
+                // Meta's media URL is temporary and can exceed the database
+                // column length. We keep the downloaded copy as the durable
+                // reference instead.
                 'media_type' => $type,
                 'mime_type' => $mediaInfo['mime_type'],
                 'media_path' => $downloaded['media_path'],

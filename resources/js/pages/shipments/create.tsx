@@ -9,7 +9,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, LoaderCircle, PackagePlus, ScanBarcode, Trash2 } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 interface Warehouse {
     code: string;

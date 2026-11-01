@@ -16,9 +16,9 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     const getInitials = useInitials();
 
     return (
-        <header className="flex h-16 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border/50 px-2.5 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 sm:gap-3 sm:px-4">
+        <header className="sticky top-0 z-30 flex h-16 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border/50 bg-background/95 px-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/85 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 sm:gap-3 sm:px-4">
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                <SidebarTrigger className="-ml-1" />
+                <SidebarTrigger className="-ml-1 hidden md:inline-flex" />
                 <div className="min-w-0 flex-1 overflow-hidden"><Breadcrumbs breadcrumbs={breadcrumbs} /></div>
             </div>
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">

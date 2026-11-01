@@ -24,7 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CalendarDays, Check, ChevronsUpDown, Edit, Eye, EyeOff, Loader2, MapPin, Phone, Plus, Search, Store, Trash2 } from 'lucide-react';
 import * as React from 'react';
@@ -322,13 +322,13 @@ export default function UsersPage() {
       form.put(`/users/${editingUser.id}`, {
         preserveScroll: true,
         onSuccess: () => {
-          toast.success('User updated successfully');
+          toast.success('User updated successfully.');
           closeFormDialog();
           router.reload({ only: ['users', 'countries'] });
         },
         onError: (errors) => {
           const firstError = Object.values(errors)[0];
-          toast.error(typeof firstError === 'string' ? firstError : 'Failed to update user');
+          toast.error(typeof firstError === 'string' ? firstError : 'Failed to update user.');
         },
         onFinish: () => form.transform((data) => data),
       });
@@ -345,13 +345,13 @@ export default function UsersPage() {
     form.post('/users', {
       preserveScroll: true,
       onSuccess: () => {
-        toast.success('User created successfully');
+        toast.success('User created successfully.');
         closeFormDialog();
         router.reload({ only: ['users', 'countries'] });
       },
       onError: (errors) => {
         const firstError = Object.values(errors)[0];
-        toast.error(typeof firstError === 'string' ? firstError : 'Failed to create user');
+        toast.error(typeof firstError === 'string' ? firstError : 'Failed to create user.');
       },
       onFinish: () => form.transform((data) => data),
     });
@@ -364,13 +364,13 @@ export default function UsersPage() {
     router.delete(`/users/${deletingUser.id}`, {
       preserveScroll: true,
       onSuccess: () => {
-        toast.success('User deleted successfully');
+        toast.success('User deleted successfully.');
         setDeletingUser(null);
         router.reload({ only: ['users', 'countries'] });
       },
       onError: (errors) => {
         const firstError = Object.values(errors)[0];
-        toast.error(typeof firstError === 'string' ? firstError : 'Failed to delete user');
+        toast.error(typeof firstError === 'string' ? firstError : 'Failed to delete user.');
       },
       onFinish: () => setDeleteProcessing(false),
     });

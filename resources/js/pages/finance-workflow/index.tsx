@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { ArrowRight, CalendarDays, CalendarIcon, Check, CheckCircle2, ChevronsUpDown, Download, Eye, LoaderCircle, ReceiptText, WalletCards } from 'lucide-react';
 import * as React from 'react';
 import { type DateRange } from 'react-day-picker';

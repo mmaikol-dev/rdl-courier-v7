@@ -23,7 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 export default function RequisitionShow() {
   const { auth, requisition, flash, duplicateItemsByName = {} } = usePage().props as any;

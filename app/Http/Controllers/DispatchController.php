@@ -259,7 +259,7 @@ class DispatchController extends Controller
     // Update orders
     $user = $request->user()->loadMissing('country');
     $affectedOrders = CountryAccess::scopeByCountryName(
-        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'agent', 'clearance_status', 'order_type', 'status']),
+        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'merchant', 'agent', 'clearance_status', 'order_type', 'status']),
         $user
     )->get();
 

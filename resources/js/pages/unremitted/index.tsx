@@ -29,7 +29,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from '@/hooks/use-mobile';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const BASE_COLUMNS = [

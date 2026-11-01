@@ -7,20 +7,27 @@ use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Models\User;
 use App\Services\ProductAutoMatchService;
+use App\Services\SheetOrderImportService;
 use App\Support\CountryAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class SheetOrderController extends Controller
 {
     public function __construct(
         private readonly ProductAutoMatchService $autoMatch = new ProductAutoMatchService,
+        private readonly SheetOrderImportService $sheetOrderImport = new SheetOrderImportService,
     ) {}
 
     private function ensureCountryAccess(Request $request, SheetOrder $order): void
     {
         $user = $request->user()->loadMissing('country');
+
+        if ($user->roles === 'merchant') {
+            abort_unless($order->merchant === $user->name, 404);
+        }
 
         if (CountryAccess::hasGlobalAccess($user)) {
             return;
@@ -97,6 +104,7 @@ class SheetOrderController extends Controller
             $user
         )
             ->whereNotNull('merchant')
+            ->when($user->roles === 'merchant', fn ($query) => $query->where('merchant', $user->name))
             ->groupBy('merchant', 'sheet_id', 'sheet_name')
             ->get()
             ->groupBy('merchant')
@@ -107,15 +115,20 @@ class SheetOrderController extends Controller
                 ];
             });
 
-        $merchantUsers = CountryAccess::scopeByCountryName(
-            Sheet::query(),
-            $user
-        )->distinct()->pluck('sheet_name');
+        if ($user->roles === 'merchant') {
+            $merchantUsers = collect([$user->name]);
+            $ccUsers = (clone $query)->reorder()->whereNotNull('cc_email')->distinct()->pluck('cc_email');
+        } else {
+            $merchantUsers = CountryAccess::scopeByCountryName(
+                Sheet::query(),
+                $user
+            )->distinct()->pluck('sheet_name');
 
-        $ccUsers = CountryAccess::scopeUsers(
-            User::query()->where('roles', 'callcenter1'),
-            $user
-        )->pluck('name');
+            $ccUsers = CountryAccess::scopeUsers(
+                User::query()->where('roles', 'callcenter1'),
+                $user
+            )->pluck('name');
+        }
 
         return inertia('sheetorders/index', [
             'orderResults' => Inertia::defer(fn () => [
@@ -144,10 +157,18 @@ class SheetOrderController extends Controller
             'sheet_id' => 'nullable|string|max:255',
         ]);
 
-        $orderNumber = $this->getNextOrderNumber(
-            $request->sheet_name,
-            $request->sheet_id
-        );
+        $user = $request->user();
+        if ($user->roles === 'merchant') {
+            abort_unless(
+                SheetOrder::query()->where('merchant', $user->name)
+                    ->where('sheet_name', $request->sheet_name)
+                    ->when($request->filled('sheet_id'), fn ($query) => $query->where('sheet_id', $request->sheet_id))
+                    ->exists(),
+                403
+            );
+        }
+
+        $orderNumber = $this->getNextOrderNumber($request->sheet_name, $request->sheet_id);
 
         return response()->json([
             'order_number' => $orderNumber,
@@ -158,7 +179,7 @@ class SheetOrderController extends Controller
     {
         $user = $request->user()->loadMissing('country');
         $validated = $request->validate([
-            'order_date' => 'required|date',
+            'order_date' => 'sometimes|nullable|date',
             'amount' => 'required|numeric',
             'quantity' => 'required|integer',
             'item' => 'nullable|string|max:255',
@@ -172,7 +193,7 @@ class SheetOrderController extends Controller
             'phone' => 'nullable|string|max:50',
             'agent' => 'nullable|string|max:255',
             'store_name' => 'nullable|string|max:255',
-            'status' => 'required|string|max:50',
+            'status' => 'nullable|string|max:50',
             'code' => 'nullable|string|max:255',
             'order_type' => 'nullable|string|max:255',
             'alt_no' => 'nullable|string|max:255',
@@ -183,6 +204,30 @@ class SheetOrderController extends Controller
             'sheet_id' => 'nullable|string|max:255',
             'sheet_name' => 'nullable|string|max:255',
         ]);
+
+        $validated['order_date'] = $validated['order_date'] ?: now()->toDateString();
+        if ($user->roles === 'merchant') {
+            $validated['merchant'] = $user->name;
+            $validated['cc_email'] = null;
+
+            if (! empty($validated['sheet_name'])) {
+                abort_unless(
+                    SheetOrder::query()->where('merchant', $user->name)
+                        ->where('sheet_name', $validated['sheet_name'])
+                        ->exists(),
+                    403
+                );
+            }
+
+            if (! empty($validated['sheet_id']) && ! empty($validated['sheet_name'])) {
+                $sheet = Sheet::query()
+                    ->where('sheet_id', $validated['sheet_id'])
+                    ->where('sheet_name', $user->name)
+                    ->first();
+
+                $validated['cc_email'] = $this->sheetOrderImport->resolveCcEmail($sheet, $validated);
+            }
+        }
 
         $validated['country'] = CountryAccess::resolveCountryNameForWrite($user, $validated['country'] ?? null);
 
@@ -251,17 +296,19 @@ class SheetOrderController extends Controller
         ]);
 
         $oldValue = $sheetorder->$field;
-        $sheetorder->update($validated);
+        DB::transaction(function () use ($sheetorder, $validated, $oldValue, $value, $field): void {
+            $sheetorder->update($validated);
 
-        if ($oldValue != $value) {
-            OrderHistory::create([
-                'order_id' => $sheetorder->id,
-                'user_id' => auth()->id(),
-                'attribute' => $field,
-                'old_value' => $oldValue,
-                'new_value' => $value,
-            ]);
-        }
+            if ($oldValue != $value) {
+                OrderHistory::create([
+                    'order_id' => $sheetorder->id,
+                    'user_id' => auth()->id(),
+                    'attribute' => $field,
+                    'old_value' => $oldValue,
+                    'new_value' => $value,
+                ]);
+            }
+        });
 
         if ($request->expectsJson()) {
             return response()->json([

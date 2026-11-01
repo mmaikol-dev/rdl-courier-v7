@@ -3,7 +3,7 @@
 import AppLayout from "@/layouts/app-layout";
 import { Deferred, Head, usePage, router } from "@inertiajs/react";
 import { useState, useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { csrfHeaders } from "@/lib/csrf";
 import {
   Drawer,

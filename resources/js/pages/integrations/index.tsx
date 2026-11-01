@@ -28,7 +28,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Deferred, Head, router, useForm } from '@inertiajs/react';
 import { Activity, AlertTriangle, ChevronDown, ChevronRight, Globe2, Loader2, PlugZap, Plus, RefreshCw, Store, Trash2, Unplug } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const breadcrumbs: BreadcrumbItem[] = [

@@ -18,10 +18,6 @@ class MerchantWebhookService
             throw new \RuntimeException('Save a webhook URL first so a signing secret can be configured.');
         }
 
-        if (! $this->targetsPublicHttpsHost($integration->webhook_url)) {
-            throw new \RuntimeException('The webhook URL must resolve to a public HTTPS host.');
-        }
-
         $payload = [
             'id' => (string) Str::uuid(),
             'type' => 'integration.test',
@@ -36,14 +32,14 @@ class MerchantWebhookService
         $signature = hash_hmac('sha256', $body, $integration->webhook_secret);
         $startedAt = hrtime(true);
 
-        $response = Http::timeout(5)
-            ->withoutRedirecting()
-            ->withHeaders([
+        $response = $this->postToPublicHttpsEndpoint(
+            $integration->webhook_url,
+            $body,
+            [
                 'X-RDL-Event' => 'integration.test',
                 'X-RDL-Signature' => 'sha256='.$signature,
-            ])
-            ->withBody($body, 'application/json')
-            ->post($integration->webhook_url);
+            ],
+        );
 
         if (! $response->successful()) {
             throw new \RuntimeException('The receiving server returned HTTP '.$response->status().'.');
@@ -107,15 +103,6 @@ class MerchantWebhookService
             $data['movement_type'] = $event === 'transfer.returned' ? 'returned' : 'sent';
         }
 
-        if (! $this->targetsPublicHttpsHost($integration->webhook_url)) {
-            Log::warning('Merchant webhook URL was rejected because it is not a public HTTPS host.', [
-                'integration_id' => $integration->id,
-                'event' => $event,
-            ]);
-
-            return;
-        }
-
         $payload = [
             'id' => (string) Str::uuid(),
             'type' => $event,
@@ -125,14 +112,24 @@ class MerchantWebhookService
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $signature = hash_hmac('sha256', $body, $integration->webhook_secret);
 
-        $response = Http::timeout(5)
-            ->withoutRedirecting()
-            ->withHeaders([
+        try {
+            $response = $this->postToPublicHttpsEndpoint(
+                $integration->webhook_url,
+                $body,
+                [
                 'X-RDL-Event' => $event,
                 'X-RDL-Signature' => 'sha256='.$signature,
-            ])
-            ->withBody($body, 'application/json')
-            ->post($integration->webhook_url);
+                ],
+            );
+        } catch (\InvalidArgumentException $exception) {
+            Log::warning('Merchant webhook URL was rejected because it is not a public HTTPS host.', [
+                'integration_id' => $integration->id,
+                'event' => $event,
+                'reason' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
 
         if (! $response->successful()) {
             throw new \RuntimeException('Merchant webhook returned HTTP '.$response->status());
@@ -149,31 +146,66 @@ class MerchantWebhookService
         };
     }
 
-    private function targetsPublicHttpsHost(?string $url): bool
+    /**
+     * Resolve and validate the destination once, then pin cURL to that address.
+     * CURLOPT_RESOLVE keeps the URL hostname in place for TLS SNI, certificate
+     * verification, and the HTTP Host header while preventing a second DNS
+     * lookup from changing the network destination (DNS rebinding).
+     *
+     * @param  array<string, string>  $headers
+     */
+    private function postToPublicHttpsEndpoint(?string $url, string|false $body, array $headers)
     {
         $parts = parse_url((string) $url);
-        if (($parts['scheme'] ?? null) !== 'https' || empty($parts['host'])) {
-            return false;
+        if (strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+            throw new \InvalidArgumentException('The webhook URL must use HTTPS and must not include user credentials.');
         }
 
         $host = trim($parts['host'], '[]');
         $flags = FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+        $port = (int) ($parts['port'] ?? 443);
+        $curlOptions = [];
+
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return filter_var($host, FILTER_VALIDATE_IP, $flags) !== false;
-        }
-
-        $records = dns_get_record($host, DNS_A | DNS_AAAA);
-        if (! $records) {
-            return false;
-        }
-
-        foreach ($records as $record) {
-            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
-            if (! $ip || filter_var($ip, FILTER_VALIDATE_IP, $flags) === false) {
-                return false;
+            if (filter_var($host, FILTER_VALIDATE_IP, $flags) === false) {
+                throw new \InvalidArgumentException('The webhook URL must resolve to a public HTTPS host.');
             }
+        } else {
+            $records = dns_get_record($host, DNS_A | DNS_AAAA);
+            if (! $records) {
+                throw new \InvalidArgumentException('The webhook hostname did not resolve to a public IP address.');
+            }
+
+            $addresses = [];
+            foreach ($records as $record) {
+                $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+                if (! $ip || filter_var($ip, FILTER_VALIDATE_IP, $flags) === false) {
+                    throw new \InvalidArgumentException('The webhook URL must resolve only to public IP addresses.');
+                }
+                $addresses[] = str_contains($ip, ':') ? '['.$ip.']' : $ip;
+            }
+
+            if ($addresses === []) {
+                throw new \InvalidArgumentException('The webhook hostname did not resolve to a public IP address.');
+            }
+
+            if (! extension_loaded('curl') || ! defined('CURLOPT_RESOLVE')) {
+                throw new \RuntimeException('Secure webhook delivery requires the PHP cURL extension to pin the validated destination.');
+            }
+
+            // Pin cURL's complete address set to the validated DNS answer. cURL
+            // can try another address from this set if the first is unavailable,
+            // without performing a fresh lookup that could return a private IP.
+            $curlOptions[constant('CURLOPT_RESOLVE')] = [
+                $host.':'.$port.':'.implode(',', $addresses),
+            ];
         }
 
-        return true;
+        return Http::timeout(5)
+            ->withoutRedirecting()
+            ->withOptions(['curl' => $curlOptions])
+            ->withHeaders($headers)
+            ->withBody((string) $body, 'application/json')
+            ->post((string) $url);
     }
 }

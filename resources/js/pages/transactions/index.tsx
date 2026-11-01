@@ -17,7 +17,7 @@ import { format } from 'date-fns';
 import { CalendarRange, Edit, LoaderCircle, RefreshCwIcon, SearchIcon, ShieldAlert, Inbox } from 'lucide-react';
 import * as React from 'react';
 import { type DateRange } from 'react-day-picker';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 const BREADCRUMBS: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },

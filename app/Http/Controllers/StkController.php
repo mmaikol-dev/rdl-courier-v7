@@ -73,7 +73,7 @@ class StkController extends Controller
         
         return Inertia::render('stk/index', [
             'orders' => Inertia::defer(function () use ($query) {
-                $orders = $query->latest('created_at')->paginate(20)->withQueryString();
+                $orders = $query->latest('created_at')->paginate(30)->withQueryString();
 
                 Log::info('Fetched orders count: ' . $orders->count());
 
@@ -132,6 +132,10 @@ class StkController extends Controller
                 'confirmed' => $validated['confirmed']
             ]);
 
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Order updated successfully']);
+            }
+
             // ✅ Return Inertia response instead of redirect for better UX
             return back()->with('success', 'Order updated successfully');
             
@@ -140,6 +144,11 @@ class StkController extends Controller
                 'id' => $id,
                 'errors' => $e->errors()
             ]);
+
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Validation failed.', 'errors' => $e->errors()], 422);
+            }
+
             return back()->withErrors($e->errors());
             
         } catch (\Exception $e) {
@@ -147,6 +156,11 @@ class StkController extends Controller
                 'id' => $id,
                 'trace' => $e->getTraceAsString()
             ]);
+
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Failed to update order.'], 500);
+            }
+
             return back()->with('error', 'Failed to update order: ' . $e->getMessage());
         }
     }

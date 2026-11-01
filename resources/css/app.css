@@ -823,6 +823,14 @@ html[data-theme='claude'] :is(h1, h2, h3, h4) {
 }
 
   /* Smooth, modern scrollbar */
+[data-sileo-viewport] [data-sileo-description] {
+    color: var(--primary-foreground) !important;
+  }
+
+[data-sileo-viewport] [data-sileo-title] {
+  color: var(--primary-foreground) !important;
+}
+
 .scrollbar-custom::-webkit-scrollbar {
     width: 8px;
   }
@@ -1003,3 +1011,4 @@ html[data-theme='claude'] :is(h1, h2, h3, h4) {
         box-shadow: 0 0 0 1px var(--foreground);
     }
 }
+

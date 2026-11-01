@@ -27,7 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState, useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 export default function TransferDetails() {
   const { transfers, deductions, productId, agentId, totalTransferred, totalDeducted, remainingQuantity, flash } = usePage().props as any;

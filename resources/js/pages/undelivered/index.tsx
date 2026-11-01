@@ -14,7 +14,7 @@ import { type DateRange } from 'react-day-picker';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from "@/components/ui/checkbox";
 import { useIsMobile } from '@/hooks/use-mobile';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Command,

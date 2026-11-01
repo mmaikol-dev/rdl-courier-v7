@@ -31,18 +31,25 @@ import {
     Filter,
     Loader2,
     Lock,
+    Unlock,
     PackageCheck,
     Printer,
     Trash2,
     Users,
 } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Dispatch', href: '/dispatch' },
 ];
+
+const DISPATCH_COLUMN_ORDER = ['order_no', 'client_name', 'product_name', 'quantity', 'amount', 'phone', 'delivery_date', 'address', 'agent', 'active', 'status', 'actions'];
+const DISPATCH_COLUMN_WIDTHS: Record<string, number> = {
+    order_no: 130, client_name: 160, product_name: 180, quantity: 70, amount: 110, phone: 130,
+    delivery_date: 120, address: 220, agent: 170, active: 70, status: 110, actions: 130,
+};
 
 function dispatchStatusClass(status: string | null | undefined): string {
     switch (String(status ?? '').trim().toLowerCase()) {
@@ -114,6 +121,8 @@ interface SheetOrder {
     quantity: number;
     amount: string;
     client_name: string;
+    address?: string;
+    city?: string;
     phone: string;
     status: string;
     delivery_date: string;
@@ -289,6 +298,45 @@ const OrdersTable = React.memo(function OrdersTable({
     onDelete,
     onDownload,
 }: OrdersTableProps) {
+    const [lockedColumns, setLockedColumns] = React.useState<string[]>([]);
+    const lockedColumnSet = React.useMemo(() => new Set(lockedColumns), [lockedColumns]);
+    const lockedColumnOffsets = React.useMemo(() => {
+        const offsets: Record<string, number> = {};
+        let offset = 0;
+
+        DISPATCH_COLUMN_ORDER.forEach((column) => {
+            if (lockedColumnSet.has(column)) {
+                offsets[column] = offset;
+                offset += DISPATCH_COLUMN_WIDTHS[column] ?? 0;
+            }
+        });
+
+        return offsets;
+    }, [lockedColumnSet]);
+    const isColumnLocked = (key: string) => lockedColumnSet.has(key);
+
+    const columnHeader = (key: string, title: string, className?: string) => (
+        <TableHead className={cn('whitespace-nowrap', className, isColumnLocked(key) && 'sticky z-20 bg-muted')} style={isColumnLocked(key) ? { left: lockedColumnOffsets[key] } : undefined}>
+            <div className="flex items-center justify-between gap-2">
+                <span>{title}</span>
+                <button
+                    type="button"
+                    className={cn('shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground', isColumnLocked(key) && 'text-primary')}
+                    aria-label={`${isColumnLocked(key) ? 'Unlock' : 'Lock'} ${title} column`}
+                    aria-pressed={isColumnLocked(key)}
+                    title={`${isColumnLocked(key) ? 'Unlock' : 'Lock'} ${title} column while scrolling`}
+                    onClick={() => setLockedColumns((current) => current.includes(key) ? current.filter((column) => column !== key) : [...current, key])}
+                >
+                    {isColumnLocked(key) ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                </button>
+            </div>
+        </TableHead>
+    );
+    const lockedCellProps = (key: string) => isColumnLocked(key) ? {
+        className: 'sticky z-[1] bg-background shadow-[2px_0_3px_-2px_hsl(var(--foreground)/0.35)]',
+        style: { left: lockedColumnOffsets[key] },
+    } : {};
+
     const generatePageNumbers = () => {
         const current = orders.current_page;
         const last = orders.last_page;
@@ -386,17 +434,18 @@ const OrdersTable = React.memo(function OrdersTable({
                             <Table className="table-fixed">
                                 <TableHeader>
                                     <TableRow className="bg-muted/60 hover:bg-muted/60">
-                                        <TableHead className="w-[130px]">Order No</TableHead>
-                                        <TableHead className="w-[160px]">Client</TableHead>
-                                        <TableHead className="w-[180px]">Product</TableHead>
-                                        <TableHead className="w-[70px] text-right">Qty</TableHead>
-                                        <TableHead className="w-[110px] text-right">Amount</TableHead>
-                                        <TableHead className="w-[130px]">Phone</TableHead>
-                                        <TableHead className="w-[120px]">Delivery Date</TableHead>
-                                        <TableHead className="w-[170px]">Agent</TableHead>
-                                        <TableHead className="w-[70px]">Active</TableHead>
-                                        <TableHead className="w-[110px]">Status</TableHead>
-                                        <TableHead className="w-[130px] text-right">Actions</TableHead>
+                                        {columnHeader('order_no', 'Order No', 'w-[130px]')}
+                                        {columnHeader('client_name', 'Client', 'w-[160px]')}
+                                        {columnHeader('product_name', 'Product', 'w-[180px]')}
+                                        {columnHeader('quantity', 'Qty', 'w-[70px] text-right')}
+                                        {columnHeader('amount', 'Amount', 'w-[110px] text-right')}
+                                        {columnHeader('phone', 'Phone', 'w-[130px]')}
+                                        {columnHeader('delivery_date', 'Delivery Date', 'w-[120px]')}
+                                        {columnHeader('address', 'Address / City', 'w-[220px]')}
+                                        {columnHeader('agent', 'Agent', 'w-[170px]')}
+                                        {columnHeader('active', 'Active', 'w-[70px]')}
+                                        {columnHeader('status', 'Status', 'w-[110px]')}
+                                        {columnHeader('actions', 'Actions', 'w-[130px] text-right')}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -409,26 +458,29 @@ const OrdersTable = React.memo(function OrdersTable({
                                                     'bg-primary/5 hover:bg-primary/10 data-[state=selected]:bg-primary/10',
                                             )}
                                         >
-                                            <TableCell className="truncate text-xs font-medium" title={order.order_no}>
+                                            <TableCell {...lockedCellProps('order_no')} className={cn('truncate text-xs font-medium', lockedCellProps('order_no').className)} title={order.order_no}>
                                                 {order.order_no}
                                             </TableCell>
-                                            <TableCell className="truncate font-medium" title={order.client_name}>
+                                            <TableCell {...lockedCellProps('client_name')} className={cn('truncate font-medium', lockedCellProps('client_name').className)} title={order.client_name}>
                                                 {order.client_name}
                                             </TableCell>
-                                            <TableCell className="truncate" title={order.product_name}>
+                                            <TableCell {...lockedCellProps('product_name')} className={cn('truncate', lockedCellProps('product_name').className)} title={order.product_name}>
                                                 {order.product_name}
                                             </TableCell>
-                                            <TableCell className="text-right tabular-nums">{order.quantity}</TableCell>
-                                            <TableCell className="truncate text-right tabular-nums" title={order.amount}>
+                                            <TableCell {...lockedCellProps('quantity')} className={cn('text-right tabular-nums', lockedCellProps('quantity').className)}>{order.quantity}</TableCell>
+                                            <TableCell {...lockedCellProps('amount')} className={cn('truncate text-right tabular-nums', lockedCellProps('amount').className)} title={order.amount}>
                                                 {order.amount}
                                             </TableCell>
-                                            <TableCell className="truncate text-xs" title={order.phone}>
+                                            <TableCell {...lockedCellProps('phone')} className={cn('truncate text-xs', lockedCellProps('phone').className)} title={order.phone}>
                                                 {order.phone}
                                             </TableCell>
-                                            <TableCell className="whitespace-nowrap text-xs" title={order.delivery_date}>
+                                            <TableCell {...lockedCellProps('delivery_date')} className={cn('whitespace-nowrap text-xs', lockedCellProps('delivery_date').className)} title={order.delivery_date}>
                                                 {order.delivery_date ? format(new Date(order.delivery_date), 'do MMM yyyy') : '—'}
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell {...lockedCellProps('address')} className={cn('max-w-[220px] truncate text-xs', lockedCellProps('address').className)} title={[order.address, order.city].filter(Boolean).join(', ')}>
+                                                {[order.address, order.city].filter(Boolean).join(', ') || '—'}
+                                            </TableCell>
+                                            <TableCell {...lockedCellProps('agent')}>
                                                 <div className="relative">
                                                     <Select
                                                         value={order.agent || 'none'}
@@ -457,7 +509,7 @@ const OrdersTable = React.memo(function OrdersTable({
                                                     )}
                                                 </div>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell {...lockedCellProps('active')}>
                                                 {order.agent ? (
                                                     <div className="flex items-center justify-center">
                                                         {togglingAgentId === order.id ? (
@@ -477,13 +529,13 @@ const OrdersTable = React.memo(function OrdersTable({
                                                     </div>
                                                 )}
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell {...lockedCellProps('status')}>
                                                 <Badge variant="outline" className={cn('whitespace-nowrap', dispatchStatusClass(order.status))}>
                                                     {order.status || '—'}
                                                 </Badge>
                                             </TableCell>
 
-                                            <TableCell className="text-right">
+                                            <TableCell {...lockedCellProps('actions')} className={cn('text-right', lockedCellProps('actions').className)}>
                                                 <div className="flex items-center justify-end gap-0.5">
                                                     <Button
                                                         size="sm"

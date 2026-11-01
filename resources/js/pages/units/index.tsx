@@ -24,7 +24,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 interface Unit {
   id: number;

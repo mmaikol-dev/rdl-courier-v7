@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -82,6 +83,77 @@ class MetaCloudApiService
             'to' => $formatted,
             'type' => 'template',
             'template' => $template,
+        ]);
+
+        return $this->parseResponse($response, $formatted);
+    }
+
+    /**
+     * Upload and send an image, video, audio file, or document through Meta.
+     * The Cloud API requires media to be uploaded before its media ID can be
+     * referenced by a message.
+     */
+    public function sendMedia(string $phoneNumber, UploadedFile $file, ?string $caption = null): array
+    {
+        $formatted = $this->formatPhone($phoneNumber);
+
+        if (! $formatted) {
+            throw new \InvalidArgumentException("Invalid phone number: {$phoneNumber}");
+        }
+
+        $mimeType = (string) $file->getMimeType();
+        $mediaType = match (true) {
+            str_starts_with($mimeType, 'image/') => 'image',
+            str_starts_with($mimeType, 'video/') => 'video',
+            str_starts_with($mimeType, 'audio/') => 'audio',
+            default => 'document',
+        };
+
+        if ($mediaType === 'audio' && filled($caption)) {
+            throw new \InvalidArgumentException('WhatsApp audio messages cannot include a caption. Send the text separately.');
+        }
+
+        $uploadResponse = Http::withToken($this->accessToken)
+            ->attach(
+                'file',
+                $file->getContent(),
+                $file->getClientOriginalName(),
+                ['Content-Type' => $mimeType],
+            )
+            ->post($this->baseUrl().'/media', [
+                'messaging_product' => 'whatsapp',
+                'type' => $mimeType,
+            ]);
+
+        if ($uploadResponse->failed()) {
+            Log::error('Meta Cloud API media upload failed', [
+                'status' => $uploadResponse->status(),
+                'body' => $uploadResponse->body(),
+                'mime_type' => $mimeType,
+            ]);
+
+            throw new \RuntimeException('Meta Cloud API media upload failed: HTTP '.$uploadResponse->status());
+        }
+
+        $mediaId = $uploadResponse->json('id');
+        if (! filled($mediaId)) {
+            throw new \RuntimeException('Meta Cloud API did not return a media ID.');
+        }
+
+        $mediaObject = ['id' => $mediaId];
+        if (filled($caption) && in_array($mediaType, ['image', 'video', 'document'], true)) {
+            $mediaObject['caption'] = $caption;
+        }
+        if ($mediaType === 'document') {
+            $mediaObject['filename'] = $file->getClientOriginalName();
+        }
+
+        $response = Http::withToken($this->accessToken)->post($this->baseUrl().'/messages', [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $formatted,
+            'type' => $mediaType,
+            $mediaType => $mediaObject,
         ]);
 
         return $this->parseResponse($response, $formatted);

@@ -6,6 +6,7 @@ import { Deferred, Head, usePage, router } from '@inertiajs/react';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -18,15 +19,14 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { csrfHeaders } from '@/lib/csrf';
+import { toast } from '@/lib/toast';
+import { sileo } from 'sileo';
 import { format } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
 import {
   Edit,
-  Trash2,
   Smartphone,
-  CheckCircle2,
   Loader2,
-  XCircle,
   Search,
   X,
   Package,
@@ -44,8 +44,7 @@ import {
   ChevronUp,
   PhoneCall,
   GripVertical,
-  MessageSquare,
-  CheckSquare
+  MessageSquare
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -72,12 +71,48 @@ interface SheetOrder {
   confirmed: number;
 }
 
-const EMPTY_STK_ORDERS: { data: SheetOrder[] } = { data: [] };
+const EMPTY_STK_ORDERS = { data: [] as SheetOrder[], current_page: 1, last_page: 1, per_page: 30, total: 0 };
+
+type StkPaymentSuccess = {
+  orderNo: string;
+  amount: number;
+  receipt?: string;
+};
+
+function stkPaymentSuccessOptions({ orderNo, amount, receipt }: StkPaymentSuccess) {
+  return {
+    title: 'Payment successful',
+    duration: 6000,
+    description: (
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Order</span>
+          <span className="font-mono text-sm font-semibold">{orderNo}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Amount paid</span>
+          <span className="text-sm font-semibold">KES {amount.toLocaleString()}</span>
+        </div>
+        {receipt && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">M-Pesa receipt</span>
+            <span className="font-mono text-sm font-semibold">{receipt}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 border-t pt-2 text-xs text-muted-foreground">
+          <Receipt className="size-3.5" />
+          <span>Payment confirmed for {orderNo}.</span>
+        </div>
+      </div>
+    ),
+    fill: 'var(--primary)',
+  };
+}
 
 function StkOrdersSkeleton() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading payment orders" aria-live="polite">
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-none border bg-card">
         <div className="grid grid-cols-5 gap-3 border-b p-3">
           {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-4 w-full" />)}
         </div>
@@ -113,7 +148,7 @@ const parseLocalDate = (value?: string) => {
 export default function Index() {
   const { props } = usePage();
   const { orders: loadedOrders, filters, auth, agents, callCenterUsers } = props as unknown as {
-    orders?: { data: SheetOrder[] };
+    orders?: { data: SheetOrder[]; current_page: number; last_page: number; per_page: number; total: number };
     filters: { search?: string; agent?: string; cc_name?: string; start_date?: string; end_date?: string };
     auth?: { user?: { id: number; roles?: string } };
     agents: Array<{ id: number; name: string }>;
@@ -131,47 +166,86 @@ export default function Index() {
   const [selectedCcName, setSelectedCcName] = React.useState(filters?.cc_name || '');
   const [agentPopoverOpen, setAgentPopoverOpen] = React.useState(false);
   const [ccPopoverOpen, setCcPopoverOpen] = React.useState(false);
+  const [mobileAgentPopoverOpen, setMobileAgentPopoverOpen] = React.useState(false);
+  const [mobileCcPopoverOpen, setMobileCcPopoverOpen] = React.useState(false);
   const [deliveryDateRange, setDeliveryDateRange] = React.useState<DateRange | undefined>({
     from: parseLocalDate(filters?.start_date),
     to: parseLocalDate(filters?.end_date),
   });
   const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
-  const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
   const [phoneNumbers, setPhoneNumbers] = React.useState<Record<number, string>>({});
-  const [loadingOrder, setLoadingOrder] = React.useState<SheetOrder | null>(null);
-  const [paymentResult, setPaymentResult] = React.useState<{ status: "Success" | "Failed"; receipt?: string; amount?: number } | null>(null);
   const [viewMode, setViewMode] = React.useState<'table' | 'card'>('table');
   const [expandedRows, setExpandedRows] = React.useState<Set<number>>(new Set());
   const [searchModalOpen, setSearchModalOpen] = React.useState(false);
   const [orderedItems, setOrderedItems] = React.useState<SheetOrder[]>([]);
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null);
+  const [confirmationFilter, setConfirmationFilter] = React.useState<'all' | 'confirmed' | 'unconfirmed'>('all');
+  const confirmationSwipeStart = React.useRef<number | null>(null);
 
   // Loading states
   const [isSearching, setIsSearching] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
-  const [isDeleting, setIsDeleting] = React.useState(false);
   const [payingOrders, setPayingOrders] = React.useState<Set<number>>(new Set());
+  const [savingConfirmations, setSavingConfirmations] = React.useState<Set<number>>(new Set());
 
-  const filteredOrders = orderedItems;
+  const filteredOrders = orderedItems.filter(order => confirmationFilter === 'all'
+    || (confirmationFilter === 'confirmed' ? Number(order.confirmed) === 1 : Number(order.confirmed) !== 1));
+  const confirmationCounts = {
+    all: orderedItems.length,
+    confirmed: orderedItems.filter(order => Number(order.confirmed) === 1).length,
+    unconfirmed: orderedItems.filter(order => Number(order.confirmed) !== 1).length,
+  };
+  const confirmationFilters = ['all', 'confirmed', 'unconfirmed'] as const;
 
-  const closePaymentDialog = React.useCallback(() => {
-    if (loadingOrder && paymentResult?.status === "Success") {
-      setOrderedItems((currentOrders) =>
-        currentOrders.map((order) =>
-          order.id === loadingOrder.id
-            ? {
-                ...order,
-                status: "Delivered",
-                code: paymentResult.receipt ?? order.code,
-              }
-            : order,
-        ),
-      );
+  const finishConfirmationSwipe = (endX: number) => {
+    if (confirmationSwipeStart.current === null) return;
+    const delta = endX - confirmationSwipeStart.current;
+    confirmationSwipeStart.current = null;
+    if (Math.abs(delta) < 55) return;
+
+    const currentIndex = confirmationFilters.indexOf(confirmationFilter);
+    const nextIndex = Math.max(0, Math.min(confirmationFilters.length - 1, currentIndex + (delta < 0 ? 1 : -1)));
+    setConfirmationFilter(confirmationFilters[nextIndex]);
+  };
+
+  const savePaymentDetails = async (orderId: number, comments: string | null | undefined, confirmed: number) => {
+    const response = await fetch(`/stk/${orderId}`, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...csrfHeaders(),
+      },
+      body: JSON.stringify({ comments: comments ?? '', confirmed }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.message || 'Could not update order payment details.');
     }
+  };
 
-    setPaymentResult(null);
-    setLoadingOrder(null);
-  }, [loadingOrder, paymentResult]);
+  const updateConfirmation = (order: SheetOrder, checked: boolean) => {
+    const confirmed = checked ? 1 : 0;
+    if (Number(order.confirmed) === confirmed || savingConfirmations.has(order.id)) return;
+
+    setSavingConfirmations(current => new Set(current).add(order.id));
+    void savePaymentDetails(order.id, order.comments, confirmed).then(() => {
+      setOrderedItems(current => current.map(item => item.id === order.id ? { ...item, confirmed } : item));
+      toast.success(`Order ${order.order_no} marked ${confirmed ? 'confirmed' : 'unconfirmed'}.`, { position: 'top-center' });
+    }).catch(() => {
+      toast.error(`Could not update confirmation for ${order.order_no}.`, { position: 'top-center' });
+    }).finally(() => {
+      setSavingConfirmations(current => {
+        const next = new Set(current);
+        next.delete(order.id);
+        return next;
+      });
+    });
+  };
+
+  const closeEditOrder = () => {
+    setEditingOrder(null);
+  };
 
   const getConfirmationBadge = (confirmed: number) => {
     return Number(confirmed) === 1
@@ -210,6 +284,19 @@ export default function Index() {
       setOrderedItems(orders.data);
     }
   }, [orders.data, storageKey]);
+
+  React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('previewStk') !== 'success') return;
+
+    const timer = window.setTimeout(() => {
+      sileo.success({
+        ...stkPaymentSuccessOptions({ orderNo: 'ORD-2026-001', amount: 24500, receipt: 'SFH4K9X2LQ' }),
+        position: 'bottom-center',
+      });
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const toggleRowExpansion = (orderId: number) => {
     setExpandedRows(prev => {
@@ -251,72 +338,69 @@ export default function Index() {
   const payOrder = async (order: SheetOrder) => {
     const phone = phoneNumbers[order.id] ?? order.phone;
     if (!phone) {
-      setPaymentResult({ status: "Failed" });
+      toast.warning('Add a phone number before sending an M-Pesa payment prompt.', { position: 'top-center' });
       return;
     }
 
     setPayingOrders(prev => new Set(prev).add(order.id));
-    setLoadingOrder(order);
-    setPaymentResult(null);
-
-    try {
-      const res = await fetch("api/stk/stk-push", {
-        method: "POST",
+    const payment = (async () => {
+      const response = await fetch('/api/stk/stk-push', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           ...csrfHeaders(),
         },
         body: JSON.stringify({ phone, amount: order.amount, order_no: order.order_no }),
       });
 
-      if (!res.ok) throw new Error("STK Push failed");
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Could not send the M-Pesa payment prompt.');
+      }
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || "STK Push failed");
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 3000));
+        const statusResponse = await fetch(`/api/transactions/${encodeURIComponent(order.order_no)}`);
+        if (!statusResponse.ok) continue;
 
-      let attempts = 0;
-      const interval = setInterval(async () => {
-        attempts++;
-        const check = await fetch(`/api/transactions/${order.order_no}`);
-        if (check.ok) {
-          const trx = await check.json();
-          if (trx.status === "Success") {
-            clearInterval(interval);
-            setPaymentResult({ status: "Success", receipt: trx.mpesa_receipt, amount: trx.amount });
-            setPayingOrders(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(order.id);
-              return newSet;
-            });
-          } else if (trx.status === "Failed") {
-            clearInterval(interval);
-            setPaymentResult({ status: "Failed" });
-            setPayingOrders(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(order.id);
-              return newSet;
-            });
-          }
-        }
-        if (attempts > 20) {
-          clearInterval(interval);
-          setPaymentResult({ status: "Failed" });
-          setPayingOrders(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(order.id);
-            return newSet;
-          });
-        }
-      }, 3000);
+        const transaction = await statusResponse.json();
+        if (transaction.status === 'Success') return transaction;
+        if (transaction.status === 'Failed') throw new Error('The M-Pesa payment was declined or cancelled.');
+      }
 
-    } catch (err) {
-      console.error(err);
-      setPaymentResult({ status: "Failed" });
-      setLoadingOrder(null);
+      throw new Error('Payment confirmation timed out. Check the payment status before trying again.');
+    })();
+
+    try {
+      const transaction = await sileo.promise(payment, {
+        position: 'bottom-center',
+        loading: {
+          title: 'Waiting for payment',
+          description: `Approve the M-Pesa prompt for order ${order.order_no} on the phone.`,
+          fill: 'var(--primary)',
+        },
+        success: (result) => stkPaymentSuccessOptions({
+          orderNo: order.order_no,
+          amount: order.amount,
+          receipt: result.mpesa_receipt ?? undefined,
+        }),
+        error: (error) => ({
+          title: 'Payment failed',
+          description: error instanceof Error ? error.message : 'The M-Pesa payment could not be completed.',
+          fill: 'var(--primary)',
+        }),
+      });
+
+      setOrderedItems(currentOrders => currentOrders.map(current => current.id === order.id
+        ? { ...current, status: 'Delivered', code: transaction.mpesa_receipt ?? current.code }
+        : current));
+    } catch {
+      // The Sileo promise toast displays the payment error.
+    } finally {
       setPayingOrders(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(order.id);
-        return newSet;
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
       });
     }
   };
@@ -324,32 +408,16 @@ export default function Index() {
   const handleEditSave = () => {
     if (!editingOrder) return;
     setIsSaving(true);
-    router.put(`/stk/${editingOrder.id}`, {
-      comments: editingOrder.comments,
-      confirmed: editingOrder.confirmed
-    }, {
-      onSuccess: () => {
+    void savePaymentDetails(editingOrder.id, editingOrder.comments, Number(editingOrder.confirmed) === 1 ? 1 : 0)
+      .then(() => {
+        setOrderedItems(current => current.map(order => order.id === editingOrder.id
+          ? { ...order, comments: editingOrder.comments ?? '', confirmed: Number(editingOrder.confirmed) === 1 ? 1 : 0 }
+          : order));
         setEditingOrder(null);
-        setIsSaving(false);
-      },
-      onError: () => {
-        setIsSaving(false);
-      }
-    });
-  };
-
-  const handleDelete = () => {
-    if (!deletingOrder) return;
-    setIsDeleting(true);
-    router.delete(`/stk/${deletingOrder.id}`, {
-      onSuccess: () => {
-        setDeletingOrder(null);
-        setIsDeleting(false);
-      },
-      onError: () => {
-        setIsDeleting(false);
-      }
-    });
+        toast.success('Order payment details were updated.', { position: 'top-center' });
+      }).catch(() => {
+        toast.error('Could not update the order payment details. Please review the fields and try again.', { position: 'top-center' });
+      }).finally(() => setIsSaving(false));
   };
 
   const handleSearch = () => {
@@ -364,6 +432,22 @@ export default function Index() {
       preserveState: true,
       replace: true,
       onFinish: () => setIsSearching(false)
+    });
+  };
+
+  const goToPage = (page: number) => {
+    router.get('/stk', {
+      search: searchValue.trim() || undefined,
+      agent: selectedAgent || undefined,
+      cc_name: selectedCcName || undefined,
+      start_date: deliveryDateRange?.from ? format(deliveryDateRange.from, 'yyyy-MM-dd') : undefined,
+      end_date: deliveryDateRange?.to ? format(deliveryDateRange.to, 'yyyy-MM-dd') : undefined,
+      page,
+    }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      only: ['orders'],
     });
   };
 
@@ -393,7 +477,7 @@ export default function Index() {
 
         {/* Search and View Toggle */}
         {/* Desktop Search Card */}
-        <Card className="hidden sm:block">
+        <Card className="hidden rounded-none sm:block">
           <CardHeader className="pb-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
@@ -592,6 +676,21 @@ export default function Index() {
           </CardContent>
         </Card>
 
+        <div
+          className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0"
+          aria-label="Filter by confirmation status. Swipe left or right to switch sections."
+          onTouchStart={event => { confirmationSwipeStart.current = event.changedTouches[0]?.clientX ?? null; }}
+          onTouchEnd={event => finishConfirmationSwipe(event.changedTouches[0]?.clientX ?? 0)}
+        >
+          <Tabs value={confirmationFilter} onValueChange={value => setConfirmationFilter(value as typeof confirmationFilter)}>
+            <TabsList className="h-10 w-max min-w-full justify-start sm:min-w-0">
+              <TabsTrigger value="all" className="gap-2">All orders <span className="text-xs text-muted-foreground">{confirmationCounts.all}</span></TabsTrigger>
+              <TabsTrigger value="confirmed" className="gap-2">Confirmed <span className="text-xs text-muted-foreground">{confirmationCounts.confirmed}</span></TabsTrigger>
+              <TabsTrigger value="unconfirmed" className="gap-2">Unconfirmed <span className="text-xs text-muted-foreground">{confirmationCounts.unconfirmed}</span></TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
         {/* Mobile Search Button */}
         <div className="sm:hidden flex gap-2">
           <Button
@@ -623,7 +722,7 @@ export default function Index() {
         {() => <>
         {/* Orders Display */}
         {filteredOrders.length === 0 ? (
-          <Card>
+          <Card className="rounded-none">
             <CardContent className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
               <Package className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mb-4" />
               <h3 className="text-base sm:text-lg font-semibold mb-2">No orders found</h3>
@@ -632,7 +731,7 @@ export default function Index() {
           </Card>
         ) : viewMode === 'table' ? (
           /* Table View */
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden rounded-none">
             <div className="overflow-x-auto">
               {/* Desktop Table */}
               <div className="hidden lg:block">
@@ -747,16 +846,6 @@ export default function Index() {
                                 >
                                   <Edit className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setDeletingOrder(order)}
-                                  className="h-8 w-8 p-0"
-                                  title="Delete"
-                                  disabled={isPaying}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
                               </div>
                             </div>
                           </TableCell>
@@ -769,19 +858,20 @@ export default function Index() {
 
               {/* Mobile/Tablet Expandable Table */}
               <div className="lg:hidden">
-                <Table>
+                <Table containerClassName="overflow-x-hidden" className="w-full table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[40px]"></TableHead>
-                      <TableHead className="w-[40px]"></TableHead>
-                      <TableHead>Order</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="w-7 px-1"></TableHead>
+                      <TableHead className="w-7 px-1"></TableHead>
+                      <TableHead className="px-1">Order</TableHead>
+                      <TableHead className="w-[82px] px-1 text-right">Amount</TableHead>
+                      <TableHead className="w-[78px] px-1">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredOrders.map((order, index) => {
                       const isPaying = payingOrders.has(order.id);
+                      const isSavingConfirmation = savingConfirmations.has(order.id);
                       const confirmationBadge = getConfirmationBadge(order.confirmed);
                       return (
                         <React.Fragment key={order.id}>
@@ -794,33 +884,33 @@ export default function Index() {
                               draggedIndex === index && 'opacity-50',
                             )}
                           >
-                            <TableCell className="cursor-grab active:cursor-grabbing">
+                            <TableCell className="w-7 cursor-grab px-1 active:cursor-grabbing">
                               <GripVertical className="h-4 w-4 text-muted-foreground" />
                             </TableCell>
-                            <TableCell className="cursor-pointer" onClick={() => toggleRowExpansion(order.id)}>
+                            <TableCell className="w-7 cursor-pointer px-1" onClick={() => toggleRowExpansion(order.id)}>
                               {expandedRows.has(order.id) ?
                                 <ChevronUp className="h-4 w-4" /> :
                                 <ChevronDown className="h-4 w-4" />
                               }
                             </TableCell>
-                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer">
-                              <div className="flex flex-col gap-1">
+                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="min-w-0 cursor-pointer px-1">
+                              <div className="flex min-w-0 flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-medium text-sm">{order.order_no}</span>
+                                  <span className="block truncate font-medium text-sm">{order.order_no}</span>
                                 </div>
                                 {confirmationBadge && (
                                   <Badge className={`w-fit ${confirmationBadge.className} text-[10px] px-1.5 py-0`}>
                                     {confirmationBadge.label}
                                   </Badge>
                                 )}
-                                <span className="text-xs text-muted-foreground truncate">{order.client_name}</span>
+                                <span className="block truncate text-xs text-muted-foreground">{order.client_name}</span>
                               </div>
                             </TableCell>
-                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer text-right font-semibold text-sm">
+                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="w-[82px] cursor-pointer whitespace-nowrap px-1 text-right font-semibold text-[11px]">
                               KES {order.amount.toLocaleString()}
                             </TableCell>
-                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer">
-                              <Badge variant="outline" className={`${getStatusColor(order.status)} border text-xs`}>
+                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="w-[78px] cursor-pointer px-1">
+                              <Badge variant="outline" className={`${getStatusColor(order.status)} block max-w-full truncate border px-1 text-[10px]`}>
                                 {order.status || 'Unknown'}
                               </Badge>
                             </TableCell>
@@ -829,6 +919,21 @@ export default function Index() {
                             <TableRow>
                               <TableCell colSpan={5} className="bg-muted/50 p-4">
                                 <div className="space-y-3">
+                                  <div className="flex items-center justify-between gap-3 border-b pb-3">
+                                    <div className="min-w-0">
+                                      <Label htmlFor={`mobile-confirmation-${order.id}`} className="text-sm font-medium">Order confirmed</Label>
+                                      <p className="text-xs text-muted-foreground">Toggle to update this order.</p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                      {isSavingConfirmation && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Saving confirmation" />}
+                                      <Switch
+                                        id={`mobile-confirmation-${order.id}`}
+                                        checked={Number(order.confirmed) === 1}
+                                        onCheckedChange={checked => updateConfirmation(order, checked)}
+                                        disabled={isSavingConfirmation}
+                                      />
+                                    </div>
+                                  </div>
                                   <div className="grid grid-cols-2 gap-2 text-sm">
                                     <div>
                                       <span className="text-muted-foreground text-xs">Product:</span>
@@ -905,15 +1010,6 @@ export default function Index() {
                                     >
                                       <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setDeletingOrder(order)}
-                                      className="h-10 w-10 p-0 flex-shrink-0"
-                                      disabled={isPaying}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
                                   </div>
                                 </div>
                               </TableCell>
@@ -932,12 +1028,13 @@ export default function Index() {
           <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredOrders.map((order, index) => {
               const isPaying = payingOrders.has(order.id);
+              const isSavingConfirmation = savingConfirmations.has(order.id);
               const confirmationBadge = getConfirmationBadge(order.confirmed);
               return (
                 <Card
                   key={order.id}
                   className={cn(
-                    'hover:shadow-lg transition-shadow duration-200',
+                    'rounded-none hover:shadow-lg transition-shadow duration-200',
                     draggedIndex === index && 'opacity-50',
                   )}
                   draggable
@@ -945,6 +1042,14 @@ export default function Index() {
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
                 >
+                  {isSavingConfirmation ? (
+                    <CardContent className="space-y-4 py-5" role="status" aria-label={`Saving confirmation for ${order.order_no}`}>
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-16 w-full" />
+                      <Skeleton className="h-9 w-full" />
+                    </CardContent>
+                  ) : <>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="cursor-grab active:cursor-grabbing flex-shrink-0 pt-1">
@@ -1061,20 +1166,28 @@ export default function Index() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setDeletingOrder(order)}
-                        className="flex-1 h-9"
-                        disabled={isPaying}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   </CardContent>
+                  </>}
                 </Card>
               );
             })}
+          </div>
+        )}
+        {orders.last_page > 1 && (
+          <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Showing {(orders.current_page - 1) * orders.per_page + 1}–{Math.min(orders.current_page * orders.per_page, orders.total)} of {orders.total} orders
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => goToPage(orders.current_page - 1)} disabled={orders.current_page <= 1}>
+                Previous
+              </Button>
+              <span className="min-w-20 text-center text-xs text-muted-foreground">Page {orders.current_page} of {orders.last_page}</span>
+              <Button variant="outline" size="sm" onClick={() => goToPage(orders.current_page + 1)} disabled={orders.current_page >= orders.last_page}>
+                Next
+              </Button>
+            </div>
           </div>
         )}
         </>}
@@ -1082,7 +1195,7 @@ export default function Index() {
       </div>
 
       {/* Edit Modal */}
-      <Dialog open={!!editingOrder} onOpenChange={open => !open && setEditingOrder(null)}>
+      <Dialog open={!!editingOrder} onOpenChange={open => !open && closeEditOrder()}>
         <DialogContent className="sm:max-w-md max-w-[95vw]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -1090,7 +1203,7 @@ export default function Index() {
               Edit Order
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
-              Update comments and confirmation status for {editingOrder?.order_no}
+              Update comments here. On smaller screens, change confirmation from the expanded order details.
             </DialogDescription>
           </DialogHeader>
           {editingOrder && (
@@ -1110,36 +1223,29 @@ export default function Index() {
                   disabled={isSaving}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmed" className="text-xs sm:text-sm flex items-center gap-2">
-                  <CheckSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  Confirmation Status
-                </Label>
-                <div className="flex items-center space-x-2 p-3 border rounded-md bg-muted/50">
-                  <input
-                    type="checkbox"
-                    id="confirmed"
-                    checked={editingOrder.confirmed === 1}
-                    onChange={e => setEditingOrder({ ...editingOrder, confirmed: e.target.checked ? 1 : 0 })}
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary cursor-pointer"
-                    disabled={isSaving}
-                  />
-                  <Label htmlFor="confirmed" className="text-sm font-normal cursor-pointer">
-                    Order Confirmed
-                  </Label>
+              <div className="hidden items-center justify-between gap-3 border bg-muted/40 p-3 lg:flex">
+                <div className="space-y-0.5">
+                  <Label htmlFor="order-confirmation" className="text-sm font-medium">Order confirmed</Label>
+                  <p className="text-xs text-muted-foreground">Save to apply this change.</p>
                 </div>
+                <Switch
+                  id="order-confirmation"
+                  checked={Number(editingOrder.confirmed) === 1}
+                  onCheckedChange={checked => setEditingOrder({ ...editingOrder, confirmed: checked ? 1 : 0 })}
+                  disabled={isSaving}
+                />
               </div>
             </div>
           )}
           <div className="flex justify-end gap-3">
             <Button
               variant="outline"
-              onClick={() => setEditingOrder(null)}
+              onClick={closeEditOrder}
               size="sm"
               className="h-9"
               disabled={isSaving}
             >
-              Cancel
+              Close
             </Button>
             <Button
               onClick={handleEditSave}
@@ -1153,164 +1259,10 @@ export default function Index() {
                   Saving...
                 </>
               ) : (
-                'Save Changes'
+                'Save Comments'
               )}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Modal */}
-      <Dialog open={!!deletingOrder} onOpenChange={open => !open && setDeletingOrder(null)}>
-        <DialogContent className="sm:max-w-md max-w-[95vw]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive text-base sm:text-lg">
-              <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
-              Confirm Deletion
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {deletingOrder && (
-            <div className="py-4">
-              <p className="text-xs sm:text-sm">
-                Are you sure you want to delete order{' '}
-                <span className="font-semibold">{deletingOrder.order_no}</span>?
-              </p>
-            </div>
-          )}
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => setDeletingOrder(null)}
-              size="sm"
-              className="h-9"
-              disabled={isDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              className="gap-2 h-9"
-              size="sm"
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  Delete Order
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Payment Processing Modal */}
-      <Dialog open={!!loadingOrder} onOpenChange={() => { }}>
-        <DialogContent className="sm:max-w-md max-w-[95vw]">
-          {!paymentResult ? (
-            <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-primary/10 p-3 sm:p-4">
-                <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-primary" />
-              </div>
-              <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl font-semibold">Processing Payment</DialogTitle>
-                <DialogDescription className="text-sm sm:text-base">
-                  Please check your phone to complete the M-Pesa transaction
-                </DialogDescription>
-              </DialogHeader>
-              <div className="bg-muted rounded-lg p-3 sm:p-4 w-full space-y-2 text-xs sm:text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Order:</span>
-                  <span className="font-medium">{loadingOrder?.order_no}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Amount:</span>
-                  <span className="font-medium">KES {loadingOrder?.amount.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-          ) : paymentResult.status === "Success" ? (
-            <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-success/10 p-3 sm:p-4">
-                <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12 text-success" />
-              </div>
-              <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl font-semibold text-success">
-                  Payment Successful!
-                </DialogTitle>
-                <DialogDescription className="text-sm">
-                  Your M-Pesa payment has been processed
-                </DialogDescription>
-              </DialogHeader>
-              <div className="bg-success/10 rounded-lg p-3 sm:p-4 w-full space-y-2 text-xs sm:text-sm border border-success/30">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Hash className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    Order:
-                  </span>
-                  <span className="font-medium">{loadingOrder?.order_no}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-1.5">
-                    <DollarSign className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    Amount:
-                  </span>
-                  <span className="font-medium">KES {paymentResult.amount?.toLocaleString()}</span>
-                </div>
-                <Separator className="bg-success/20" />
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Receipt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    Receipt:
-                  </span>
-                  <span className="font-semibold text-success">{paymentResult.receipt}</span>
-                </div>
-              </div>
-              <Button
-                className="w-full gap-2 h-9 sm:h-10"
-                onClick={closePaymentDialog}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Close
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-destructive/10 p-3 sm:p-4">
-                <XCircle className="h-10 w-10 sm:h-12 sm:w-12 text-destructive" />
-              </div>
-              <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl font-semibold text-destructive">
-                  Payment Failed
-                </DialogTitle>
-                <DialogDescription className="text-sm">
-                  The M-Pesa payment could not be completed
-                </DialogDescription>
-              </DialogHeader>
-              <div className="bg-destructive/10 rounded-lg p-3 sm:p-4 w-full text-xs sm:text-sm border border-destructive/30">
-                <p className="text-muted-foreground">
-                  The transaction was declined or timed out. Please try again.
-                </p>
-              </div>
-              <Button
-                className="w-full gap-2 h-9 sm:h-10"
-                variant="destructive"
-                onClick={closePaymentDialog}
-              >
-                <XCircle className="h-4 w-4" />
-                Close
-              </Button>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 
@@ -1350,7 +1302,7 @@ export default function Index() {
             {showAgentFilter && (
               <div className="space-y-2">
                 <Label>Agent</Label>
-                <Popover open={agentPopoverOpen} onOpenChange={setAgentPopoverOpen}>
+                <Popover open={mobileAgentPopoverOpen} onOpenChange={setMobileAgentPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -1361,7 +1313,7 @@ export default function Index() {
                       <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[320px] p-0" align="start">
+                  <PopoverContent className="z-[60] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0" align="start">
                     <Command>
                       <CommandInput placeholder="Search agent..." />
                       <CommandList>
@@ -1370,7 +1322,7 @@ export default function Index() {
                             value="all-agents-mobile"
                             onSelect={() => {
                               setSelectedAgent('');
-                              setAgentPopoverOpen(false);
+                              setMobileAgentPopoverOpen(false);
                             }}
                           >
                             All agents
@@ -1381,7 +1333,7 @@ export default function Index() {
                               value={agent.name}
                               onSelect={() => {
                                 setSelectedAgent(agent.name);
-                                setAgentPopoverOpen(false);
+                                setMobileAgentPopoverOpen(false);
                               }}
                               className={cn(selectedAgent === agent.name && 'bg-accent')}
                             >
@@ -1398,7 +1350,7 @@ export default function Index() {
 
             <div className="space-y-2">
               <Label>Call Center User</Label>
-              <Popover open={ccPopoverOpen} onOpenChange={setCcPopoverOpen}>
+              <Popover open={mobileCcPopoverOpen} onOpenChange={setMobileCcPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -1413,16 +1365,16 @@ export default function Index() {
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[320px] p-0" align="start">
+                <PopoverContent className="z-[60] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0" align="start">
                   <Command>
                     <CommandInput placeholder="Search call center user..." />
                     <CommandList>
                       <CommandGroup>
                         <CommandItem
-                          value="all-call-center-users-mobile"
+                            value="all-call-center-users-mobile"
                           onSelect={() => {
                             setSelectedCcName('');
-                            setCcPopoverOpen(false);
+                              setMobileCcPopoverOpen(false);
                           }}
                         >
                           All call center users
@@ -1433,7 +1385,7 @@ export default function Index() {
                             value={`${user.name} ${user.email}`}
                             onSelect={() => {
                               setSelectedCcName(user.name);
-                              setCcPopoverOpen(false);
+                              setMobileCcPopoverOpen(false);
                             }}
                             className={cn(selectedCcName === user.name && 'bg-accent')}
                           >

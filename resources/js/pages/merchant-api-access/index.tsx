@@ -14,7 +14,7 @@ import { csrfHeaders } from '@/lib/csrf';
 import { Deferred, Head, Link, router, useForm } from '@inertiajs/react';
 import { Activity, BookOpen, ChevronLeft, ChevronRight, Clipboard, KeyRound, LoaderCircle, RefreshCw, Search, Send, ShieldCheck, Trash2, Webhook } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/toast';
 
 interface Merchant { id: number; name: string; email: string; merchant_api_enabled: boolean; merchant_api_scopes: string[] | null; }
 interface Integration {
@@ -38,7 +38,7 @@ interface NewIntegrationForm { merchant_user_id: string; name: string; scopes: s
 interface IntegrationEdit { name: string; scopes: string[]; webhook_url: string; webhook_events: string[]; is_active: boolean; }
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Merchant API Access', href: '/merchant-api-access' }];
-const scopeLabels: Record<string, string> = { 'orders:read': 'Read orders', 'products:read': 'Read products', 'transfers:read': 'Read transfers' };
+const scopeLabels: Record<string, string> = { 'orders:read': 'Read orders', 'orders:write': 'Submit orders', 'products:read': 'Read products', 'transfers:read': 'Read transfers' };
 const eventLabels: Record<string, string> = { 'order.created': 'Order created', 'order.updated': 'Order updated', 'product.created': 'Product created', 'product.updated': 'Product updated', 'transfer.created': 'Transfer sent', 'transfer.returned': 'Transfer returned' };
 function ToggleList({ values, selected, onChange, columns = 2, compact = false }: { values: string[]; selected: string[]; onChange: (value: string) => void; columns?: 1 | 2; compact?: boolean }) {
     return <div className={`grid ${compact ? 'gap-1.5' : 'gap-2'} ${columns === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>{values.map((value) => <label key={value} className={`flex cursor-pointer items-center rounded-lg border transition-colors hover:bg-accent/50 ${compact ? 'min-h-8 gap-1.5 px-2 py-1 text-[10px] leading-tight' : 'min-h-10 gap-2 px-3 py-2 text-sm'}`}>

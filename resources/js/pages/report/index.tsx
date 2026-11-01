@@ -41,7 +41,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { csrfHeaders } from "@/lib/csrf";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },

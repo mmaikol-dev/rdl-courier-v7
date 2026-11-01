@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 
 class WhatsAppFallbackService
@@ -48,6 +49,20 @@ class WhatsAppFallbackService
             'to' => $result['to'],
             'message_id' => $result['message_id'],
             'template' => $templateName,
+        ]);
+
+        return $result;
+    }
+
+    /** Send media through the configured Meta WhatsApp Cloud API account. */
+    public function sendMedia(string $phoneNumber, UploadedFile $file, ?string $caption = null): array
+    {
+        $result = $this->meta->sendMedia($phoneNumber, $file, $caption);
+
+        Log::info('WhatsApp media sent via Meta Cloud API.', [
+            'provider' => $result['provider'],
+            'to' => $result['to'],
+            'message_id' => $result['message_id'],
         ]);
 
         return $result;

@@ -21,6 +21,7 @@ import {
   File,
   Music,
   Loader2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +82,14 @@ const EMPTY_CHAT_DATA = {
   pagination: { current_page: 1, per_page: 50, total: 0, last_page: 0, has_more_pages: false },
 };
 
+const CONVERSATION_MEDIA_PREVIEWS: Record<string, { label: string; Icon: typeof Image }> = {
+  image: { label: "Image", Icon: Image },
+  sticker: { label: "Sticker", Icon: Image },
+  video: { label: "Video", Icon: Video },
+  audio: { label: "Audio", Icon: Music },
+  document: { label: "Document", Icon: File },
+};
+
 function WhatsAppLoadingSkeleton() {
   return <div className="m-3 grid h-[calc(100vh-120px)] grid-cols-[minmax(0,1fr)] overflow-hidden sm:grid-cols-[20rem_minmax(0,1fr)] rounded-lg border" role="status" aria-label="Loading WhatsApp chats" aria-live="polite">
     <div className="space-y-3 border-r p-4"><Skeleton className="h-7 w-40" /><Skeleton className="h-10 w-full" />{Array.from({ length: 7 }).map((_, i) => <div key={i} className="flex items-center gap-3 border-b py-3"><Skeleton className="size-11 rounded-full" /><div className="flex-1 space-y-2"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-full" /></div></div>)}</div>
@@ -97,6 +106,7 @@ export default function WhatsAppPage() {
   const [pagination, setPagination] = useState(initialPagination);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [message, setMessage] = useState("");
+  const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Conversation[] | null>(null);
@@ -105,6 +115,7 @@ export default function WhatsAppPage() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   // Merge incoming conversations from polling into existing state
   const mergeConversations = (existing: Conversation[], incoming: Conversation[]): Conversation[] => {
@@ -304,7 +315,17 @@ export default function WhatsAppPage() {
   };
 
   const handleSend = async () => {
-    if (!selected || !message.trim()) return;
+    if (!selected || (!message.trim() && !selectedMedia)) return;
+
+    const caption = message.trim();
+    const attachment = selectedMedia;
+    const attachmentType = attachment?.type.startsWith("image/")
+      ? "Image"
+      : attachment?.type.startsWith("video/")
+        ? "Video"
+        : attachment?.type.startsWith("audio/")
+          ? "Audio"
+          : "Document";
 
     const newMsg: Chat = {
       id: Date.now(),
@@ -314,10 +335,12 @@ export default function WhatsAppPage() {
       cc_agents: selected.cc_agents, // 👈 Include cc_agents
       status: "pending",
       sid: "",
-      message: message.trim(),
+      message: caption || (attachment ? `[${attachmentType} sent]` : ""),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       type: "0",
+      media_type: attachment ? attachmentType.toLowerCase() : undefined,
+      mime_type: attachment?.type,
     };
 
     // Update conversations with the new message (optimistic update)
@@ -333,16 +356,19 @@ export default function WhatsAppPage() {
       )
     );
 
-    setMessage("");
-
     try {
+      const formData = new FormData();
+      formData.append("to", selected.phone);
+      if (caption) formData.append("message", caption);
+      if (attachment) formData.append("media", attachment);
+
       const res = await fetch("/api/whatsapp/send-chat", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          Accept: "application/json",
           ...csrfHeaders(),
         },
-        body: JSON.stringify({ to: selected.phone, message: newMsg.message }),
+        body: formData,
       });
 
       const data = await res.json();
@@ -355,14 +381,26 @@ export default function WhatsAppPage() {
               ? {
                 ...conv,
                 messages: conv.messages.map(msg =>
-                  msg.id === newMsg.id ? { ...msg, id: data.id, status: "sent", sid: data.sid || "" } : msg
+                  msg.id === newMsg.id ? {
+                    ...msg,
+                    id: data.id,
+                    status: "sent",
+                    sid: data.sid || "",
+                    message: data.message_text || msg.message,
+                    media_type: data.media_type || msg.media_type,
+                    mime_type: data.mime_type || msg.mime_type,
+                    media_path: data.media_path || msg.media_path,
+                  } : msg
                 )
               }
               : conv
           )
         );
+        setMessage("");
+        setSelectedMedia(null);
+        if (mediaInputRef.current) mediaInputRef.current.value = "";
       } else {
-        alert("Failed to send message.");
+        alert(data.error || "Failed to send message.");
         // Rollback optimistic update
         setConversations(prevConversations =>
           prevConversations.map(conv =>
@@ -396,13 +434,58 @@ export default function WhatsAppPage() {
     return conversation.messages.filter(msg => msg.type === "1").length;
   };
 
+  const renderConversationPreview = (msg?: Chat) => {
+    if (!msg) return null;
+
+    const text = msg.message.trim();
+    const mediaType = (msg.media_type || msg.mime_type || "").split("/")[0].toLowerCase();
+    const placeholderType = text.match(/^\[(image|video|audio|document|sticker)\b/i)?.[1]?.toLowerCase();
+    const type = mediaType || placeholderType;
+    const mediaPreview = type ? CONVERSATION_MEDIA_PREVIEWS[type] : undefined;
+
+    if (mediaPreview) {
+      const Icon = mediaPreview.Icon;
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <Icon className="size-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{mediaPreview.label}</span>
+        </span>
+      );
+    }
+
+    return msg.message;
+  };
+
+  const renderPendingMedia = (msg: Chat) => {
+    const type = (msg.media_type || msg.mime_type || "").split("/")[0].toLowerCase();
+    const mediaPreview = CONVERSATION_MEDIA_PREVIEWS[type] ?? { label: "Media", Icon: Paperclip };
+    const Icon = mediaPreview.Icon;
+    const caption = msg.message.replace(/^\[(?:Image|Video|Audio|Document) sent\]\s*/i, "").trim();
+
+    return (
+      <div className="min-w-[190px] space-y-2 rounded-xl border border-dashed border-current/20 bg-background/10 p-3">
+        <div className="flex items-center gap-3">
+          <div className="relative grid size-10 shrink-0 place-items-center rounded-lg bg-background/20">
+            <Icon className="size-5" aria-hidden="true" />
+            <Loader2 className="absolute -right-1 -bottom-1 size-4 animate-spin rounded-full bg-background p-0.5" aria-label="Sending" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Sending {mediaPreview.label.toLowerCase()}…</p>
+            <Skeleton className="mt-1 h-2 w-24 bg-current/20" />
+          </div>
+        </div>
+        {caption && <p className="break-words text-sm">{caption}</p>}
+      </div>
+    );
+  };
+
   const renderMessageContent = (msg: Chat) => {
     const text = msg.message.trim();
     const hasMedia = !!msg.media_path;
     const mediaUrl = msg.media_path ? `/api/whatsapp/media/${msg.media_path.split('/').pop()}` : null;
 
     if (hasMedia && msg.media_type === 'image' && mediaUrl) {
-      const caption = text.replace("[Image received]", "").replace(/^:?\s*/, "");
+      const caption = text.replace(/^\[Image (?:received|sent)\]/, "").replace(/^:?\s*/, "");
       return (
         <div className="space-y-1">
           <img
@@ -427,7 +510,7 @@ export default function WhatsAppPage() {
     }
 
     if (hasMedia && msg.media_type === 'video' && mediaUrl) {
-      const caption = text.replace("[Video received]", "").replace(/^:?\s*/, "");
+      const caption = text.replace(/^\[Video (?:received|sent)\]/, "").replace(/^:?\s*/, "");
       return (
         <div className="space-y-1">
           <video
@@ -442,7 +525,7 @@ export default function WhatsAppPage() {
     }
 
     if (hasMedia && msg.media_type === 'document' && mediaUrl) {
-      const name = text.replace("[Document received: ", "").replace("]", "");
+      const name = text.replace(/^\[Document (?:received|sent):?\s*/, "").replace(/\]$/, "");
       return (
         <a
           href={mediaUrl}
@@ -468,8 +551,8 @@ export default function WhatsAppPage() {
     }
 
     // Fallback: icon-based placeholders for old messages without stored media
-    if (text.startsWith("[Image received")) {
-      const caption = text.replace("[Image received]", "").replace(/^:?\s*/, "");
+    if (/^\[Image (?:received|sent)\]/i.test(text)) {
+      const caption = text.replace(/^\[Image (?:received|sent)\]/i, "").replace(/^:?\s*/, "");
       return (
         <div className="flex items-center gap-2">
           <Image className="w-5 h-5 shrink-0" />
@@ -477,8 +560,8 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (text.startsWith("[Video received")) {
-      const caption = text.replace("[Video received]", "").replace(/^:?\s*/, "");
+    if (/^\[Video (?:received|sent)\]/i.test(text)) {
+      const caption = text.replace(/^\[Video (?:received|sent)\]/i, "").replace(/^:?\s*/, "");
       return (
         <div className="flex items-center gap-2">
           <Video className="w-5 h-5 shrink-0" />
@@ -486,7 +569,7 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (text.startsWith("[Audio received")) {
+    if (/^\[Audio (?:received|sent)\]/i.test(text)) {
       return (
         <div className="flex items-center gap-2">
           <Music className="w-5 h-5 shrink-0" />
@@ -494,8 +577,8 @@ export default function WhatsAppPage() {
         </div>
       );
     }
-    if (text.startsWith("[Document received")) {
-      const name = text.replace("[Document received: ", "").replace("]", "");
+    if (/^\[Document (?:received|sent)/i.test(text)) {
+      const name = text.replace(/^\[Document (?:received|sent):?\s*/i, "").replace(/\]$/, "");
       return (
         <div className="flex items-center gap-2">
           <File className="w-5 h-5 shrink-0" />
@@ -548,7 +631,7 @@ export default function WhatsAppPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCheck className="w-5 h-5 text-success" />
+              <CheckCheck className="w-5 h-5 text-primary" />
               Message Sent
             </DialogTitle>
             <DialogDescription>
@@ -565,7 +648,7 @@ export default function WhatsAppPage() {
 
       {/* Image Lightbox */}
       <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-        <DialogContent className="sm:max-w-3xl p-0 bg-foreground border-none overflow-hidden">
+        <DialogContent className="sm:max-w-3xl p-0 bg-background border-none overflow-hidden">
           {previewImage && (
             <img
               src={previewImage}
@@ -583,7 +666,7 @@ export default function WhatsAppPage() {
           <div className="p-4 border-b bg-background/50 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-success" />
+                <MessageSquare className="w-5 h-5 text-primary" />
                 WhatsApp Chats
               </h2>
               <Button variant="ghost" size="sm">
@@ -664,7 +747,7 @@ export default function WhatsAppPage() {
                     >
                       <div className="flex items-start gap-3">
                         <Avatar className="w-12 h-12">
-                          <AvatarFallback className="bg-gradient-to-br from-success/30 to-success text-success-foreground font-medium">
+                          <AvatarFallback className="bg-gradient-to-br from-primary/30 to-primary text-primary-foreground font-medium">
                             {getInitials(conv.client_name, conv.phone)}
                           </AvatarFallback>
                         </Avatar>
@@ -676,7 +759,7 @@ export default function WhatsAppPage() {
                                 {conv.client_name || conv.phone}
                               </span>
                               {lastMsg?.type === "1" && (
-                                <div className="w-2 h-2 bg-success rounded-full"></div>
+                                <div className="w-2 h-2 bg-primary rounded-full"></div>
                               )}
                             </div>
                             <div className="flex items-center gap-1">
@@ -684,7 +767,7 @@ export default function WhatsAppPage() {
                                 {formatTime(conv.latest_at)}
                               </span>
                               {unreadCount > 0 && (
-                                <Badge variant="default" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs bg-success">
+                                <Badge variant="default" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs bg-primary text-primary-foreground">
                                   {unreadCount}
                                 </Badge>
                               )}
@@ -693,7 +776,7 @@ export default function WhatsAppPage() {
 
                           <div className="flex items-center gap-1">
                             <div className="text-sm text-muted-foreground truncate flex-1">
-                              {lastMsg?.media_path ? renderMessageContent(lastMsg) : lastMsg?.message.startsWith("[") ? renderMessageContent(lastMsg) : lastMsg?.message}
+                              {renderConversationPreview(lastMsg)}
                             </div>
                             {lastMsg && renderStatusIcon(lastMsg.status)}
                           </div>
@@ -729,7 +812,7 @@ export default function WhatsAppPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-gradient-to-br from-success/30 to-success text-success-foreground">
+                      <AvatarFallback className="bg-gradient-to-br from-primary/30 to-primary text-primary-foreground">
                         {getInitials(selected.client_name, selected.phone)}
                       </AvatarFallback>
                     </Avatar>
@@ -791,15 +874,17 @@ export default function WhatsAppPage() {
                             className={cn(
                               "max-w-[70%] rounded-2xl px-4 py-2 relative",
                               isOutgoing
-                                ? "bg-success text-success-foreground rounded-br-md"
+                                ? "bg-primary text-primary-foreground rounded-br-md"
                                 : "bg-muted rounded-bl-md"
                             )}
                           >
-                            {renderMessageContent(msg)}
+                            {msg.status === "pending" && (msg.media_type || msg.mime_type)
+                              ? renderPendingMedia(msg)
+                              : renderMessageContent(msg)}
                             <div className="flex items-center justify-end gap-1 mt-1">
                               <span className={cn(
                                 "text-xs",
-                                isOutgoing ? "text-success" : "text-muted-foreground"
+                                isOutgoing ? "text-primary-foreground/75" : "text-muted-foreground"
                               )}>
                                 {new Date(msg.created_at).toLocaleTimeString('en-US', {
                                   hour: '2-digit',
@@ -808,7 +893,7 @@ export default function WhatsAppPage() {
                                 })}
                               </span>
                               {isOutgoing && (
-                                <div className="text-success">
+                                <div className="text-primary-foreground">
                                   {renderStatusIcon(msg.status)}
                                 </div>
                               )}
@@ -824,8 +909,36 @@ export default function WhatsAppPage() {
 
               {/* Message Input */}
               <div className="p-4 border-t bg-background/95 backdrop-blur-sm">
+                {selectedMedia && (
+                  <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate">Attachment: {selectedMedia.name}</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedMedia(null)} aria-label="Remove attachment">
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                )}
+                <input
+                  ref={mediaInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/mpeg,audio/ogg,audio/aac,audio/mp4,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (file && file.size > 2 * 1024 * 1024) {
+                      alert("Attachments must be 2 MB or smaller.");
+                      event.target.value = "";
+                      return;
+                    }
+                    setSelectedMedia(file);
+                  }}
+                />
                 <div className="flex items-end gap-2">
-                  <Button variant="ghost" size="sm" className="mb-1">
+                  <Button type="button" variant="ghost" size="sm" className="mb-1" aria-label="Attach a file" onClick={() => {
+                    if (mediaInputRef.current) {
+                      mediaInputRef.current.value = "";
+                      mediaInputRef.current.click();
+                    }
+                  }}>
                     <Paperclip className="w-4 h-4" />
                   </Button>
 
@@ -854,13 +967,14 @@ export default function WhatsAppPage() {
 
                   <Button
                     onClick={handleSend}
-                    disabled={!message.trim()}
+                    disabled={!message.trim() && !selectedMedia}
                     size="sm"
-                    className="mb-1 rounded-full w-10 h-10 p-0 bg-success hover:bg-success"
+                    className="mb-1 rounded-full w-10 h-10 p-0"
                   >
                     <Send className="w-4 h-4" />
                   </Button>
                 </div>
+                <p className="mt-1 pl-1 text-xs text-muted-foreground">Images, videos, audio, or documents · maximum 2 MB. Media replies require an open 24-hour Meta customer-service window; audio cannot have a caption.</p>
               </div>
             </>
           ) : (
