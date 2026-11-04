@@ -113,6 +113,7 @@ export default function WhatsAppPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [readFilter, setReadFilter] = useState<"all" | "read" | "unread">("all");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -213,10 +214,17 @@ export default function WhatsAppPage() {
     )
   ).sort((a, b) => a.localeCompare(b));
 
-  // Conversations to display: search results when searching, normal list otherwise
+  // Conversations to display: apply status filtering to the active search or chat list.
+  const isConversationUnread = (conversation: Conversation) =>
+    conversation.messages.some((msg) => msg.type === "1");
+
   const displayConversations = filterByAgent(
     filterByCountry(searchResults !== null ? searchResults : conversations)
-  );
+  ).filter((conversation) => {
+    if (readFilter === "unread") return isConversationUnread(conversation);
+    if (readFilter === "read") return !isConversationUnread(conversation);
+    return true;
+  });
 
   const handleSearchEnter = async () => {
     const q = searchQuery.trim();
@@ -697,6 +705,26 @@ export default function WhatsAppPage() {
                   ✕
                 </button>
               )}
+            </div>
+
+            {/* Read status filter */}
+            <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Filter chats by read status">
+              {(["all", "read", "unread"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  aria-pressed={readFilter === filter}
+                  onClick={() => setReadFilter(filter)}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 text-xs font-medium capitalize transition-colors",
+                    readFilter === filter
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {filter === "all" ? "All" : filter === "read" ? "Read" : "Unread"}
+                </button>
+              ))}
             </div>
 
             {/* Agent Filter */}

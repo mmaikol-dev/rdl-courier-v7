@@ -1,4 +1,8 @@
 import { Button } from '@/components/ui/button';
+import BranchFlow from '@/components/reactvibe/BranchFlow';
+import Converge, { type DataSourceItem } from '@/components/reactvibe/Converge';
+import HubFlow from '@/components/reactvibe/HubFlow';
+import Pipeline from '@/components/reactvibe/Pipeline';
 import { Head, Link } from '@inertiajs/react';
 import { ArrowDown, ArrowRight, Boxes, Check, ChevronRight, CircleHelp, Code2, KeyRound, Package, ShieldCheck, Webhook } from 'lucide-react';
 import * as React from 'react';
@@ -359,6 +363,48 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
     return <div className="overflow-hidden rounded-xl border bg-slate-950 text-slate-100 dark:bg-[#090d14]"><div className="flex items-center justify-between border-b border-white/10 px-4 py-2"><div className="flex gap-1.5" aria-hidden="true"><span className="size-2 rounded-full bg-rose-400/80" /><span className="size-2 rounded-full bg-amber-300/80" /><span className="size-2 rounded-full bg-emerald-400/80" /></div><span className="font-mono text-[10px] text-slate-400">{language}</span></div><pre className="overflow-x-auto p-4 text-xs leading-6"><code data-language={language}>{highlighted}</code></pre></div>;
 }
 
+type ProcessView = 'pipeline' | 'branch' | 'hub' | 'converge';
+
+const processViews: { id: ProcessView; label: string; title: string; description: string }[] = [
+    { id: 'pipeline', label: 'Pipeline', title: 'From credentials to synced data', description: 'Follow a typical request from setup through your own application.' },
+    { id: 'branch', label: 'Branch flow', title: 'One integration, three data paths', description: 'Use the same secured connection to read orders, products, and stock movements.' },
+    { id: 'hub', label: 'Hub flow', title: 'Realdeal API as your integration hub', description: 'Your system connects to the resources it needs through one permissioned API.' },
+    { id: 'converge', label: 'Converge', title: 'Events meet at your webhook receiver', description: 'Order, product, and transfer events reach one signed endpoint in your system.' },
+];
+
+const webhookFlowSources: DataSourceItem[] = [
+    { id: 'order-created', name: 'Order created', detail: 'order.created', color: 'var(--primary)', y: 100, icon: <Package size={25} /> },
+    { id: 'order-updated', name: 'Order updated', detail: 'order.updated', color: 'var(--primary)', y: 180, icon: <Package size={25} /> },
+    { id: 'product-updated', name: 'Product updated', detail: 'product.updated', color: 'var(--primary)', y: 260, icon: <Boxes size={25} /> },
+    { id: 'transfer-created', name: 'Transfer created', detail: 'transfer.created', color: 'var(--primary)', y: 340, icon: <Webhook size={25} /> },
+    { id: 'transfer-returned', name: 'Transfer returned', detail: 'transfer.returned', color: 'var(--primary)', y: 420, icon: <Webhook size={25} /> },
+];
+
+function ProcessFlow() {
+    const [view, setView] = React.useState<ProcessView>('pipeline');
+    const selected = processViews.find((item) => item.id === view)!;
+
+    return <section className="scroll-mt-8 border-b py-10 sm:py-12" aria-labelledby="process-flow-title">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div><p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">PROCESS VISUALIZER</p><h2 id="process-flow-title" className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">See how the integration works</h2></div>
+            <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border bg-muted/30 p-1" role="tablist" aria-label="Integration flow views">
+                {processViews.map((item) => <button key={item.id} role="tab" aria-selected={view === item.id} onClick={() => setView(item.id)} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors sm:px-3 ${view === item.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>{item.label}</button>)}
+            </div>
+        </div>
+        <div className="overflow-hidden rounded-2xl border bg-muted/10 p-4 sm:p-6">
+            <div className="mb-5"><h3 className="text-sm font-semibold">{selected.title}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{selected.description}</p></div>
+
+            <div className="relative min-h-[260px] overflow-hidden rounded-xl border bg-background">
+                {view === 'pipeline' && <Pipeline particleCount={2} particleSpeed={3.5} particleSize={2} />}
+                {view === 'branch' && <BranchFlow curveColor="var(--border)" particleColor="var(--primary)" particleSpeed={3} />}
+                {view === 'hub' && <HubFlow particleColor="var(--primary)" bottomParticleColor="var(--primary)" particleSpeed={3} />}
+                {view === 'converge' && <Converge headerText="MERCHANT WEBHOOK EVENTS" hubTopText="WEBHOOK" hubBottomText="RDL" CurcePillColor="var(--primary)" CurveColor="var(--border)" dataSources={webhookFlowSources} />}
+            </div>
+            <p className="mt-3 text-[10px] leading-4 text-muted-foreground">Illustrative flow only. Your configured scopes and webhook subscriptions determine which paths are available.</p>
+        </div>
+    </section>;
+}
+
 export default function ApiDeveloperGuide() {
     const [language, setLanguage] = React.useState<Language>('node');
     const [apiResource, setApiResource] = React.useState<ApiResource>('orders');
@@ -419,6 +465,8 @@ export default function ApiDeveloperGuide() {
                     </div>
                 </div>
             </section>
+
+            <ProcessFlow />
 
             <section id="quick-start" className="scroll-mt-8 border-b py-12 sm:py-16">
                 <SectionTitle eyebrow="01 / QUICK START" title="Make your first request">You can integrate with any language or framework that can make HTTPS requests and read JSON. Start with a token and one GET request.</SectionTitle>

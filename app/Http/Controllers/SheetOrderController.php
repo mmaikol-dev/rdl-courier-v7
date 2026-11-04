@@ -115,6 +115,56 @@ class SheetOrderController extends Controller
                 ];
             });
 
+        $createSheetOptions = [];
+        $role = strtolower(trim((string) $user->roles));
+        if (in_array($role, ['merchant', 'g.o.d'], true)) {
+            $sheetQuery = Sheet::query()
+                ->whereNotNull('sheet_id')->where('sheet_id', '!=', '')
+                ->whereNotNull('sheet_name')->where('sheet_name', '!=', '')
+                ->whereNotNull('country')->where('country', '!=', '');
+
+            if ($role === 'merchant') {
+                $merchantNames = array_values(array_unique(array_filter([
+                    mb_strtolower(trim((string) $user->name)),
+                ])));
+                $sheetQuery->where(function ($query) use ($merchantNames): void {
+                    foreach ($merchantNames as $name) {
+                        $query->orWhereRaw('LOWER(TRIM(sheet_name)) = ?', [$name]);
+                    }
+                });
+            }
+
+            $sourceSheets = $sheetQuery->orderBy('country')->orderBy('sheet_name')->get([
+                'sheet_id', 'sheet_name', 'country',
+            ]);
+            $sourceSheetIds = $sourceSheets->pluck('sheet_id')->unique()->values();
+            $sheetTabs = SheetOrder::query()
+                ->whereIn('sheet_id', $sourceSheetIds)
+                ->whereNotNull('sheet_name')->where('sheet_name', '!=', '')
+                ->select('sheet_id', 'sheet_name', 'merchant', 'country')->distinct()->get()
+                ->groupBy(fn (SheetOrder $order): string => implode('|', [
+                    (string) $order->sheet_id,
+                    mb_strtolower(trim((string) $order->merchant)),
+                    mb_strtolower(trim((string) $order->country)),
+                ]));
+
+            $createSheetOptions = $sourceSheets->map(function (Sheet $sheet) use ($sheetTabs): array {
+                $key = implode('|', [
+                    (string) $sheet->sheet_id,
+                    mb_strtolower(trim((string) $sheet->sheet_name)),
+                    mb_strtolower(trim((string) $sheet->country)),
+                ]);
+
+                return [
+                    'country' => $sheet->country,
+                    'merchant' => $sheet->sheet_name,
+                    'sheet_id' => $sheet->sheet_id,
+                    'sheet_names' => ($sheetTabs->get($key) ?? collect())
+                        ->pluck('sheet_name')->unique()->sort()->values()->all(),
+                ];
+            })->values()->all();
+        }
+
         if ($user->roles === 'merchant') {
             $merchantUsers = collect([$user->name]);
             $ccUsers = (clone $query)->reorder()->whereNotNull('cc_email')->distinct()->pluck('cc_email');
@@ -138,6 +188,7 @@ class SheetOrderController extends Controller
             'filters' => $request->all(),
             'merchantUsers' => $merchantUsers,
             'merchantData' => $merchantData,
+            'createSheetOptions' => $createSheetOptions,
             'ccUsers' => $ccUsers,
         ]);
     }
@@ -178,6 +229,8 @@ class SheetOrderController extends Controller
     public function store(Request $request)
     {
         $user = $request->user()->loadMissing('country');
+        $role = strtolower(trim((string) $user->roles));
+        $usesCountrySheetPicker = in_array($role, ['merchant', 'g.o.d'], true);
         $validated = $request->validate([
             'order_date' => 'sometimes|nullable|date',
             'amount' => 'required|numeric',
@@ -189,7 +242,7 @@ class SheetOrderController extends Controller
             'address' => 'nullable|string|max:255',
             'product_name' => 'nullable|string|max:255',
             'city' => 'nullable|string|max:255',
-            'country' => 'nullable|string|max:255',
+            'country' => $usesCountrySheetPicker ? 'required|string|max:255' : 'nullable|string|max:255',
             'phone' => 'nullable|string|max:50',
             'agent' => 'nullable|string|max:255',
             'store_name' => 'nullable|string|max:255',
@@ -197,39 +250,46 @@ class SheetOrderController extends Controller
             'code' => 'nullable|string|max:255',
             'order_type' => 'nullable|string|max:255',
             'alt_no' => 'nullable|string|max:255',
-            'merchant' => 'nullable|string|max:255',
+            'merchant' => $role === 'g.o.d' ? 'required|string|max:255' : 'nullable|string|max:255',
             'cc_email' => 'nullable|string|max:255',
             'instructions' => 'nullable|string',
             'invoice_code' => 'nullable|string|max:255',
-            'sheet_id' => 'nullable|string|max:255',
-            'sheet_name' => 'nullable|string|max:255',
+            'sheet_id' => $usesCountrySheetPicker ? 'required|string|max:255' : 'nullable|string|max:255',
+            'sheet_name' => $usesCountrySheetPicker ? 'required|string|max:255' : 'nullable|string|max:255',
         ]);
 
         $validated['order_date'] = $validated['order_date'] ?: now()->toDateString();
-        if ($user->roles === 'merchant') {
-            $validated['merchant'] = $user->name;
-            $validated['cc_email'] = null;
+        if ($usesCountrySheetPicker) {
+            $merchantName = $role === 'merchant' ? $user->name : trim((string) $validated['merchant']);
+            $sheet = Sheet::query()
+                ->where('sheet_id', $validated['sheet_id'])
+                ->whereRaw('LOWER(TRIM(sheet_name)) = ?', [mb_strtolower($merchantName)])
+                ->whereRaw('LOWER(TRIM(country)) = ?', [mb_strtolower(trim($validated['country']))])
+                ->first();
 
-            if (! empty($validated['sheet_name'])) {
-                abort_unless(
-                    SheetOrder::query()->where('merchant', $user->name)
-                        ->where('sheet_name', $validated['sheet_name'])
-                        ->exists(),
-                    403
-                );
-            }
+            abort_unless($sheet, 403, 'The selected country and merchant sheet do not match.');
+            abort_unless(
+                SheetOrder::query()
+                    ->where('sheet_id', $sheet->sheet_id)
+                    ->whereRaw('LOWER(TRIM(merchant)) = ?', [mb_strtolower(trim($merchantName))])
+                    ->where('sheet_name', $validated['sheet_name'])
+                    ->whereRaw('LOWER(TRIM(country)) = ?', [mb_strtolower(trim((string) $sheet->country))])
+                    ->exists(),
+                403,
+                'The selected sheet tab is not available for this country.'
+            );
 
-            if (! empty($validated['sheet_id']) && ! empty($validated['sheet_name'])) {
-                $sheet = Sheet::query()
-                    ->where('sheet_id', $validated['sheet_id'])
-                    ->where('sheet_name', $user->name)
-                    ->first();
+            $validated['merchant'] = $merchantName;
+            $validated['sheet_id'] = $sheet->sheet_id;
+            $validated['country'] = $sheet->country;
 
+            if ($role === 'merchant') {
+                $validated['cc_email'] = null;
                 $validated['cc_email'] = $this->sheetOrderImport->resolveCcEmail($sheet, $validated);
             }
+        } else {
+            $validated['country'] = CountryAccess::resolveCountryNameForWrite($user, $validated['country'] ?? null);
         }
-
-        $validated['country'] = CountryAccess::resolveCountryNameForWrite($user, $validated['country'] ?? null);
 
         // Generate order number with both sheet_name and sheet_id
         $validated['order_no'] = $this->getNextOrderNumber(

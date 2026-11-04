@@ -42,6 +42,7 @@ import { type DateRange } from 'react-day-picker';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import VoicePanel from '@/components/voice/voice-panel';
+import { AFRICAN_COUNTRIES } from '@/lib/african-countries';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
@@ -147,6 +148,13 @@ interface SheetOrder {
     sheet_id: string;
     sheet_name: string;
     updated_at: string;
+}
+
+interface CreateSheetOption {
+    country: string;
+    merchant: string;
+    sheet_id: string;
+    sheet_names: string[];
 }
 
 interface OrderHistory {
@@ -442,14 +450,16 @@ const getCurrentDateTimePrefix = () => {
 
 export default function Index() {
     const { props } = usePage();
-    const authUser = (props as { auth?: { user?: { roles?: string; name?: string } } }).auth?.user;
-    const isMerchant = authUser?.roles === 'merchant';
+    const authUser = (props as { auth?: { user?: { roles?: string; name?: string; username?: string } } }).auth?.user;
+    const isMerchant = authUser?.roles?.toLowerCase() === 'merchant';
+    const isGod = authUser?.roles?.toLowerCase() === 'g.o.d';
 
     const {
         orderResults,
         merchantUsers,
         ccUsers,
         merchantData,
+        createSheetOptions = [],
         filters: initialFilters,
     } = props as unknown as {
         orderResults?: {
@@ -459,6 +469,7 @@ export default function Index() {
         merchantUsers: string[];
         ccUsers: string[];
         merchantData: Record<string, { sheet_id: string; sheet_names: string[] }>;
+        createSheetOptions?: CreateSheetOption[];
         filters?: Record<string, string | string[]>;
     };
     const orders = orderResults?.orders ?? EMPTY_ORDERS;
@@ -886,7 +897,24 @@ export default function Index() {
     }, []);
 
     // ✅ Memoize merchant data arrays to prevent recreation
-    const merchantOptions = React.useMemo(() => Object.keys(merchantData), [merchantData]);
+    const countrySheetOptions = React.useMemo(
+        () => createSheetOptions.filter((option) => option.country === newOrder.country && option.sheet_names.length > 0),
+        [createSheetOptions, newOrder.country],
+    );
+    const merchantOptions = React.useMemo(
+        () => isGod && newOrder.country
+            ? [...new Set(countrySheetOptions.map((option) => option.merchant))]
+            : Object.keys(merchantData),
+        [countrySheetOptions, isGod, merchantData, newOrder.country],
+    );
+    const createCountryOptions = AFRICAN_COUNTRIES;
+    const selectedCountrySheet = countrySheetOptions.find((option) => option.merchant === newOrder.merchant);
+    const createSheetNames = (isMerchant || isGod)
+        ? selectedCountrySheet?.sheet_names ?? []
+        : merchantData[newOrder.merchant || '']?.sheet_names ?? [];
+    const hasCountrySheetSelection = !(isMerchant || isGod) || Boolean(
+        newOrder.country && newOrder.sheet_id && newOrder.sheet_name && (!isGod || newOrder.merchant),
+    );
     const selectedStatuses = React.useMemo(() => normalizeMultiSelectFilter(filters.status as string | string[] | undefined), [filters.status]);
     const selectedMerchants = React.useMemo(
         () => normalizeMultiSelectFilter(filters.merchant as string | string[] | undefined),
@@ -1456,6 +1484,44 @@ export default function Index() {
                     </DialogHeader>
 
                     <div className="grid max-h-[72vh] grid-cols-2 gap-3 overflow-y-auto pr-1">
+                        {(isMerchant || isGod) && (
+                            <Select
+                                value={newOrder.country || ''}
+                                onValueChange={(country) => {
+                                    const merchant = isMerchant ? (authUser?.name || '') : '';
+                                    const countrySheet = createSheetOptions.find(
+                                        (option) => option.country === country && option.merchant === merchant && option.sheet_names.length > 0,
+                                    );
+                                    setNewOrder((previous) => ({
+                                        ...previous,
+                                        country,
+                                        ...(isMerchant
+                                            ? {
+                                                  merchant,
+                                                  sheet_id: countrySheet?.sheet_id || '',
+                                                  sheet_name: countrySheet?.sheet_names[0] || '',
+                                              }
+                                            : { merchant: '', sheet_id: '', sheet_name: '' }),
+                                    }));
+                                }}
+                                disabled={isCreating}
+                            >
+                                <SelectTrigger className="col-span-2 h-9 text-sm">
+                                    <SelectValue placeholder="Select country first" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {createCountryOptions.map((country) => (
+                                        <SelectItem key={country} value={country}>{country}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        {(isMerchant || isGod) && newOrder.country && countrySheetOptions.length === 0 && (
+                            <p className="col-span-2 -mt-1 text-xs text-muted-foreground">
+                                No merchant sheet with available order tabs is linked to {newOrder.country}.
+                            </p>
+                        )}
+
                         {/* --- Order Info --- */}
                         <Popover>
                             <PopoverTrigger asChild>
@@ -1538,7 +1604,7 @@ export default function Index() {
                         {/* --- Merchant Select --- */}
                         {!isMerchant && <Popover open={createMerchantOpen} onOpenChange={setCreateMerchantOpen}>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm" disabled={isCreating}>
+                                <Button variant="outline" role="combobox" className="h-9 w-full justify-between text-sm" disabled={isCreating || (isGod && (!newOrder.country || merchantOptions.length === 0))}>
                                     <span className="truncate">{newOrder.merchant || 'Select Merchant'}</span>
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -1553,11 +1619,20 @@ export default function Index() {
                                                     key={merchant}
                                                     value={merchant}
                                                     onSelect={() => {
-                                                        handleNewOrderChange('merchant', merchant);
-
-                                                        if (merchantData[merchant]) {
-                                                            handleNewOrderChange('sheet_id', merchantData[merchant].sheet_id || '');
-                                                            handleNewOrderChange('sheet_name', '');
+                                                        if (isGod) {
+                                                            const source = countrySheetOptions.find((option) => option.merchant === merchant);
+                                                            setNewOrder((previous) => ({
+                                                                ...previous,
+                                                                merchant,
+                                                                sheet_id: source?.sheet_id || '',
+                                                                sheet_name: source?.sheet_names[0] || '',
+                                                            }));
+                                                        } else {
+                                                            handleNewOrderChange('merchant', merchant);
+                                                            if (merchantData[merchant]) {
+                                                                handleNewOrderChange('sheet_id', merchantData[merchant].sheet_id || '');
+                                                                handleNewOrderChange('sheet_name', '');
+                                                            }
                                                         }
 
                                                         setCreateMerchantOpen(false);
@@ -1582,14 +1657,14 @@ export default function Index() {
                         <Select
                             value={newOrder.sheet_name || ''}
                             onValueChange={(val) => handleNewOrderChange('sheet_name', val)}
-                            disabled={!newOrder.merchant || isCreating}
+                            disabled={(!newOrder.merchant || ((isMerchant || isGod) && !newOrder.country) || createSheetNames.length === 0) || isCreating}
                         >
                             <SelectTrigger className="h-9 text-sm">
                                 <SelectValue placeholder="Select Sheet Name" />
                             </SelectTrigger>
                             <SelectContent>
                                 {newOrder.merchant &&
-                                    merchantData[newOrder.merchant]?.sheet_names.map((sn: string) => (
+                                    createSheetNames.map((sn: string) => (
                                         <SelectItem key={sn} value={sn}>
                                             {sn}
                                         </SelectItem>
@@ -1678,7 +1753,7 @@ export default function Index() {
                         <Button variant="outline" disabled={isCreating} onClick={() => setCreateModalOpen(false)}>
                             Cancel
                         </Button>
-                        <Button disabled={isCreating} onClick={handleCreateOrder}>
+                        <Button disabled={isCreating || !hasCountrySheetSelection} onClick={handleCreateOrder}>
                             {isCreating ? (
                                 <>
                                     <Spinner className="mr-2" />
