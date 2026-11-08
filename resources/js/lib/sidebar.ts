@@ -33,6 +33,7 @@ import {
     Waypoints,
     SendToBackIcon,
     Skull,
+    Truck,
 } from 'lucide-react';
 
 import type { NavItem } from '@/types';
@@ -42,6 +43,7 @@ export type SidebarItemKey =
     | 'waredash'
     | 'stats'
     | 'sheetorders'
+    | 'order-product-matching'
     | 'updates'
     | 'assign'
     | 'dispatch'
@@ -97,6 +99,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
         label: 'Operations',
         items: [
             { key: 'sheetorders', title: 'Orders', href: '/sheetorders', icon: ListCheckIcon, group: 'Operations' },
+            { key: 'order-product-matching', title: 'Order Product Matching', href: '/order-product-matching', icon: PackageSearch, group: 'Operations' },
             { key: 'updates', title: 'Updates', href: '/updates', icon: RefreshCcwIcon, group: 'Operations' },
             { key: 'assign', title: 'Re/Assign Orders', href: '/assign', icon: ReplaceAllIcon, group: 'Operations' },
             { key: 'dispatch', title: 'Dispatch', href: '/dispatch', icon: Waypoints, group: 'Operations' },
@@ -161,8 +164,21 @@ export const adminToolsGroup: SidebarGroupDefinition = {
 
 export const allSidebarItems = [...sidebarGroups, adminToolsGroup].flatMap((group) => group.items);
 
-export function filterSidebarGroups(visibleItems: string[], canManage: boolean): SidebarGroupDefinition[] {
+export function filterSidebarGroups(visibleItems: string[], canManage: boolean, role?: string): SidebarGroupDefinition[] {
     const allowedKeys = new Set(visibleItems);
+    const isAgent = role?.trim().toLowerCase() === 'agent';
+    if (isAgent) {
+        const agentItems = sidebarGroups.flatMap((group) => group.items)
+            .filter((item) => allowedKeys.has(item.key))
+            .map((item) => {
+                if (item.key === 'stk') return { ...item, title: 'Deliveries', icon: Truck };
+                if (item.key === 'transfer') return { ...item, title: 'Stock' };
+                return item;
+            });
+        const priority: SidebarItemKey[] = ['dashboard', 'stk', 'transfer'];
+        agentItems.sort((a, b) => priority.indexOf(a.key) - priority.indexOf(b.key));
+        return agentItems.length ? [{ id: 'agent', label: 'Agent', items: agentItems }] : [];
+    }
     const visibleGroups = sidebarGroups
         .map((group) => ({
             ...group,

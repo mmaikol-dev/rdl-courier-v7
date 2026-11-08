@@ -35,6 +35,7 @@ export interface DashboardPageProps {
         remittedAmount: number;
         productsCount: number;
         stockAvailable: number;
+        agentStockAvailable: number;
         lowStockProducts: number;
         codCollected: number | null;
         courierHeldAmount: number | null;

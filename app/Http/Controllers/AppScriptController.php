@@ -101,7 +101,8 @@ class AppScriptController extends Controller
             return response()->json(['success' => false, 'message' => 'Order not found'], 404);
         }
 
-        $order->updated_at = $validated['updated_at'];
+        $order->edited_at = $validated['updated_at'];
+        $order->updated_at = null;
         $order->save();
 
         return response()->json(['success' => true]);

@@ -278,6 +278,7 @@ class InventoryDeductionController extends Controller
                         $order->forceFill([
                             'inventory_deducted_at' => now(),
                             'inventory_deducted_by' => $user?->id,
+                            'inventory_deduction_actor' => $user?->name ?? 'system',
                             'inventory_product_id' => $product->id,
                         ])->save();
                     }

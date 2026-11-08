@@ -1,15 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
 import { Deferred, Head, usePage } from "@inertiajs/react";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CsvImport, type CsvField, type CsvRequiredGroup } from "@/components/csv-import";
+import { toCsv } from "@/components/csv-parse";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -28,6 +39,42 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: "Import Orders", href: "/orders/import" },
 ];
 
+const orderCsvFields: CsvField[] = [
+  { key: "order_no", label: "Order number", match: ["order no", "order number", "order #", "orderno"] },
+  { key: "order_date", label: "Order date", required: true, match: ["date ordered"] },
+  { key: "amount", label: "Amount", required: true, match: ["total", "price"] },
+  { key: "client_name", label: "Customer name", match: ["client name", "customer", "name"] },
+  { key: "address", label: "Address", match: ["delivery address"] },
+  { key: "phone", label: "Phone", match: ["telephone", "mobile"] },
+  { key: "alt_no", label: "Alternate phone", match: ["alternate phone", "alt phone"] },
+  { key: "city", label: "City" },
+  { key: "product_name", label: "Product name", required: true, match: ["product", "item"] },
+  { key: "quantity", label: "Quantity", required: true, match: ["qty"] },
+  { key: "status", label: "Status", match: ["order status"] },
+  { key: "delivery_date", label: "Delivery date" },
+  { key: "instructions", label: "Instructions", match: ["notes", "comments"] },
+  { key: "cc_email", label: "Call center email", match: ["cc email"] },
+];
+
+const orderCsvRequiredGroups: CsvRequiredGroup[] = [{ keys: ["address", "city"], label: "Address or City" }];
+const orderCsvTemplate = `data:text/csv;charset=utf-8,${encodeURIComponent(orderCsvFields.map((field) => field.key).join(","))}`;
+const orderCsvPositionalMapping: Record<string, number> = {
+  order_date: 0,
+  order_no: 1,
+  amount: 2,
+  client_name: 3,
+  address: 4,
+  phone: 5,
+  alt_no: 6,
+  city: 8,
+  product_name: 9,
+  quantity: 10,
+  status: 11,
+  delivery_date: 12,
+  instructions: 14,
+  cc_email: 15,
+};
+
 interface Sheet {
   id: number;
   sheet_id: string;
@@ -43,23 +90,14 @@ interface Country {
   currency: string;
 }
 
+interface ImportDestination {
+  sheet: Sheet;
+  country: string;
+  sheetName: string;
+}
+
 function getCsrfToken() {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
-}
-
-function getCookieValue(name: string) {
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")
-    .slice(1)
-    .join("=");
-}
-
-function getXsrfToken() {
-  const cookieToken = getCookieValue("XSRF-TOKEN");
-
-  return cookieToken ? decodeURIComponent(cookieToken) : getCsrfToken();
 }
 
 export default function ImportOrdersPage() {
@@ -85,7 +123,6 @@ export default function ImportOrdersPage() {
 
   const role = (props.auth?.user?.roles || "").trim().toLowerCase();
   const isMerchant = role === "merchant";
-  const merchantIdentity = props.auth?.user?.name || props.auth?.user?.username || "";
   // Mirrors CountryAccess::userCountryName(): store_address wins, country.name is the fallback.
   const userCountry =
     props.userCountry || props.auth?.user?.store_address || props.auth?.user?.country?.name || "";
@@ -125,9 +162,54 @@ export default function ImportOrdersPage() {
     setSelectedSheet(null);
   }, [canPickCountry, matchCountryOption, props.selectedCountry]);
   const [file, setFile] = useState<File | null>(null);
+  const [workbookInputKey, setWorkbookInputKey] = useState(0);
   const [open, setOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const csvImportDestination = useRef<ImportDestination | null>(null);
+  const generatedOrderContext = useRef<{ merchantId: number; fileHash: string } | null>(null);
+  const autoNumberDecision = useRef<((accepted: boolean) => void) | null>(null);
+  const [autoNumberPrompt, setAutoNumberPrompt] = useState<{ count: number } | null>(null);
+
+  const confirmAutoGeneratedOrderNumbers = async (rows: Record<string, string>[]) => {
+    try {
+      const destination = validateDestination();
+      csvImportDestination.current = destination;
+      const missingCount = rows.filter((row) => !row.order_no?.trim()).length;
+      if (!missingCount) {
+        generatedOrderContext.current = null;
+        return true;
+      }
+
+      if (!globalThis.crypto?.subtle) {
+        throw new Error("Secure order number generation is unavailable in this browser.");
+      }
+
+      const digest = async (value: string) => {
+        const bytes = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+        return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      };
+      const fileHash = await digest(JSON.stringify(rows));
+
+      return new Promise<boolean>((resolve) => {
+        autoNumberDecision.current = (accepted) => {
+          generatedOrderContext.current = accepted ? { merchantId: destination.sheet.id, fileHash } : null;
+          if (!accepted) csvImportDestination.current = null;
+          autoNumberDecision.current = null;
+          setAutoNumberPrompt(null);
+          resolve(accepted);
+        };
+        setAutoNumberPrompt({ count: missingCount });
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not prepare generated order numbers.");
+      return false;
+    }
+  };
+
+  const answerAutoNumberPrompt = (accepted: boolean) => {
+    autoNumberDecision.current?.(accepted);
+  };
 
   const sheetsForCountry = useMemo(() => {
     // Merchants legitimately trade across countries, so they are never country-filtered.
@@ -171,139 +253,162 @@ export default function ImportOrdersPage() {
     setSheetName("orders");
     setCountry(getDefaultCountry());
     setFile(null);
+    setWorkbookInputKey((key) => key + 1);
+    generatedOrderContext.current = null;
+    csvImportDestination.current = null;
   };
 
-  const handleImport = async () => {
-    if (isImporting) return;
-
-    if (!file) {
-      toast.error("Upload a CSV or Excel file first.");
-      return;
-    }
-
+  const validateDestination = (): ImportDestination => {
     if (!selectedSheet) {
-      toast.error("Select a merchant before importing.");
-      return;
+      throw new Error("Select a merchant before importing.");
     }
 
     if (!country.trim()) {
-      toast.error("Select a country.");
-      return;
+      throw new Error("Select a country.");
     }
 
     if (!sheetName.trim()) {
-      toast.error("Enter the destination sheet name.");
-      return;
+      throw new Error("Enter the destination sheet name.");
     }
 
-    const formData = new FormData();
-    formData.append("country", country);
-    formData.append("merchant", selectedSheet.sheet_name);
-    formData.append("sheet_id", selectedSheet.sheet_id);
-    formData.append("sheet_name", sheetName.trim());
-    formData.append("store_name", selectedSheet.store_name);
-    formData.append("file", file);
+    return { sheet: selectedSheet, country, sheetName: sheetName.trim() };
+  };
 
-    setIsImporting(true);
+  const uploadImportFile = async (
+    uploadFile: File,
+    signal?: AbortSignal,
+    destination: ImportDestination = validateDestination(),
+  ) => {
+    const formData = new FormData();
+    formData.append("country", destination.country);
+    formData.append("merchant", destination.sheet.sheet_name);
+    formData.append("sheet_id", destination.sheet.sheet_id);
+    formData.append("sheet_name", destination.sheetName);
+    formData.append("store_name", destination.sheet.store_name);
+    formData.append("file", uploadFile);
     setUploadProgress(0);
 
-    try {
-      const progressToastId = "import-upload-progress";
+    const progressToastId = "import-upload-progress";
+    toast.loading("Uploading orders...", { id: progressToastId, description: "0% complete" });
 
-      toast.loading("Uploading orders...", {
-        id: progressToastId,
-        description: "0% complete",
-      });
+    const response = await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const abortUpload = () => xhr.abort();
+      const cleanUp = () => signal?.removeEventListener("abort", abortUpload);
 
-      const response = await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/orders/import", true);
+      xhr.responseType = "text";
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
 
-        xhr.open("POST", "/orders/import", true);
-        xhr.responseType = "text";
-        xhr.withCredentials = true;
-        xhr.setRequestHeader("Accept", "application/json");
-        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-
-        const csrf = csrfHeaders();
-        if (csrf["X-XSRF-TOKEN"]) {
-          xhr.setRequestHeader("X-XSRF-TOKEN", csrf["X-XSRF-TOKEN"]);
-        } else {
-          xhr.setRequestHeader("X-CSRF-TOKEN", csrf["X-CSRF-TOKEN"] ?? getCsrfToken());
-        }
-
-        xhr.upload.onprogress = (event) => {
-          if (!event.lengthComputable) return;
-
-          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
-          setUploadProgress(percent);
-
-          toast.loading("Uploading orders...", {
-            id: progressToastId,
-            description: (
-              <div className="space-y-2">
-                <div className="text-sm">{percent}% complete</div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${percent}%` }}
-                  />
-                </div>
-              </div>
-            ),
-          });
-        };
-
-        xhr.onload = () => {
-          try {
-            const contentType = xhr.getResponseHeader("content-type") || "";
-            const body = xhr.responseText || "";
-
-            if (!contentType.includes("application/json")) {
-              reject(
-                new Error(
-                  body.startsWith("<!DOCTYPE") || body.startsWith("<html")
-                    ? "The server returned HTML instead of JSON."
-                    : body || "Unexpected server response.",
-                ),
-              );
-              return;
-            }
-
-            resolve({
-              status: xhr.status,
-              body: body ? JSON.parse(body) : {},
-            });
-          } catch (error) {
-            reject(error instanceof Error ? error : new Error("Failed to parse server response."));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error("Upload failed. Please check your connection and try again."));
-        xhr.onabort = () => reject(new Error("Upload was cancelled."));
-
-        xhr.send(formData);
-      });
-
-      const data = response.body as { message?: string; errors?: Record<string, string | string[]> };
-
-      if (response.status < 200 || response.status >= 300) {
-        const message =
-          data?.message ||
-          Object.values(data?.errors || {})?.flat?.()[0] ||
-          "Failed to import orders";
-        throw new Error(typeof message === "string" ? message : "Failed to import orders");
+      const csrf = csrfHeaders();
+      if (csrf["X-XSRF-TOKEN"]) {
+        xhr.setRequestHeader("X-XSRF-TOKEN", csrf["X-XSRF-TOKEN"]);
+      } else {
+        xhr.setRequestHeader("X-CSRF-TOKEN", csrf["X-CSRF-TOKEN"] ?? getCsrfToken());
       }
 
-      setUploadProgress(100);
-      toast.success(data?.message || "Orders imported successfully", {
-        id: progressToastId,
-      });
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        setUploadProgress(percent);
+        toast.loading("Uploading orders...", {
+          id: progressToastId,
+          description: (
+            <div className="space-y-2">
+              <div className="text-sm">{percent}% complete</div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+              </div>
+            </div>
+          ),
+        });
+      };
+
+      xhr.onload = () => {
+        cleanUp();
+        try {
+          const contentType = xhr.getResponseHeader("content-type") || "";
+          const body = xhr.responseText || "";
+          if (!contentType.includes("application/json")) {
+            reject(new Error(body.startsWith("<!DOCTYPE") || body.startsWith("<html") ? "The server returned HTML instead of JSON." : body || "Unexpected server response."));
+            return;
+          }
+          resolve({ status: xhr.status, body: body ? JSON.parse(body) : {} });
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error("Failed to parse server response."));
+        }
+      };
+      xhr.onerror = () => {
+        cleanUp();
+        reject(new Error("Upload failed. Please check your connection and try again."));
+      };
+      xhr.onabort = () => {
+        cleanUp();
+        reject(new Error("Upload was cancelled."));
+      };
+      signal?.addEventListener("abort", abortUpload, { once: true });
+      if (signal?.aborted) {
+        abortUpload();
+        return;
+      }
+      xhr.send(formData);
+    });
+
+    const data = response.body as { message?: string; errors?: Record<string, string | string[]> };
+    if (response.status < 200 || response.status >= 300) {
+      const message = data?.message || Object.values(data?.errors || {}).flat()[0] || "Failed to import orders";
+      throw new Error(typeof message === "string" ? message : "Failed to import orders");
+    }
+
+    setUploadProgress(100);
+    return data?.message || "Orders imported successfully";
+  };
+
+  const handleImport = async () => {
+    if (isImporting || !file) return;
+    setIsImporting(true);
+    try {
+      const message = await uploadImportFile(file);
+      toast.success(message, { id: "import-upload-progress" });
       clearForm();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to import orders");
+      toast.error(error instanceof Error ? error.message : "Failed to import orders", { id: "import-upload-progress" });
     } finally {
       setIsImporting(false);
       setUploadProgress(0);
+    }
+  };
+
+  const importCsvBatch = async (rows: Record<string, string>[], { signal, start }: { signal: AbortSignal; start: number }) => {
+    if (start === 0 && !csvImportDestination.current) csvImportDestination.current = validateDestination();
+    const destination = csvImportDestination.current;
+    if (!destination) throw new Error("The import destination is unavailable. Please start the import again.");
+    const orderContext = generatedOrderContext.current;
+    const mappedFields = orderCsvFields.filter((field) =>
+      field.key === "order_no" && orderContext
+        ? true
+        : Object.hasOwn(rows[0] ?? {}, field.key),
+    );
+    const csvRows = [
+      mappedFields.map((field) => field.key),
+      ...rows.map((row, index) => mappedFields.map((field) => {
+        if (field.key === "order_no" && !row.order_no?.trim() && orderContext) {
+          return `M${orderContext.merchantId.toString(36).toUpperCase()}-${orderContext.fileHash.slice(0, 6)}-${start + index + 1}`;
+        }
+        return row[field.key] ?? "";
+      })),
+    ];
+    const csvFile = new File([toCsv(csvRows)], "orders-mapped.csv", { type: "text/csv" });
+    if (start === 0) setIsImporting(true);
+    try {
+      const message = await uploadImportFile(csvFile, signal, destination);
+      toast.success(message, { id: "import-upload-progress" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to import orders";
+      toast.error(message, { id: "import-upload-progress" });
+      throw error;
     }
   };
 
@@ -332,6 +437,7 @@ export default function ImportOrdersPage() {
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
+                        disabled={isImporting}
                         className="h-auto min-h-10 w-full justify-between gap-2 py-2 text-left font-normal"
                       >
                         <span
@@ -358,7 +464,8 @@ export default function ImportOrdersPage() {
                               sheetsForCountry.map((sheet) => (
                                 <CommandItem
                                   key={sheet.id}
-                                  value={[sheet.sheet_name, sheet.store_name, sheet.country].join(" ")}                                  onSelect={() => {
+                                  value={[sheet.sheet_name, sheet.store_name, sheet.country].join(" ")}
+                                  onSelect={() => {
                                     handleSheetChange(sheet);
                                     setOpen(false);
                                   }}
@@ -401,6 +508,7 @@ export default function ImportOrdersPage() {
                     id="import_sheet_name"
                     value={sheetName}
                     onChange={(e) => setSheetName(e.target.value)}
+                    disabled={isImporting}
                     placeholder="Enter the target sheet tab name"
                     className="h-10"
                   />
@@ -416,7 +524,7 @@ export default function ImportOrdersPage() {
                   <Select
                     value={country}
                     onValueChange={handleCountryChange}
-                    disabled={!canPickCountry || Boolean(props.selectedCountry)}
+                    disabled={isImporting || !canPickCountry || Boolean(props.selectedCountry)}
                   >
                     <SelectTrigger id="import_country" className="h-10">
                       <SelectValue placeholder="Select a country" />
@@ -456,46 +564,60 @@ export default function ImportOrdersPage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Upload File</label>
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted px-4 py-4 text-center transition hover:border-border hover:bg-muted">
-                  <div className="rounded-full bg-primary p-2 text-primary-foreground">
-                    <UploadCloud className="size-4" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="font-medium text-foreground">Choose CSV or Excel file</div>
-                    <div className="text-sm text-muted-foreground">Accepted formats: `.csv`, `.xlsx`, `.xls`</div>
-                  </div>
-                  <Input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                  />
-                </label>
+              <CsvImport
+                fields={orderCsvFields}
+                requiredGroups={orderCsvRequiredGroups}
+                onBeforeImport={confirmAutoGeneratedOrderNumbers}
+                onImport={importCsvBatch}
+                onDone={() => {
+                  csvImportDestination.current = null;
+                  generatedOrderContext.current = null;
+                  setIsImporting(false);
+                  setUploadProgress(0);
+                }}
+                positionalMapping={orderCsvPositionalMapping}
+                batchSize={250}
+                maxRows={50_000}
+                noun={{ one: "order", many: "orders" }}
+                title="Import orders"
+                description="Match your file’s columns, check every order, then import the valid rows."
+                templateHref={orderCsvTemplate}
+              />
 
-                <div className="rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
-                  {file ? (
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-foreground">{file.name}</div>
-                        <div>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
-                      </div>
-                      <Badge variant="secondary">Ready</Badge>
-                    </div>
-                  ) : (
-                    <span>No file selected yet.</span>
-                  )}
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Have an Excel workbook?</p>
+                    <p className="text-xs text-muted-foreground">CSV files use the mapper above. Excel files keep the existing upload flow.</p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" disabled={isImporting} onClick={() => document.getElementById("import-workbook")?.click()}>
+                    <UploadCloud className="mr-2 size-4" />
+                    Choose Excel file
+                  </Button>
+                  <Input
+                    key={workbookInputKey}
+                    id="import-workbook"
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="sr-only"
+                    disabled={isImporting}
+                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  />
                 </div>
+                {file && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                    <p className="min-w-0 truncate text-xs text-muted-foreground">{file.name}</p>
+                    <Button type="button" size="sm" onClick={handleImport} disabled={isImporting} className="gap-2">
+                      {isImporting ? <LoaderCircle className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
+                      {isImporting ? `Importing... ${uploadProgress}%` : "Import workbook"}
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:justify-end">
+              <div className="flex justify-end border-t pt-3">
                 <Button variant="outline" size="sm" onClick={clearForm} disabled={isImporting}>
-                  Clear
-                </Button>
-                <Button size="sm" onClick={handleImport} disabled={isImporting} className="gap-2 text-primary-foreground">
-                  {isImporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                  {isImporting ? `Importing... ${uploadProgress}%` : "Import Orders"}
+                  Clear destination
                 </Button>
               </div>
             </CardContent>
@@ -560,6 +682,25 @@ export default function ImportOrdersPage() {
           </div>
         </div>
       </div>
+      <AlertDialog
+        open={Boolean(autoNumberPrompt)}
+        onOpenChange={(open) => {
+          if (!open) answerAutoNumberPrompt(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generate missing order numbers?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {autoNumberPrompt?.count ?? 0} order(s) have no order number. Generate a unique, repeatable number for each missing order? Numbers are scoped to this merchant and this file, so importing the same file again will use the same numbers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => answerAutoNumberPrompt(false)}>Cancel import</AlertDialogCancel>
+            <AlertDialogAction onClick={() => answerAutoNumberPrompt(true)}>Generate and import</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </>}
       </Deferred>
     </AppLayout>

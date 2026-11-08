@@ -61,7 +61,6 @@ class MerchantDataController extends Controller
             'product_name' => ['nullable', 'string', 'max:255'],
             'delivery_date' => ['nullable', 'date'],
             'client_name' => ['nullable', 'string', 'max:255'],
-            'client_city' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:2000'],
             'city' => ['nullable', 'string', 'max:255'],
             'country' => ['nullable', 'string', 'max:255'],
@@ -90,7 +89,6 @@ class MerchantDataController extends Controller
             'product_name' => $validated['product_name'] ?? null,
             'delivery_date' => $validated['delivery_date'] ?? null,
             'client_name' => $validated['client_name'] ?? null,
-            'client_city' => $validated['client_city'] ?? null,
             'address' => $validated['address'] ?? null,
             'city' => $validated['city'] ?? null,
             'country' => $validated['country'] ?? $merchant->country?->name,
@@ -216,8 +214,8 @@ class MerchantDataController extends Controller
         $availableColumns = Schema::getColumnListing('sheet_orders');
         $orderColumns = array_values(array_intersect([
             'id', 'order_no', 'order_date', 'amount', 'quantity', 'product_name', 'delivery_date',
-            'client_name', 'client_city', 'address', 'city', 'country', 'phone', 'alt_no', 'status',
-            'code', 'confirmed', 'created_at', 'updated_at',
+            'client_name', 'address', 'city', 'country', 'phone', 'alt_no', 'status',
+            'code', 'confirmed', 'created_at', 'updated_at', 'edited_at',
         ], $availableColumns));
         $orderColumns[] = 'call_count';
 
@@ -225,7 +223,7 @@ class MerchantDataController extends Controller
             'histories as call_count' => fn ($historyQuery) => $historyQuery
                 ->where('attribute', 'instructions'),
         ])->where('merchant', $merchant)
-            ->when($request->filled('updated_since'), fn ($query) => $query->where('updated_at', '>=', $request->date('updated_since')))
+            ->when($request->filled('updated_since'), fn ($query) => $query->whereRaw('COALESCE(edited_at, updated_at) >= ?', [$request->date('updated_since')]))
             ->orderBy('id')->paginate($this->pageSize($request), $orderColumns);
 
         return response()->json($orders);
@@ -330,7 +328,7 @@ class MerchantDataController extends Controller
             ->where(fn ($query) => $query->where('movement_products.merchant', $merchant)->orWhere('movement_products.user_id', $merchantUserId))
             ->when($agentId, fn ($query) => $query->where('deductions.agent_id', $agentId))
             ->when($updatedSince, fn ($query) => $query->where('deductions.updated_at', '>=', $updatedSince))
-            ->selectRaw("deductions.id as id, 'returned' as movement_type, deductions.product_id as product_id, movement_products.name as product_name, movement_products.code as product_code, movement_products.merchant as merchant, deductions.quantity as quantity, deductions.agent_id as agent_id, movement_agents.name as agent_name, DATE(deductions.created_at) as date, NULL as region, NULL as store_name, NULL as `from`, deductions.country as country, deductions.reason as reason, deductions.deducted_by as performed_by, deductions.code as code, deductions.created_at as created_at, deductions.updated_at as updated_at");
+            ->selectRaw("deductions.id as id, CASE WHEN LOWER(COALESCE(deductions.reason, '')) LIKE 'delivered order %' THEN 'delivered' ELSE 'returned' END as movement_type, deductions.product_id as product_id, movement_products.name as product_name, movement_products.code as product_code, movement_products.merchant as merchant, deductions.quantity as quantity, deductions.agent_id as agent_id, movement_agents.name as agent_name, DATE(deductions.created_at) as date, NULL as region, NULL as store_name, NULL as `from`, deductions.country as country, deductions.reason as reason, deductions.deducted_by as performed_by, deductions.code as code, deductions.created_at as created_at, deductions.updated_at as updated_at");
 
         $fields = array_values(array_intersect(
             $integration->transfer_fields ?? MerchantApiFieldCatalog::TRANSFER_FIELDS,

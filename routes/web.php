@@ -29,6 +29,7 @@ use App\Http\Controllers\SidebarRolePermissionController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\StkController;
 use App\Http\Controllers\StoreepIntegrationController;
+use App\Http\Controllers\PartnerOrderIntegrationController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UndeliveredController;
 use App\Http\Controllers\UnitController;
@@ -80,6 +81,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     // sheetorderspage- route
     Route::resource('sheetorders', SheetOrderController::class);
+    Route::get('/order-product-matching', [App\Http\Controllers\OrderProductMatchingController::class, 'index'])
+        ->name('order-product-matching.index');
+    Route::post('/order-product-matching/match', [App\Http\Controllers\OrderProductMatchingController::class, 'match'])
+        ->name('order-product-matching.match');
+    Route::post('/order-product-matching/bulk', [App\Http\Controllers\OrderProductMatchingController::class, 'bulkMatch'])
+        ->name('order-product-matching.bulk');
     Route::get('sheetorders/{order}/histories', [SheetOrderController::class, 'histories'])
         ->name('sheetorders.histories');
 
@@ -120,6 +127,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/transfer', [TransferController::class, 'index'])->name('transfers.index');
 
     Route::post('/transfers', [TransferController::class, 'store'])->name('transfers.store');
+    Route::post('/transfers/receive-date', [TransferController::class, 'receiveDate'])->name('transfers.receive-date');
 
     Route::get('/transfers/agent/{agentId}', [TransferController::class, 'showByAgent'])->name('transfers.agent.show');
     Route::get('/transfers/{productId}/{agentId}', [TransferController::class, 'show'])->name('transfers.show');
@@ -234,6 +242,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // storeep integrations (credentials live in the DB, one row per store/market)
     Route::get('/integrations', [StoreepIntegrationController::class, 'index'])->name('integrations.index');
+    Route::get('/integrations/partner-orders', [PartnerOrderIntegrationController::class, 'index'])->name('integrations.partner-orders.index');
+    Route::post('/integrations/partner-orders', [PartnerOrderIntegrationController::class, 'store'])->name('integrations.partner-orders.store');
+    Route::put('/integrations/partner-orders/{integration}', [PartnerOrderIntegrationController::class, 'update'])->name('integrations.partner-orders.update');
+    Route::patch('/integrations/partner-orders/{integration}/enabled', [PartnerOrderIntegrationController::class, 'setEnabled'])->name('integrations.partner-orders.enabled');
+    Route::post('/integrations/partner-orders/{integration}/test', [PartnerOrderIntegrationController::class, 'test'])->name('integrations.partner-orders.test');
+    Route::post('/integrations/partner-orders/{integration}/sync', [PartnerOrderIntegrationController::class, 'sync'])->name('integrations.partner-orders.sync');
+    Route::delete('/integrations/partner-orders/{integration}', [PartnerOrderIntegrationController::class, 'destroy'])->name('integrations.partner-orders.destroy');
     Route::get('/merchant-api-access', [MerchantApiAccessController::class, 'index'])->name('merchant-api-access.index');
     Route::get('/api-dashboard', [MerchantApiDashboardController::class, 'index'])->name('api-dashboard.index');
     Route::post('/merchant-api-access', [MerchantApiAccessController::class, 'store'])->name('merchant-api-access.store');

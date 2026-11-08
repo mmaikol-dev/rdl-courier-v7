@@ -17,6 +17,7 @@ interface PageHeaderProps {
     countryOptions: string[];
     productOptions: string[];
     canFilterCountries: boolean;
+    isAgent: boolean;
     isLoading: boolean;
 }
 
@@ -140,6 +141,7 @@ export function PageHeader({
     countryOptions,
     productOptions,
     canFilterCountries,
+    isAgent,
     isLoading,
 }: PageHeaderProps) {
     const firstName = userName.trim().split(/\s+/)[0] || 'there';
@@ -190,7 +192,7 @@ export function PageHeader({
                     onChange={(value) => updateFilters({ range: value as DashboardRange })}
                 />
 
-                <FilterCommandSelect
+                {!isAgent && <FilterCommandSelect
                     label="Product filter"
                     placeholder="All products"
                     value={product ?? 'all'}
@@ -201,7 +203,7 @@ export function PageHeader({
                     icon={Tag}
                     isLoading={isLoading}
                     onChange={(value) => updateFilters({ product: value === 'all' ? '' : value })}
-                />
+                />}
 
                 {canFilterCountries && (
                     <FilterCommandSelect
@@ -218,18 +220,18 @@ export function PageHeader({
                     />
                 )}
 
-                <Button asChild className="h-10 rounded-full">
+                {!isAgent && <Button asChild className="h-10 rounded-full">
                     <Link href="/sheetorders/create">
                         <Plus aria-hidden="true" />
                         New order
                     </Link>
-                </Button>
-                <Button asChild variant="outline" className="h-10 rounded-full">
+                </Button>}
+                {!isAgent && <Button asChild variant="outline" className="h-10 rounded-full">
                     <Link href="/import">
                         <FileInput aria-hidden="true" />
                         Import orders
                     </Link>
-                </Button>
+                </Button>}
             </div>
         </header>
     );

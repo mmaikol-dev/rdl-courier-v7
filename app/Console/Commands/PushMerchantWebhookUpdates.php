@@ -13,7 +13,7 @@ class PushMerchantWebhookUpdates extends Command
     protected $signature = 'merchant:push-order-updates
         {merchant : Merchant name as stored on the merchant user}
         {--order-no=* : Push only these order numbers}
-        {--since= : Only orders updated (or created, when updated_at is null) on or after this date}
+        {--since= : Only orders edited, updated, or created on or after this date}
         {--limit=500 : Maximum orders to queue, 0 for no limit}
         {--dry-run : Show what would be sent without queueing webhooks}';
 
@@ -65,7 +65,7 @@ class PushMerchantWebhookUpdates extends Command
             ->when($this->option('order-no'), fn ($builder, $orderNos) => $builder->whereIn('order_no', $orderNos))
             ->when($this->option('since'), function ($builder, $since): void {
                 $builder->where(function ($query) use ($since): void {
-                    $query->where('updated_at', '>=', $since)
+                    $query->whereRaw('COALESCE(edited_at, updated_at) >= ?', [$since])
                         ->orWhere(fn ($query) => $query->whereNull('updated_at')->where('created_at', '>=', $since));
                 });
             });
@@ -91,7 +91,7 @@ class PushMerchantWebhookUpdates extends Command
                     'id' => $order->id,
                     'order_no' => $order->order_no,
                     'status' => $order->status,
-                    'updated_at' => ($order->updated_at ?? $order->created_at)?->toIso8601String(),
+                    'updated_at' => ($order->edited_at ?? $order->updated_at ?? $order->created_at)?->toIso8601String(),
                 ]);
 
                 Log::debug('Merchant order update webhook queued', [

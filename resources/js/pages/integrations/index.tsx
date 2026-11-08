@@ -284,13 +284,13 @@ export default function IntegrationsIndex({ integrations = EMPTY_INTEGRATIONS, s
                         </div>
                     </div>
 
-                    <Button
-                        onClick={openCreate}
-                        className="max-w-full shrink-0 gap-2 shadow-sm"
-                    >
-                        <Plus className="size-4" />
-                        Connect Storeep store
-                    </Button>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                        <a href="/integrations/partner-orders" className="inline-flex h-10 items-center rounded-md border px-4 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">Partner API Orders</a>
+                        <Button onClick={openCreate} className="max-w-full gap-2 shadow-sm">
+                            <Plus className="size-4" />
+                            Connect Storeep store
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-3">

@@ -23,8 +23,7 @@ class UpdateController extends Controller
             SheetOrder::query(),
             $user
         )
-            ->whereNotNull('updated_at')
-            ->where('updated_at', '<=', now())
+            ->whereNotNull('edited_at')
             ->whereNotNull('sheet_id')
             ->whereNotNull('sheet_name');
 
@@ -35,8 +34,8 @@ class UpdateController extends Controller
 
         return Inertia::render('updates/index', [
             'updates' => Inertia::defer(fn () => $updatesQuery
-                ->select(['id', 'order_no', 'sheet_id', 'sheet_name', 'merchant', 'status', 'updated_at'])
-                ->orderBy('updated_at')
+                ->select(['id', 'order_no', 'sheet_id', 'sheet_name', 'merchant', 'status', 'edited_at'])
+                ->orderBy('edited_at')
                 ->limit(500)
                 ->get()),
             'filters' => $request->only(['search', 'country']),

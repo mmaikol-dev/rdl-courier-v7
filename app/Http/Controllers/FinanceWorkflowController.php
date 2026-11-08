@@ -7,12 +7,14 @@ use App\Exports\RemittedOrdersExport;
 use App\Models\OrderHistory;
 use App\Models\SheetOrder;
 use App\Models\User;
+use App\Services\DeliveredOrderInventoryDeductionService;
 use App\Support\CountryAccess;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 use Maatwebsite\Excel\Facades\Excel;
@@ -322,11 +324,23 @@ class FinanceWorkflowController extends Controller
             $query->whereIn('id', $validated['order_ids']);
         }
 
+        $eligibleOrderIds = (clone $query)->pluck('id');
         $updated = $this->updateOrdersWithHistory($query, [
             'status' => 'Delivered',
             'delivered_at' => now(),
             'delivered_by' => $user?->id,
         ], $user);
+
+        foreach ($eligibleOrderIds as $orderId) {
+            try {
+                app(DeliveredOrderInventoryDeductionService::class)->deduct((int) $orderId);
+            } catch (\Throwable $exception) {
+                Log::error('Delivery confirmation could not deduct inventory.', [
+                    'order_id' => (int) $orderId,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         if ($updated === 0) {
             return back()->withErrors([

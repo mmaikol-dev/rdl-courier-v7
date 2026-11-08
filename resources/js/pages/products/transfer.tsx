@@ -5,15 +5,6 @@ import { Deferred, Head, usePage, router } from "@inertiajs/react";
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "@/lib/toast";
 import { csrfHeaders } from "@/lib/csrf";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerClose,
-} from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,7 +28,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircleIcon,
-  TrashIcon,
   LoaderCircle,
   CheckIcon,
   ChevronsUpDownIcon,
@@ -147,159 +137,59 @@ function timeAgo(date: string | null) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-interface SearchableOption {
-  value: string;
-  label: string;
-  keywords?: string;
-}
-
-function SearchableSelect({
-  value,
-  onChange,
-  placeholder,
-  searchPlaceholder,
-  emptyLabel,
-  options,
-  clearLabel,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  searchPlaceholder: string;
-  emptyLabel: string;
-  options: SearchableOption[];
-  clearLabel?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const selectedOption = options.find((option) => option.value === value);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="h-auto min-h-10 w-full justify-between gap-2 py-2 font-normal"
-        >
-          <span
-            className={cn(
-              "flex-1 whitespace-normal break-words text-left",
-              !selectedOption && "text-muted-foreground"
-            )}
-          >
-            {selectedOption?.label ?? placeholder}
-          </span>
-          <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandGroup>
-              {clearLabel ? (
-                <CommandItem
-                  value={clearLabel}
-                  onSelect={() => {
-                    onChange("");
-                    setOpen(false);
-                  }}
-                >
-                  <CheckIcon
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === "" ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <span className="whitespace-normal break-words">{clearLabel}</span>
-                </CommandItem>
-              ) : null}
-              {options.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  {emptyLabel}
-                </div>
-              ) : (
-                options.map((option) => (
-                  <CommandItem
-                    key={option.value}
-                    value={[option.label, option.value, option.keywords]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onSelect={() => {
-                      onChange(option.value);
-                      setOpen(false);
-                    }}
-                  >
-                    <CheckIcon
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === option.value ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    <span className="whitespace-normal break-words">
-                      {option.label}
-                    </span>
-                  </CommandItem>
-                ))
-              )}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 export default function TransferIndex() {
-  const { auth, products, agents, flash } =
+  const { auth, products = [], agents, flash } =
     usePage().props as any;
+  const isGod = auth?.user?.roles?.trim?.().toLowerCase() === "g.o.d";
+  const isAgent = auth?.user?.roles?.trim?.().toLowerCase() === "agent";
 
   const [agentSearch, setAgentSearch] = useState("");
+  const [transferCountry, setTransferCountry] = useState("");
 
   const filteredAgents = useMemo(() => {
     if (!agentSearch.trim()) return agents || [];
     const q = agentSearch.toLowerCase();
-    return agents.filter((a: any) =>
+    return (agents || []).filter((a: any) =>
       a.name?.toLowerCase().includes(q)
     );
   }, [agents, agentSearch]);
 
   const [openTransferModal, setOpenTransferModal] = useState(false);
-  const [drawerDirection, setDrawerDirection] = useState<"right" | "bottom">("bottom");
+  const [transferStep, setTransferStep] = useState<"product" | "agents" | "quantities">("product");
+  const [transferProduct, setTransferProduct] = useState<any>(null);
+  const [transferSelectedAgents, setTransferSelectedAgents] = useState<number[]>([]);
+  const [transferQuantities, setTransferQuantities] = useState<Record<number, string>>({});
+  const [transferProductOpen, setTransferProductOpen] = useState(false);
+  const [transferAgentSelectOpen, setTransferAgentSelectOpen] = useState(false);
+  const [transferProductSearch, setTransferProductSearch] = useState("");
+  const [transferAgentSearch, setTransferAgentSearch] = useState("");
   const [region, setRegion] = useState("");
   const [from, setFrom] = useState("");
-  const [rows, setRows] = useState([
-    { product_id: "", quantity: "", agent_id: "", merchant: "" },
-  ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const productOptions: SearchableOption[] = (products || []).map(
-    (product: any) => ({
-      value: String(product.id),
-      label: product.merchant
-        ? `${product.name} (${product.merchant})`
-        : product.name,
-      keywords: [product.merchant].filter(Boolean).join(" "),
-    })
+  const transferAgents = isGod
+    ? transferCountry
+      ? (agents || []).filter((agent: any) => agent.store_address?.trim().toLowerCase() === transferCountry.trim().toLowerCase())
+      : []
+    : agents || [];
+  const filteredTransferProducts = (products || []).filter((product: any) =>
+    `${product.name || ""} ${product.merchant || ""} ${product.code || ""}`
+      .toLowerCase()
+      .includes(transferProductSearch.trim().toLowerCase())
+  );
+  const filteredTransferAgents = transferAgents.filter((agent: any) =>
+    `${agent.name || ""} ${agent.store_name || ""}`
+      .toLowerCase()
+      .includes(transferAgentSearch.trim().toLowerCase())
+  );
+  const selectedTransferAgents = transferSelectedAgents
+    .map((id) => transferAgents.find((agent: any) => Number(agent.id) === id))
+    .filter(Boolean);
+  const transferTotalUnits = transferSelectedAgents.reduce(
+    (sum, id) => sum + (Number(transferQuantities[id]) || 0), 0
   );
 
-  const agentOptions: SearchableOption[] = (agents || []).map((agent: any) => ({
-    value: String(agent.id),
-    label: agent.name,
-  }));
-
   useEffect(() => {
-    const handleResize = () => {
-      setDrawerDirection(window.innerWidth >= 768 ? "right" : "bottom");
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
-    if (flash?.success) toast.success(flash.success);
     if (flash?.error) toast.error(flash.error);
     if (flash?.errors) {
       const firstError = Object.values(flash.errors)[0];
@@ -307,47 +197,73 @@ export default function TransferIndex() {
     }
   }, [flash]);
 
-  const addRow = () =>
-    setRows([...rows, { product_id: "", quantity: "", agent_id: "", merchant: "" }]);
-
-  const removeRow = (index: number) =>
-    setRows(rows.filter((_, i) => i !== index));
-
-  const handleChange = (index: number, field: string, value: string) => {
-    const updated = [...rows];
-    (updated[index] as any)[field] = value;
-
-    if (field === "product_id") {
-      const selectedProduct = products.find(
-        (p: any) => String(p.id) === value
-      );
-      (updated[index] as any).merchant = selectedProduct
-        ? selectedProduct.merchant || ""
-        : "";
-    }
-
-    setRows(updated);
-  };
-
   const handleSubmit = () => {
     if (isSubmitting) return;
+    if (!transferProduct) {
+      toast.warning("Choose a product before saving the transfer.");
+      setTransferStep("product");
+      return;
+    }
+    if (transferSelectedAgents.length === 0) {
+      toast.warning("Select at least one agent to receive this product.");
+      setTransferStep("agents");
+      return;
+    }
+    if (!region.trim() || !from.trim()) {
+      toast.warning(`Complete the transfer details: ${!region.trim() ? "region" : ""}${!region.trim() && !from.trim() ? " and " : ""}${!from.trim() ? "source location" : ""} is required.`);
+      setTransferStep("quantities");
+      return;
+    }
+    const invalidQuantityAgent = selectedTransferAgents.find((agent: any) => {
+      const quantity = Number(transferQuantities[agent.id]);
+      return !Number.isInteger(quantity) || quantity < 1;
+    });
+    if (invalidQuantityAgent) {
+      toast.warning(`Enter a whole number quantity of at least 1 for ${invalidQuantityAgent.name}.`);
+      return;
+    }
+    const allocations = Object.entries(transferQuantities)
+      .filter(([agentId]) => transferSelectedAgents.includes(Number(agentId)))
+      .filter(([, quantity]) => Number(quantity) > 0)
+      .map(([agentId, quantity]) => ({
+        product_id: String(transferProduct.id),
+        quantity,
+        agent_id: agentId,
+        merchant: transferProduct.merchant || "",
+      }));
+    if (allocations.length !== transferSelectedAgents.length) {
+      const missing = selectedTransferAgents
+        .filter((agent: any) => !(Number(transferQuantities[agent.id]) > 0))
+        .map((agent: any) => agent.name)
+        .join(", ");
+      toast.warning(`Enter a quantity greater than zero for every selected agent. Missing: ${missing || "agent quantity"}.`);
+      return;
+    }
     setIsSubmitting(true);
     router.post(
       "/transfers",
-      { region, from, transfers: rows },
+      { ...(isGod ? { country: transferProduct.country } : {}), region, from, transfers: allocations },
       {
         preserveScroll: true,
         onSuccess: () => {
+          const units = allocations.reduce((sum, row) => sum + Number(row.quantity), 0);
+          const allocationSummary = allocations.map((row) => {
+            const agent = selectedTransferAgents.find((item: any) => String(item.id) === row.agent_id);
+            return `${agent?.name || "Agent"}: ${row.quantity}`;
+          }).join(", ");
+          toast.success(`Transfer saved: ${units} ${transferProduct.name} unit${units === 1 ? "" : "s"} sent to ${allocations.length} agent${allocations.length === 1 ? "" : "s"}. ${allocationSummary}`);
           setOpenTransferModal(false);
+          setTransferStep("product");
+          setTransferProduct(null);
+          setTransferSelectedAgents([]);
+          setTransferQuantities({});
           setRegion("");
           setFrom("");
-          setRows([{ product_id: "", quantity: "", agent_id: "", merchant: "" }]);
+          setTransferCountry("");
         },
         onError: (errors) => {
           const firstError = Object.values(errors)[0];
-          toast.error(
-            typeof firstError === "string" ? firstError : "Failed to create transfer"
-          );
+          toast.error(typeof firstError === "string" ? `Transfer was not saved: ${firstError}` : "Transfer was not saved. Check the product, agent quantities, region, and source location, then try again.");
         },
         onFinish: () => setIsSubmitting(false),
       }
@@ -546,17 +462,18 @@ export default function TransferIndex() {
   };
 
   const breadcrumbs = [
-    { title: "Transfers", href: "/transfer" },
+    { title: isAgent ? "Stock" : "Transfers", href: "/transfer" },
     { title: "Agents", href: "#" },
   ];
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Transfers" />
+      <Head title={isAgent ? "Stock" : "Transfers"} />
 
       {/* Top bar */}
       <div className="p-4 sm:p-6 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-lg font-semibold tracking-tight">{isAgent ? "Stock" : "Transfers"}</h1>
           <div className="relative w-full sm:w-72">
             <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -566,14 +483,36 @@ export default function TransferIndex() {
               className="pl-8 h-9"
             />
           </div>
-          <Button
-            variant="outline"
-            onClick={openReturnModal}
-            className="flex items-center gap-2"
-          >
-            <Undo2Icon className="w-4 h-4" />
-            Returned Quantities
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={openReturnModal}
+              className="flex items-center gap-2"
+            >
+              <Undo2Icon className="w-4 h-4" />
+              Returned Quantities
+            </Button>
+            <Button
+              onClick={() => {
+                setTransferStep("product");
+                setTransferProduct(null);
+                setTransferSelectedAgents([]);
+                setTransferQuantities({});
+                setTransferCountry("");
+                setRegion("");
+                setFrom("");
+                setTransferProductSearch("");
+                setTransferAgentSearch("");
+                setTransferProductOpen(false);
+                setTransferAgentSelectOpen(false);
+                setOpenTransferModal(true);
+              }}
+              className="flex items-center gap-2"
+            >
+              <PlusCircleIcon className="w-4 h-4" />
+              Bulk Transfer
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -588,8 +527,8 @@ export default function TransferIndex() {
               const lastTransfer = timeAgo(agent.transfers_max_created_at);
               const units = Number(agent.transfers_sum_quantity || 0);
               const deducted = Number(agent.deductions_sum_quantity || 0);
-              const stock = Math.max(units - deducted, 0);
-              const stockRatio = units > 0 ? Math.min(1, stock / units) : 0;
+              const stock = units - deducted;
+              const stockRatio = units > 0 ? Math.max(0, Math.min(1, stock / units)) : 0;
 
               return (
                 <div
@@ -662,7 +601,7 @@ export default function TransferIndex() {
                             : "bg-gradient-to-r from-warning/30 to-primary"
                         )}
                         style={{
-                          width: `${units > 0 ? Math.max(stockRatio * 100, 6) : 0}%`,
+                          width: `${units > 0 && stock > 0 ? Math.max(stockRatio * 100, 6) : 0}%`,
                         }}
                       />
                     </div>
@@ -699,201 +638,142 @@ export default function TransferIndex() {
         </Deferred>
       </div>
 
-      {/* ── Create New Transfer Drawer ── */}
-      <Drawer
-        open={openTransferModal}
-        onOpenChange={setOpenTransferModal}
-        direction={drawerDirection}
-      >
-        <DrawerContent
-          className={cn(
-            "flex flex-col bg-card overflow-hidden",
-            "h-[95vh]",
-            "md:h-screen md:w-1/2 md:max-w-none md:right-0 md:left-auto md:rounded-l-2xl"
-          )}
-        >
-          <DrawerHeader className="border-b bg-card sticky top-0 z-10 px-6 py-4">
-            <DrawerTitle className="text-xl font-bold text-foreground">
-              Create New Transfer
-            </DrawerTitle>
-            <DrawerDescription className="text-sm text-muted-foreground">
-              Fill in the details below to distribute products to agents.
-            </DrawerDescription>
-          </DrawerHeader>
+      {/* Guided bulk transfer */}
+      <Dialog open={openTransferModal} onOpenChange={setOpenTransferModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b bg-muted/30 px-6 py-4">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><PlusCircleIcon className="size-4" /></span>
+              Bulk Transfer
+            </DialogTitle>
+            <DialogDescription className="mt-0.5">Choose a product, select receiving agents, then assign the quantities.</DialogDescription>
+            <ol className="mt-3 flex flex-wrap items-center gap-1">
+              {(["product", "agents", "quantities"] as const).map((step, index) => {
+                const steps = ["product", "agents", "quantities"] as const;
+                const currentIndex = steps.indexOf(transferStep);
+                const isDone = index < currentIndex;
+                const isCurrent = index === currentIndex;
+                return <li key={step} className="flex items-center gap-1">
+                  {index > 0 && <ChevronRightIcon className="size-3 text-muted-foreground/50" />}
+                  <button type="button" onClick={() => isDone && setTransferStep(step)} disabled={!isDone && !isCurrent} className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors", isCurrent && "bg-primary text-primary-foreground", isDone && "text-muted-foreground hover:bg-muted", !isDone && !isCurrent && "text-muted-foreground/50")}>
+                    <span className={cn("flex size-4 items-center justify-center rounded-full border text-[10px] leading-none", isCurrent && "border-transparent", isDone && "border-primary/40 bg-primary/10 text-primary")}>{isDone ? <CheckIcon className="size-2.5" /> : index + 1}</span>
+                    <span className="font-medium">{step === "product" ? "Product" : step === "agents" ? "Agents" : "Quantities"}</span>
+                  </button>
+                </li>;
+              })}
+            </ol>
+          </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-muted">
-            <Card className="shadow-sm">
-              <CardContent className="p-6">
-                <h3 className="text-base font-semibold mb-4 text-foreground">
-                  Transfer Information
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">
-                      Region <span className="text-destructive">*</span>
-                    </label>
-                    <Input
-                      value={region}
-                      onChange={(e) => setRegion(e.target.value)}
-                      placeholder="Enter region"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">
-                      From <span className="text-destructive">*</span>
-                    </label>
-                    <Input
-                      value={from}
-                      onChange={(e) => setFrom(e.target.value)}
-                      placeholder="e.g. Main Warehouse"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">
-                      Initiated By
-                    </label>
-                    <Input
-                      readOnly
-                      value={auth?.user?.name || ""}
-                      className="bg-muted"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardContent className="p-6">
-                <div className="flex justify-between items-center mb-5">
-                  <h3 className="text-base font-semibold text-foreground">
-                    Products to Transfer
-                  </h3>
-                  <span className="text-sm text-muted-foreground">
-                    {rows.length} product{rows.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-
-                <div className="space-y-4">
-                  {rows.map((row, i) => (
-                    <Card
-                      key={i}
-                      className="border border-border border-l-4 border-l-border bg-card shadow-none"
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            Product #{i + 1}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeRow(i)}
-                            disabled={rows.length === 1}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 px-2"
-                          >
-                            <TrashIcon className="w-3.5 h-3.5 mr-1" />
-                            Remove
-                          </Button>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-foreground">
-                              Product <span className="text-destructive">*</span>
-                            </label>
-                            <SearchableSelect
-                              value={row.product_id}
-                              onChange={(val) =>
-                                handleChange(i, "product_id", val)
-                              }
-                              placeholder="Select product"
-                              searchPlaceholder="Search products..."
-                              emptyLabel="No products found."
-                              options={productOptions}
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-foreground">
-                              Merchant
-                            </label>
-                            <Input
-                              readOnly
-                              value={row.merchant || ""}
-                              placeholder="Auto-filled on product select"
-                              className="bg-muted text-muted-foreground"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-foreground">
-                              Quantity <span className="text-destructive">*</span>
-                            </label>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={row.quantity}
-                              onChange={(e) =>
-                                handleChange(i, "quantity", e.target.value)
-                              }
-                              placeholder="Enter quantity"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-foreground">
-                              Agent <span className="text-destructive">*</span>
-                            </label>
-                            <SearchableSelect
-                              value={row.agent_id}
-                              onChange={(val) =>
-                                handleChange(i, "agent_id", val)
-                              }
-                              placeholder="Select agent"
-                              searchPlaceholder="Search agents..."
-                              emptyLabel="No agents found."
-                              options={agentOptions}
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <div className="flex justify-end mt-5">
-                  <Button
-                    variant="outline"
-                    onClick={addRow}
-                    className="flex items-center gap-2"
-                  >
-                    <PlusCircleIcon className="w-4 h-4" />
-                    Add Product
+          <div className="overflow-y-auto px-6 py-5">
+            {transferStep === "product" && <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+              <p className="text-sm text-muted-foreground">Search and choose the product you want to send.</p>
+              <Popover open={transferProductOpen} onOpenChange={setTransferProductOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" aria-expanded={transferProductOpen} className="h-11 w-full justify-between font-normal">
+                    <span className={cn("truncate", !transferProduct && "text-muted-foreground")}>{transferProduct ? `${transferProduct.name}${transferProduct.merchant ? ` · ${transferProduct.merchant}` : ""}` : "Choose a product..."}</span>
+                    <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                   </Button>
+                </PopoverTrigger>
+                <PopoverContent className="max-h-[70vh] w-[min(36rem,calc(100vw-2rem))] overflow-hidden p-0" align="start">
+                  <Command shouldFilter={false} className="h-auto max-h-[70vh]">
+                    <CommandInput value={transferProductSearch} onValueChange={setTransferProductSearch} placeholder="Search product name, code or merchant..." />
+                    <CommandList className="h-auto max-h-[min(55vh,22rem)] overflow-y-scroll overscroll-y-contain touch-pan-y">
+                      <Deferred data="products" fallback={<div className="space-y-2 p-3">{[0,1,2].map((i) => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}</div>}>
+                        {() => <>
+                          <CommandEmpty>No matching products found.</CommandEmpty>
+                          <CommandGroup>{filteredTransferProducts.map((product: any) => <CommandItem key={product.id} value={String(product.id)} onSelect={() => {
+                            setTransferProduct(product);
+                            setTransferCountry(product.country || "");
+                            setTransferProductSearch("");
+                            setTransferAgentSearch("");
+                            setTransferSelectedAgents([]);
+                            setTransferQuantities({});
+                            setTransferStep("agents");
+                            setTransferProductOpen(false);
+                          }} className="gap-3 px-3 py-2.5">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><PackageIcon className="size-4" /></span>
+                            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{product.name}</span><span className="block truncate text-xs text-muted-foreground">{product.code || "No product code"}{product.merchant ? ` · ${product.merchant}` : ""}</span></span>
+                            {product.country && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{product.country}</span>}
+                          </CommandItem>)}</CommandGroup>
+                        </>}
+                      </Deferred>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>}
+
+            {transferStep === "agents" && <div className="space-y-4 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-3 rounded-xl border bg-gradient-to-br from-primary/8 via-background to-background p-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><PackageIcon className="size-5" /></div>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{transferProduct?.name}</p><p className="truncate text-xs text-muted-foreground">{transferProduct?.code || ""}{transferProduct?.merchant ? ` · ${transferProduct.merchant}` : ""}</p></div>
+                <Button variant="ghost" size="sm" onClick={() => { setTransferStep("product"); setTransferSelectedAgents([]); setTransferQuantities({}); }}><XIcon className="size-4" />Change</Button>
+              </div>
+              <p className="text-sm text-muted-foreground">Select one or more agents who will receive this product.</p>
+              <Popover open={transferAgentSelectOpen} onOpenChange={setTransferAgentSelectOpen}>
+                <PopoverTrigger asChild><Button variant="outline" role="combobox" aria-expanded={transferAgentSelectOpen} className="h-auto min-h-11 w-full justify-between gap-2 py-2 font-normal"><span className={cn("truncate text-left", selectedTransferAgents.length === 0 && "text-muted-foreground")}>{selectedTransferAgents.length ? `${selectedTransferAgents.length} agent${selectedTransferAgents.length === 1 ? "" : "s"} selected` : "Select receiving agents..."}</span><ChevronsUpDownIcon className="size-4 shrink-0 opacity-50" /></Button></PopoverTrigger>
+                <PopoverContent className="max-h-[70vh] w-[min(36rem,calc(100vw-2rem))] overflow-hidden p-0" align="start">
+                  <Command shouldFilter={false} className="h-auto max-h-[70vh]">
+                    <CommandInput value={transferAgentSearch} onValueChange={setTransferAgentSearch} placeholder="Search agents..." />
+                    <CommandList className="h-auto max-h-[min(55vh,22rem)] overflow-y-scroll overscroll-y-contain touch-pan-y">
+                      <Deferred data="agents" fallback={<div className="space-y-2 p-3">{[0,1,2,3].map((i) => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}</div>}>
+                        {() => <>
+                          <CommandEmpty>No agents available for this product’s country.</CommandEmpty>
+                          <CommandGroup>{filteredTransferAgents.map((agent: any) => {
+                            const selected = transferSelectedAgents.includes(Number(agent.id));
+                            return <CommandItem key={agent.id} value={String(agent.id)} onSelect={() => {
+                              const id = Number(agent.id);
+                              setTransferSelectedAgents((current) => selected ? current.filter((value) => value !== id) : [...current, id]);
+                              if (selected) setTransferQuantities((current) => { const next = { ...current }; delete next[id]; return next; });
+                            }} className="gap-3 px-3 py-2.5">
+                              <Checkbox checked={selected} aria-label={`Select ${agent.name}`} />
+                              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{agent.name}</span><span className="block truncate text-xs text-muted-foreground">{agent.store_name || agent.store_address || "—"}</span></span>
+                              {selected && <CheckIcon className="size-4 text-primary" />}
+                            </CommandItem>;
+                          })}</CommandGroup>
+                        </>}
+                      </Deferred>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {selectedTransferAgents.length > 0 && <div className="flex flex-wrap gap-1.5">{selectedTransferAgents.map((agent: any) => <span key={agent.id} className="rounded-full border bg-muted/50 px-2.5 py-1 text-xs">{agent.name}</span>)}</div>}
+            </div>}
+
+            {transferStep === "quantities" && <div className="space-y-4 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-3 rounded-xl border bg-gradient-to-br from-primary/8 via-background to-background p-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><PackageIcon className="size-5" /></div>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{transferProduct?.name}</p><p className="truncate text-xs text-muted-foreground">{transferProduct?.code || ""}{transferProduct?.merchant ? ` · ${transferProduct.merchant}` : ""}</p></div>
+                <Button variant="ghost" size="sm" onClick={() => setTransferStep("agents")}><XIcon className="size-4" />Agents</Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5"><label className="text-sm font-medium">Region <span className="text-destructive">*</span></label><Input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="Enter region" /></div>
+                <div className="space-y-1.5"><label className="text-sm font-medium">From <span className="text-destructive">*</span></label><Input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="e.g. Main Warehouse" /></div>
+              </div>
+              <div className="space-y-2">
+                <div><p className="text-sm font-medium">Assign quantities</p><p className="text-xs text-muted-foreground">Enter the quantity to send to each selected agent.</p></div>
+                <div className="overflow-hidden rounded-xl border">
+                  {selectedTransferAgents.map((agent: any) => <div key={agent.id} className="flex items-center gap-3 border-b px-3 py-2.5 last:border-b-0 hover:bg-muted/30">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">{getInitials(agent.name || "?")}</span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{agent.name}</span><span className="block truncate text-xs text-muted-foreground">{agent.store_name || agent.store_address || "—"}</span></span>
+                    <Input className="w-28" type="number" min="1" step="1" value={transferQuantities[agent.id] || ""} onChange={(e) => setTransferQuantities((current) => ({ ...current, [agent.id]: e.target.value }))} placeholder="Quantity" aria-label={`Quantity for ${agent.name}`} />
+                  </div>)}
                 </div>
-              </CardContent>
-            </Card>
+                <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">{selectedTransferAgents.length} agent{selectedTransferAgents.length === 1 ? "" : "s"} · {transferTotalUnits} total units to transfer.</p>
+              </div>
+            </div>}
           </div>
 
-          <DrawerFooter className="border-t bg-card sticky bottom-0 z-10 flex flex-row justify-end gap-2 py-4 px-6">
-            <DrawerClose asChild>
-              <Button variant="outline" className="min-w-[100px]">
-                Cancel
-              </Button>
-            </DrawerClose>
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="text-primary-foreground min-w-[140px]"
-            >
-              {isSubmitting ? (
-                <LoaderCircle className="w-4 h-4 animate-spin mr-2" />
-              ) : null}
-              {isSubmitting ? "Submitting..." : "Submit Transfer"}
-            </Button>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+          <DialogFooter className="border-t bg-muted/20 px-6 py-4 sm:justify-between">
+            {transferStep === "product" && <><span className="mr-auto text-xs text-muted-foreground">Step 1 of 3 — choose a product</span><Button variant="outline" onClick={() => setOpenTransferModal(false)}>Cancel</Button></>}
+            {transferStep === "agents" && <><span className="mr-auto text-xs text-muted-foreground">Step 2 of 3 — {transferSelectedAgents.length} agent{transferSelectedAgents.length === 1 ? "" : "s"} selected</span><Button variant="outline" onClick={() => setOpenTransferModal(false)}>Cancel</Button><Button onClick={() => {
+              if (transferSelectedAgents.length === 0) { toast.warning("Select at least one receiving agent to continue."); return; }
+              setTransferStep("quantities");
+            }} disabled={transferSelectedAgents.length === 0}>Assign quantities</Button></>}
+            {transferStep === "quantities" && <><span className="mr-auto text-xs text-muted-foreground">Step 3 of 3 — {transferTotalUnits} units assigned</span><Button variant="outline" onClick={() => setTransferStep("agents")} disabled={isSubmitting}>Back</Button><Button onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting && <LoaderCircle className="size-4 animate-spin mr-2" />}{isSubmitting ? "Saving..." : "Save transfer"}</Button></>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Returned quantities — products an agent sent back to the main office */}
       <Dialog open={openReturn} onOpenChange={setOpenReturn}>

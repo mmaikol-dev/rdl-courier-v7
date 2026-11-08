@@ -30,7 +30,8 @@ import { useState, useEffect } from "react";
 import { toast } from "@/lib/toast";
 
 export default function TransferDetails() {
-  const { transfers, deductions, productId, agentId, totalTransferred, totalDeducted, remainingQuantity, flash } = usePage().props as any;
+  const { transfers, deductions, productId, agentId, totalTransferred, totalDeducted, remainingQuantity, flash, auth } = usePage().props as any;
+  const isAgent = auth?.user?.roles?.trim?.().toLowerCase() === "agent";
   const [isDeductionOpen, setIsDeductionOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
@@ -72,13 +73,13 @@ export default function TransferDetails() {
   };
 
   const breadcrumbs = [
-    { title: "Transfers", href: "/transfer" },
+    { title: isAgent ? "Stock" : "Transfers", href: "/transfer" },
     { title: "Details", href: "#" },
   ];
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Transfer Details" />
+      <Head title={isAgent ? "Stock Details" : "Transfer Details"} />
 
       <div className="p-4 sm:p-6">
         {/* Header */}
@@ -92,7 +93,7 @@ export default function TransferDetails() {
             <span className="hidden sm:inline">{firstTransfer?.agent?.name || "Agent"} Transfers</span>
           </Button>
 
-          <Dialog open={isDeductionOpen} onOpenChange={setIsDeductionOpen}>
+          {!isAgent && <Dialog open={isDeductionOpen} onOpenChange={setIsDeductionOpen}>
             <DialogTrigger asChild>
               <Button className="flex items-center gap-2">
                 <MinusCircleIcon className="w-4 h-4" />
@@ -167,7 +168,7 @@ export default function TransferDetails() {
                 </DialogFooter>
               </form>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
         </div>
 
         {/* Summary Cards */}
@@ -233,8 +234,8 @@ export default function TransferDetails() {
 
         {/* Deductions Table */}
         {deductions && deductions.length > 0 && (
-          <Card className="shadow-sm mb-6">
-            <CardHeader>
+          <Card className="shadow-sm mb-6 gap-0 py-0">
+            <CardHeader className="px-3 py-2 sm:px-4">
               <CardTitle className="text-lg">Deductions</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -248,7 +249,7 @@ export default function TransferDetails() {
                       <TableHead>Reason</TableHead>
                       <TableHead>Deducted By</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      {!isAgent && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -272,7 +273,7 @@ export default function TransferDetails() {
                         <TableCell className="text-sm">
                           {new Date(deduction.created_at).toLocaleDateString()}
                         </TableCell>
-                        <TableCell className="text-right">
+                        {!isAgent && <TableCell className="text-right">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -281,7 +282,7 @@ export default function TransferDetails() {
                           >
                             <TrashIcon className="w-4 h-4" />
                           </Button>
-                        </TableCell>
+                        </TableCell>}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -292,8 +293,8 @@ export default function TransferDetails() {
         )}
 
         {/* Transfer History */}
-        <Card className="shadow-sm">
-          <CardHeader>
+        <Card className="shadow-sm gap-0 py-0">
+          <CardHeader className="px-3 py-2 sm:px-4">
             <CardTitle className="text-lg">Transfer History</CardTitle>
           </CardHeader>
           <CardContent className="p-0">

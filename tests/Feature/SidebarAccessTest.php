@@ -22,6 +22,12 @@ class SidebarAccessTest extends TestCase
         $this->assertSame('Integrations', SidebarRegistry::titleForKey('integrations'));
     }
 
+    public function test_order_product_matching_is_a_registered_key(): void
+    {
+        $this->assertContains('order-product-matching', SidebarRegistry::allKeys());
+        $this->assertSame('Order Product Matching', SidebarRegistry::titleForKey('order-product-matching'));
+    }
+
     public function test_every_registry_item_has_the_expected_shape(): void
     {
         foreach (SidebarRegistry::items() as $item) {
@@ -89,6 +95,14 @@ class SidebarAccessTest extends TestCase
     public function test_role_without_a_saved_subset_falls_back_to_defaults(): void
     {
         $this->assertSame(SidebarRegistry::allKeys(), SidebarRegistry::resolveVisibleKeys('user', null));
-        $this->assertSame(['stk'], SidebarRegistry::resolveVisibleKeys('agent', null));
+        $this->assertSame(['dashboard', 'transfer', 'stk'], SidebarRegistry::resolveVisibleKeys('agent', null));
+    }
+
+    public function test_agent_dashboard_is_kept_in_saved_permissions(): void
+    {
+        $this->assertSame(
+            ['stk', 'dashboard', 'transfer'],
+            SidebarRegistry::resolveVisibleKeys('agent', ['stk'])
+        );
     }
 }

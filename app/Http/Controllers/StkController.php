@@ -28,7 +28,7 @@ class StkController extends Controller
         
         // 🔐 Role-based filtering: Agents only see their own orders
         if ($user && $normalizedRole === 'agent') {
-            $query->where('agent', $user->name);
+            $query->where('agent_id', $user->id);
         }
 
         if ($request->filled('agent')) {
@@ -41,6 +41,13 @@ class StkController extends Controller
         
         // 📦 Only show specific statuses
         $query->whereIn('status', ['scheduled', 'dispatched', 'delivered']);
+        $today = now()->toDateString();
+        $query->orderByRaw(
+            'CASE WHEN DATE(delivery_date) = ? THEN 0 WHEN DATE(delivery_date) < ? THEN 1 WHEN delivery_date IS NULL THEN 3 ELSE 2 END',
+            [$today, $today]
+        )->orderByRaw('CASE WHEN assigned_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('assigned_at')
+            ->orderBy('delivery_date');
         
         // 🔍 Exact search by order_no
         if ($request->filled('search')) {
@@ -73,7 +80,7 @@ class StkController extends Controller
         
         return Inertia::render('stk/index', [
             'orders' => Inertia::defer(function () use ($query) {
-                $orders = $query->latest('created_at')->paginate(30)->withQueryString();
+                $orders = $query->orderByDesc('created_at')->paginate(30)->withQueryString();
 
                 Log::info('Fetched orders count: ' . $orders->count());
 
@@ -119,6 +126,12 @@ class StkController extends Controller
             ]);
 
             $order = SheetOrder::findOrFail($id);
+            $user = $request->user();
+            if (strtolower(trim((string) ($user?->roles ?? ''))) === 'agent') {
+                if ((int) $order->agent_id !== (int) $user->id) {
+                    return response()->json(['message' => 'You cannot update an order assigned to another agent.'], 403);
+                }
+            }
             
             // ✅ Use validated data and update efficiently
             $order->update([
@@ -179,6 +192,17 @@ class StkController extends Controller
                 'amount' => 'required|numeric|min:1',
                 'order_no' => 'required|string',
             ]);
+
+            $user = $request->user();
+            if (strtolower(trim((string) ($user?->roles ?? ''))) === 'agent') {
+                $ownsOrder = SheetOrder::query()
+                        ->where('order_no', $request->order_no)
+                        ->where('agent_id', $user->id)
+                        ->exists();
+                if (! $ownsOrder) {
+                    return response()->json(['message' => 'You cannot request payment for an order assigned to another agent.'], 403);
+                }
+            }
 
             // Clean phone number
             $phone = preg_replace('/\D/', '', $request->phone);

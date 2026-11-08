@@ -257,7 +257,6 @@ const apiResponseExamples = {
     "product_name": "Windproof Lighter",
     "delivery_date": "2026-10-30",
     "client_name": "Jane Doe",
-    "client_city": "Nairobi",
     "address": "Westlands",
     "city": "Nairobi",
     "country": "Kenya",
@@ -330,8 +329,50 @@ const apiResponseExamples = {
 };
 
 const webhookEventExamples = {
-    'order.created': `{"id":1842,"order_no":"ORD-2026-1042","status":"Pending","call_count":0,"updated_at":"2026-10-29T08:15:00+00:00"}`,
-    'order.updated': `{"id":1842,"order_no":"ORD-2026-1042","status":"Dispatched","call_count":3,"updated_at":"2026-10-29T08:15:00+00:00"}`,
+    'order.created': `{
+  "id": 1842,
+  "order_no": "ORD-2026-1042",
+  "order_date": "2026-10-29T00:00:00.000000Z",
+  "amount": "2500.00",
+  "quantity": 1,
+  "product_name": "Windproof Lighter",
+  "delivery_date": "2026-10-30T00:00:00.000000Z",
+  "client_name": "Jane Doe",
+  "address": "Westlands",
+  "city": "Nairobi",
+  "country": "Kenya",
+  "phone": "+254700000000",
+  "alt_no": null,
+  "status": null,
+  "code": null,
+  "confirmed": false,
+  "created_at": "2026-10-29T08:15:00.000000Z",
+  "updated_at": "2026-10-29T08:15:00+00:00",
+  "edited_at": null,
+  "call_count": 0
+}`,
+    'order.updated': `{
+  "id": 1842,
+  "order_no": "ORD-2026-1042",
+  "order_date": "2026-10-29T00:00:00.000000Z",
+  "amount": "2500.00",
+  "quantity": 1,
+  "product_name": "Windproof Lighter",
+  "delivery_date": "2026-10-30T00:00:00.000000Z",
+  "client_name": "Jane Doe",
+  "address": "Westlands",
+  "city": "Nairobi",
+  "country": "Kenya",
+  "phone": "+254700000000",
+  "alt_no": null,
+  "status": "Dispatched",
+  "code": null,
+  "confirmed": false,
+  "created_at": "2026-10-29T08:15:00.000000Z",
+  "updated_at": "2026-10-30T09:20:00+00:00",
+  "edited_at": "2026-10-30T09:20:00.000000Z",
+  "call_count": 3
+}`,
     'product.created': `{"id":72,"sku":"SKU-123","name":"Windproof Lighter","quantity":20,"updated_at":"2026-10-29T08:15:00+00:00"}`,
     'product.updated': `{"id":72,"sku":"SKU-123","name":"Windproof Lighter","quantity":18,"updated_at":"2026-10-29T08:20:00+00:00"}`,
     'transfer.created': `{"id":842,"movement_type":"sent","product_id":72,"quantity":10,"agent_id":15,"created_at":"2026-10-29T08:15:00+00:00"}`,
@@ -512,7 +553,6 @@ export default function ApiDeveloperGuide() {
   "product_name": "Example product",
   "delivery_date": "2026-11-01",
   "client_name": "Jane Customer",
-  "client_city": "Nairobi",
   "address": "Westlands, Nairobi",
   "city": "Nairobi",
   "country": "Kenya",
@@ -618,18 +658,33 @@ for (const agent of page.data) {
                 <div className="grid gap-5 lg:grid-cols-2">
                     <div className="space-y-4">
                         <div className="rounded-xl border p-4"><div className="flex items-center gap-2"><Webhook className="size-4 text-primary" /><h3 className="text-sm font-semibold">Events you can subscribe to</h3></div><div className="mt-3 grid gap-2 sm:grid-cols-2">{['order.created', 'order.updated', 'product.created', 'product.updated', 'transfer.created', 'transfer.returned'].map((event) => <code key={event} className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">{event}</code>)}</div></div>
-                        <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">What your server receives</h3><p className="mt-1 text-xs text-muted-foreground">Realdeal sends a POST with JSON. Order events include call_count, the number of instruction history entries recorded for that order.</p><div className="mt-3 space-y-2 font-mono text-[11px]"><p className="rounded bg-muted/50 p-2">X-RDL-Event: order.updated</p><p className="rounded bg-muted/50 p-2">X-RDL-Signature: sha256=&lt;signature&gt;</p></div></div>
+                        <div className="rounded-xl border p-4"><h3 className="text-sm font-semibold">What your server receives</h3><p className="mt-1 text-xs text-muted-foreground">Realdeal sends a POST with JSON. Both <code>order.created</code> and <code>order.updated</code> include the full current order snapshot, not only the changed fields. Order events also include <code>call_count</code>, the number of instruction history entries recorded for that order.</p><div className="mt-3 space-y-2 font-mono text-[11px]"><p className="rounded bg-muted/50 p-2">X-RDL-Event: order.created or order.updated</p><p className="rounded bg-muted/50 p-2">X-RDL-Signature: sha256=&lt;signature&gt;</p></div></div>
                     </div>
-                    <div className="rounded-xl border bg-card p-4"><h3 className="text-sm font-semibold">Order webhook payload example</h3><p className="mt-1 text-xs text-muted-foreground">Order events include <code>call_count</code>, the number of instruction history entries recorded for the order.</p><div className="mt-3"><CodeBlock language="JSON" code={`{
+                    <div className="rounded-xl border bg-card p-4"><h3 className="text-sm font-semibold">Order webhook payload example</h3><p className="mt-1 text-xs text-muted-foreground">This envelope and data shape apply to both order events. For <code>order.updated</code>, <code>data</code> contains the latest values for all listed fields, not just the fields that changed.</p><div className="mt-3"><CodeBlock language="JSON" code={`{
   "id": "event-uuid",
-  "type": "order.updated",
+  "type": "order.created",
   "created_at": "2026-10-29T08:15:00+00:00",
   "data": {
     "id": 1842,
     "order_no": "ORD-2026-1042",
-    "status": "Dispatched",
-    "call_count": 3,
-    "updated_at": "2026-10-29T08:15:00+00:00"
+    "order_date": "2026-10-29T00:00:00.000000Z",
+    "amount": "2500.00",
+    "quantity": 1,
+    "product_name": "Windproof Lighter",
+    "delivery_date": "2026-10-30T00:00:00.000000Z",
+    "client_name": "Jane Doe",
+    "address": "Westlands",
+    "city": "Nairobi",
+    "country": "Kenya",
+    "phone": "+254700000000",
+    "alt_no": null,
+    "status": null,
+    "code": null,
+    "confirmed": false,
+    "created_at": "2026-10-29T08:15:00.000000Z",
+    "updated_at": "2026-10-29T08:15:00+00:00",
+    "edited_at": null,
+    "call_count": 0
   }
 }`} /></div><p className="mt-3 text-xs leading-5 text-muted-foreground">Verify the signature using the raw request body and the webhook signing secret. Return a 2xx response promptly; non-2xx responses are retried. Transfer events are listed in the event examples below.</p></div>
                 </div>
@@ -640,7 +695,7 @@ for (const agent of page.data) {
                     <p className="border-t px-4 py-3 text-xs leading-5 text-muted-foreground">Set <code>RDL_WEBHOOK_SECRET</code> to the signing secret shown when you create or configure the webhook. Do not JSON-parse or modify the request body before checking its signature. Return HTTP 2xx after accepting the event.</p>
                 </div>
                 <div className="mt-5 overflow-hidden rounded-xl border bg-card">
-                    <div className="border-b p-4"><h3 className="text-sm font-semibold">Example data for every webhook event</h3><p className="mt-1 text-xs text-muted-foreground">Each example below is the event’s <code>data</code> object inside the common webhook envelope shown above.</p></div>
+                    <div className="border-b p-4"><h3 className="text-sm font-semibold">Example data for every webhook event</h3><p className="mt-1 text-xs text-muted-foreground">Each example below is the event’s <code>data</code> object inside the common webhook envelope shown above. Created and updated order events include the same full set of fields; updated events carry current values for the whole order.</p></div>
                     <div className="divide-y">{Object.entries(webhookEventExamples).map(([event, data]) => <div key={event} className="grid gap-2 p-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-start"><code className="text-xs font-semibold">{event}</code><code className="break-all rounded-md bg-muted/40 p-2 font-mono text-[10px] leading-5">{data}</code></div>)}</div>
                     <p className="border-t px-4 py-3 text-xs leading-5 text-muted-foreground">The webhook envelope also includes a unique <code>id</code>, the event <code>type</code>, and <code>created_at</code>. Transfer field permissions can limit transfer data fields; <code>movement_type</code> is always included.</p>
                 </div>

@@ -10,6 +10,10 @@ class DeductionObserver implements ShouldHandleEventsAfterCommit
 {
     public function created(Deduction $deduction): void
     {
+        $isDeliveredOrder = str_starts_with(
+            mb_strtolower(trim((string) $deduction->reason)),
+            'delivered order '
+        );
         $deduction->loadMissing('product.user');
         $merchant = $deduction->product?->merchant ?: $deduction->product?->user?->name;
 
@@ -17,9 +21,9 @@ class DeductionObserver implements ShouldHandleEventsAfterCommit
             return;
         }
 
-        app(MerchantWebhookService::class)->send((string) $merchant, 'transfer.returned', [
+        app(MerchantWebhookService::class)->send((string) $merchant, $isDeliveredOrder ? 'order.inventory_deducted' : 'transfer.returned', [
             'id' => $deduction->id,
-            'movement_type' => 'returned',
+            'movement_type' => $isDeliveredOrder ? 'delivered' : 'returned',
             'code' => $deduction->code,
             'product_id' => $deduction->product_id,
             'quantity' => $deduction->quantity,

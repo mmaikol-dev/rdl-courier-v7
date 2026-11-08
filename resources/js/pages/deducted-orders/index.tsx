@@ -42,6 +42,7 @@ interface DeductedOrder {
   delivery_date: string | null;
   inventory_deducted_at: string | null;
   inventory_deducted_by: number | null;
+  inventory_deduction_actor: string | null;
   inventory_product_id: number | null;
   linked_product: LinkedProduct | null;
 }
@@ -259,6 +260,7 @@ export default function DeductedOrdersPage() {
                       <TableHead>Status</TableHead>
                       <TableHead>Delivery Date</TableHead>
                       <TableHead>Deducted At</TableHead>
+                      <TableHead>Deducted By</TableHead>
                       <TableHead>
                         <span className="flex items-center gap-1">
                           <LinkIcon className="size-3" />
@@ -283,6 +285,9 @@ export default function DeductedOrdersPage() {
                         </TableCell>
                         <TableCell className="whitespace-nowrap px-2 py-1 text-sm text-muted-foreground">
                           {order.inventory_deducted_at ?? '-'}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap px-2 py-1 text-sm text-muted-foreground">
+                          {order.inventory_deduction_actor ?? (order.inventory_deducted_by ? `User #${order.inventory_deducted_by}` : '-')}
                         </TableCell>
                         <TableCell className="px-2 py-1">
                           {order.linked_product ? (

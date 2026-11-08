@@ -6,6 +6,7 @@ use App\Models\OrderHistory;
 use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Models\User;
+use App\Services\DeliveredOrderInventoryDeductionService;
 use App\Services\ProductAutoMatchService;
 use App\Services\SheetOrderImportService;
 use App\Support\CountryAccess;
@@ -238,7 +239,6 @@ class SheetOrderController extends Controller
             'item' => 'nullable|string|max:255',
             'delivery_date' => 'nullable|date',
             'client_name' => 'required|string|max:255',
-            'client_city' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:255',
             'product_name' => 'nullable|string|max:255',
             'city' => 'nullable|string|max:255',
@@ -248,7 +248,7 @@ class SheetOrderController extends Controller
             'store_name' => 'nullable|string|max:255',
             'status' => 'nullable|string|max:50',
             'code' => 'nullable|string|max:255',
-            'order_type' => 'nullable|string|max:255',
+            'order_type' => 'nullable|string|in:inbound,outbound',
             'alt_no' => 'nullable|string|max:255',
             'merchant' => $role === 'g.o.d' ? 'required|string|max:255' : 'nullable|string|max:255',
             'cc_email' => 'nullable|string|max:255',
@@ -345,6 +345,7 @@ class SheetOrderController extends Controller
             'amount' => 'numeric',
             'quantity' => 'integer',
             'delivery_date' => 'date',
+            'order_type' => 'nullable|string|in:inbound,outbound',
             'cc_email' => 'string|max:255',
             'status' => 'string|max:50',
             'instructions' => 'nullable|string',
@@ -358,6 +359,10 @@ class SheetOrderController extends Controller
         $oldValue = $sheetorder->$field;
         DB::transaction(function () use ($sheetorder, $validated, $oldValue, $value, $field): void {
             $sheetorder->update($validated);
+
+            if ($field === 'status' && mb_strtolower(trim((string) $sheetorder->status)) === 'delivered') {
+                app(DeliveredOrderInventoryDeductionService::class)->deduct($sheetorder);
+            }
 
             if ($oldValue != $value) {
                 OrderHistory::create([

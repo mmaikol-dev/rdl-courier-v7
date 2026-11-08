@@ -61,6 +61,7 @@ const COLUMNS = [
     'alt_no',
     'status',
     'delivery_date',
+    'order_type',
     'instructions',
     'code',
     'merchant',
@@ -80,6 +81,7 @@ const STATUS_OPTIONS = [
     'Delivered',
     'New Orders',
 ] as const;
+const EDITABLE_STATUS_OPTIONS = STATUS_OPTIONS.filter((status) => status !== 'Dispatched' && status !== 'Delivered');
 
 const statusColors: Record<string, string> = {
     Scheduled: 'bg-status-scheduled text-status-scheduled-foreground border-status-scheduled/40',
@@ -179,6 +181,7 @@ const attributeLabels: Record<string, string> = {
     alt_no: 'Alt Number',
     status: 'Status',
     delivery_date: 'Delivery Date',
+    order_type: 'Order Type',
     instructions: 'Instructions',
     code: 'Code',
     merchant: 'Merchant',
@@ -241,6 +244,7 @@ const TableRowMemo = React.memo(
         order,
         highlighted,
         onEdit,
+        onUpdateOrderType,
         onHistory,
         onWhatsapp,
         canDelete,
@@ -250,6 +254,7 @@ const TableRowMemo = React.memo(
         order: SheetOrder;
         highlighted: Record<string, boolean>;
         onEdit: (order: SheetOrder, field: keyof SheetOrder) => void;
+        onUpdateOrderType: (order: SheetOrder, value: string) => void;
         onHistory: (orderId: number, orderNo: string) => void;
         onWhatsapp: (orderId: number) => void;
         canDelete: boolean;
@@ -286,7 +291,8 @@ const TableRowMemo = React.memo(
                     const colorClass = col === 'status' ? '' : hasCode ? 'text-success font-semibold' : '';
 
                     const baseCellClass = cn(
-                        'max-w-[130px] min-w-[130px] whitespace-nowrap cursor-pointer truncate border-b border-border/70 px-3 py-2',
+                        'max-w-[130px] min-w-[130px] whitespace-nowrap truncate border-b border-border/70 px-3 py-2',
+                        'cursor-pointer',
                         highlighted[key] ? 'bg-success/20' : '',
                         colorClass,
                     );
@@ -309,13 +315,29 @@ const TableRowMemo = React.memo(
                                 {order.instructions_edits_count}
                             </Badge>
                         </div>
+                    ) : col === 'order_type' ? (
+                        <div onClick={(event) => event.stopPropagation()}>
+                            <Select
+                                value={value === 'inbound' || value === 'outbound' ? value : ''}
+                                onValueChange={(nextValue) => onUpdateOrderType(order, nextValue)}
+                                disabled={isSavingCell}
+                            >
+                                <SelectTrigger className="h-7 min-w-28 border-0 bg-transparent px-2 py-0 text-xs shadow-none hover:bg-muted/60">
+                                    <SelectValue placeholder={value || 'Select type'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="inbound">Inbound</SelectItem>
+                                    <SelectItem value="outbound">Outbound</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     ) : undefined;
 
                     return (
                         <TableCell
                             key={col}
                             className={baseCellClass}
-                            onClick={() => onEdit(order, col)}
+                            onClick={() => col !== 'order_type' && onEdit(order, col)}
                             title={value}
                         >
                             {isSavingCell ? (
@@ -637,6 +659,33 @@ export default function Index() {
         setEditing({ order, field });
         setEditValue(String(order[field] || ''));
     }, []);
+
+    const handleUpdateOrderType = React.useCallback((order: SheetOrder, value: string) => {
+        if (value === order.order_type) return;
+
+        const field = 'order_type';
+        const key = `${order.id}-${field}`;
+        setLoadingCell(`save-${key}`, true);
+        router.put(`/sheetorders/${order.id}`, { [field]: value }, {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['orderResults'],
+            onSuccess: () => {
+                setLocalOrders((current) => current.map((item) => item.id === order.id ? { ...item, order_type: value } : item));
+                setHighlighted((previous) => ({ ...previous, [key]: true }));
+                setTimeout(() => setHighlighted((previous) => {
+                    const next = { ...previous };
+                    delete next[key];
+                    return next;
+                }), 2000);
+            },
+            onError: (errors) => {
+                const firstError = Object.values(errors ?? {}).flat()[0];
+                toast.error(typeof firstError === 'string' ? firstError : 'Failed to save the order type.');
+            },
+            onFinish: () => setLoadingCell(`save-${key}`, false),
+        });
+    }, [setLoadingCell]);
 
     const handleHistory = React.useCallback(
         async (orderId: number, orderNo: string) => {
@@ -1024,6 +1073,7 @@ export default function Index() {
                                                 order={order}
                                                 highlighted={highlighted}
                                                 onEdit={handleEdit}
+                                                onUpdateOrderType={handleUpdateOrderType}
                                                 onHistory={handleHistory}
                                                 onWhatsapp={handleWhatsapp}
                                                 canDelete={userPermissions.canDelete}
@@ -1306,7 +1356,7 @@ export default function Index() {
                                         <SelectValue placeholder="Select status" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {STATUS_OPTIONS.map((status) => (
+                                        {EDITABLE_STATUS_OPTIONS.map((status) => (
                                             <SelectItem key={status} value={status}>
                                                 {status}
                                             </SelectItem>
@@ -1375,6 +1425,16 @@ export default function Index() {
                                         />
                                     </PopoverContent>
                                 </Popover>
+                            ) : editing.field === 'order_type' ? (
+                                <Select value={editValue} onValueChange={setEditValue}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select order type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="inbound">Inbound</SelectItem>
+                                        <SelectItem value="outbound">Outbound</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             ) : (
                                 <Input value={editValue} onChange={(e) => setEditValue(e.target.value)} />
                             )}
@@ -1690,6 +1750,20 @@ export default function Index() {
                                 />
                             </PopoverContent>
                         </Popover>
+
+                        <Select
+                            value={newOrder.order_type || ''}
+                            onValueChange={(value) => handleNewOrderChange('order_type', value)}
+                            disabled={isCreating}
+                        >
+                            <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Order type (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="inbound">Inbound</SelectItem>
+                                <SelectItem value="outbound">Outbound</SelectItem>
+                            </SelectContent>
+                        </Select>
 
                         {/* --- Status --- */}
                         <Select

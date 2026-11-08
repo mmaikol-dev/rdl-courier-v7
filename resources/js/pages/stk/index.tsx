@@ -14,7 +14,7 @@ import { Calendar as DateRangeCalendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
@@ -38,8 +38,6 @@ import {
   Phone,
   ShoppingCart,
   Receipt,
-  LayoutGrid,
-  List,
   ChevronDown,
   ChevronUp,
   PhoneCall,
@@ -47,11 +45,6 @@ import {
   MessageSquare
 } from 'lucide-react';
 import * as React from 'react';
-
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Dashboard', href: '/dashboard' },
-  { title: 'M-Pesa Prompting', href: '/stk' },
-];
 
 interface SheetOrder {
   id: number;
@@ -128,12 +121,33 @@ function StkOrdersSkeleton() {
 
 const getStatusColor = (status: string | null | undefined) => {
   if (!status) return 'bg-muted text-foreground border-border';
-  const statusLower = status.toLowerCase();
-  if (statusLower.includes('pending')) return 'bg-warning/10 text-warning-foreground border-warning/30';
-  if (statusLower.includes('paid') || statusLower.includes('success')) return 'bg-success/10 text-success border-success/30';
-  if (statusLower.includes('failed')) return 'bg-destructive/10 text-destructive border-destructive/30';
-  if (statusLower.includes('processing')) return 'bg-accent text-foreground border-border';
-  return 'bg-muted text-foreground border-border';
+  switch (status.trim().toLowerCase()) {
+    case 'scheduled':
+      return 'bg-status-scheduled text-status-scheduled-foreground border-status-scheduled/40';
+    case 'dispatched':
+      return 'bg-status-dispatched text-status-dispatched-foreground border-status-dispatched';
+    case 'followup':
+    case 'follow-up':
+      return 'bg-status-followup text-status-followup-foreground border-status-followup/40';
+    case 'delivered':
+    case 'completed':
+    case 'paid':
+    case 'success':
+      return 'bg-success/10 text-success border-success/30';
+    case 'pending':
+    case 'outofstock':
+    case 'expired':
+      return 'bg-warning/10 text-warning-foreground border-warning/30';
+    case 'failed':
+    case 'cancelled':
+    case 'canceled':
+    case 'returned':
+      return 'bg-destructive/10 text-destructive border-destructive/30';
+    case 'processing':
+      return 'bg-accent text-foreground border-border';
+    default:
+      return 'bg-muted text-foreground border-border';
+  }
 };
 
 const parseLocalDate = (value?: string) => {
@@ -158,6 +172,13 @@ export default function Index() {
 
   const userId = auth?.user?.id || 'guest';
   const currentUserRole = String(auth?.user?.roles ?? '').trim().toLowerCase();
+  const isAgent = currentUserRole === 'agent';
+  const pageTitle = isAgent ? 'Deliveries' : 'Order Payments';
+  const pageDescription = isAgent ? 'View your assigned deliveries and collect payments.' : 'Process M-Pesa payments for orders.';
+  const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Dashboard', href: '/dashboard' },
+    { title: isAgent ? 'Deliveries' : 'M-Pesa Prompting', href: '/stk' },
+  ];
   const showAgentFilter = currentUserRole !== 'agent';
   const storageKey = `mpesa-orders-arrangement-user-${userId}`;
 
@@ -174,7 +195,6 @@ export default function Index() {
   });
   const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
   const [phoneNumbers, setPhoneNumbers] = React.useState<Record<number, string>>({});
-  const [viewMode, setViewMode] = React.useState<'table' | 'card'>('table');
   const [expandedRows, setExpandedRows] = React.useState<Set<number>>(new Set());
   const [searchModalOpen, setSearchModalOpen] = React.useState(false);
   const [orderedItems, setOrderedItems] = React.useState<SheetOrder[]>([]);
@@ -466,20 +486,33 @@ export default function Index() {
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="M-Pesa Payment Processing" />
+      <Head title={pageTitle} />
 
       <div className="space-y-4 p-2 sm:p-4 pb-20 sm:pb-4">
         {/* Header Section */}
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Order Payments</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">Process M-Pesa payments for orders</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="text-xl sm:text-3xl font-bold tracking-tight">{pageTitle}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">{pageDescription}</p>
+          </div>
+          <Button
+            type="button"
+            variant="default"
+            size="icon"
+            className="h-10 w-10 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 sm:hidden"
+            onClick={() => setSearchModalOpen(true)}
+            disabled={isSearching}
+            aria-label="Search orders"
+            title="Search orders"
+          >
+            {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          </Button>
         </div>
 
-        {/* Search and View Toggle */}
         {/* Desktop Search Card */}
         <Card className="hidden rounded-none sm:block">
           <CardHeader className="pb-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex flex-col gap-3">
               <div>
                 <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                   <Search className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -487,18 +520,6 @@ export default function Index() {
                 </CardTitle>
                 <CardDescription className="text-xs sm:text-sm">Filter by order number, name, or phone</CardDescription>
               </div>
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'card')} className="w-auto">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="table" className="gap-2 text-xs sm:text-sm">
-                    <List className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    <span className="hidden sm:inline">Table</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="card" className="gap-2 text-xs sm:text-sm">
-                    <LayoutGrid className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    <span className="hidden sm:inline">Cards</span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
             </div>
           </CardHeader>
           <CardContent>
@@ -691,33 +712,6 @@ export default function Index() {
           </Tabs>
         </div>
 
-        {/* Mobile Search Button */}
-        <div className="sm:hidden flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setSearchModalOpen(true)}
-            className="flex-1 gap-2 h-12 justify-start text-muted-foreground"
-            disabled={isSearching}
-          >
-            {isSearching ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
-            <span>Search orders...</span>
-          </Button>
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'card')} className="w-auto">
-            <TabsList className="grid w-full grid-cols-2 h-12">
-              <TabsTrigger value="table" className="gap-2">
-                <List className="h-4 w-4" />
-              </TabsTrigger>
-              <TabsTrigger value="card" className="gap-2">
-                <LayoutGrid className="h-4 w-4" />
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
         <Deferred data="orders" fallback={<StkOrdersSkeleton />}>
         {() => <>
         {/* Orders Display */}
@@ -729,26 +723,13 @@ export default function Index() {
               <p className="text-sm text-muted-foreground">Try adjusting your search filters</p>
             </CardContent>
           </Card>
-        ) : viewMode === 'table' ? (
-          /* Table View */
+        ) : (
+          /* Orders Table */
           <Card className="overflow-hidden rounded-none">
             <div className="overflow-x-auto">
               {/* Desktop Table */}
               <div className="hidden lg:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[40px]"></TableHead>
-                      <TableHead className="w-[120px]">Order #</TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead className="text-right w-[180px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                <Table containerClassName="max-h-[70vh] overflow-auto">
                   <TableBody>
                     {filteredOrders.map((order, index) => {
                       const isPaying = payingOrders.has(order.id);
@@ -858,16 +839,7 @@ export default function Index() {
 
               {/* Mobile/Tablet Expandable Table */}
               <div className="lg:hidden">
-                <Table containerClassName="overflow-x-hidden" className="w-full table-fixed">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-7 px-1"></TableHead>
-                      <TableHead className="w-7 px-1"></TableHead>
-                      <TableHead className="px-1">Order</TableHead>
-                      <TableHead className="w-[82px] px-1 text-right">Amount</TableHead>
-                      <TableHead className="w-[78px] px-1">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                <Table containerClassName="max-h-[70vh] overflow-x-hidden overflow-y-auto" className="w-full table-fixed">
                   <TableBody>
                     {filteredOrders.map((order, index) => {
                       const isPaying = payingOrders.has(order.id);
@@ -906,13 +878,16 @@ export default function Index() {
                                 <span className="block truncate text-xs text-muted-foreground">{order.client_name}</span>
                               </div>
                             </TableCell>
-                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="w-[82px] cursor-pointer whitespace-nowrap px-1 text-right font-semibold text-[11px]">
-                              KES {order.amount.toLocaleString()}
-                            </TableCell>
-                            <TableCell onClick={() => toggleRowExpansion(order.id)} className="w-[78px] cursor-pointer px-1">
-                              <Badge variant="outline" className={`${getStatusColor(order.status)} block max-w-full truncate border px-1 text-[10px]`}>
-                                {order.status || 'Unknown'}
-                              </Badge>
+                            <TableCell colSpan={2} onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer px-1">
+                              <div className="flex min-w-0 flex-col gap-1">
+                                {order.address && <span className="block truncate text-[10px] font-semibold text-foreground" title={order.address}>{order.address}</span>}
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="whitespace-nowrap text-right text-[11px] font-semibold">KES {order.amount.toLocaleString()}</span>
+                                  <Badge variant="outline" className={`${getStatusColor(order.status)} max-w-[78px] truncate border px-1 text-[10px]`}>
+                                    {order.status || 'Unknown'}
+                                  </Badge>
+                                </div>
+                              </div>
                             </TableCell>
                           </TableRow>
                           {expandedRows.has(order.id) && (
@@ -935,6 +910,14 @@ export default function Index() {
                                     </div>
                                   </div>
                                   <div className="grid grid-cols-2 gap-2 text-sm">
+                                    {order.code?.trim() && (
+                                      <div className="col-span-2 flex items-center gap-2">
+                                        <span className="text-xs text-muted-foreground">Code:</span>
+                                        <Badge variant="outline" className="border-success/30 bg-success/10 font-semibold text-success">
+                                          {order.code}
+                                        </Badge>
+                                      </div>
+                                    )}
                                     <div>
                                       <span className="text-muted-foreground text-xs">Product:</span>
                                       <p className="font-medium">{order.product_name}</p>
@@ -1023,163 +1006,13 @@ export default function Index() {
               </div>
             </div>
           </Card>
-        ) : (
-          /* Card View */
-          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredOrders.map((order, index) => {
-              const isPaying = payingOrders.has(order.id);
-              const isSavingConfirmation = savingConfirmations.has(order.id);
-              const confirmationBadge = getConfirmationBadge(order.confirmed);
-              return (
-                <Card
-                  key={order.id}
-                  className={cn(
-                    'rounded-none hover:shadow-lg transition-shadow duration-200',
-                    draggedIndex === index && 'opacity-50',
-                  )}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDragEnd={handleDragEnd}
-                >
-                  {isSavingConfirmation ? (
-                    <CardContent className="space-y-4 py-5" role="status" aria-label={`Saving confirmation for ${order.order_no}`}>
-                      <Skeleton className="h-5 w-2/3" />
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-16 w-full" />
-                      <Skeleton className="h-9 w-full" />
-                    </CardContent>
-                  ) : <>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="cursor-grab active:cursor-grabbing flex-shrink-0 pt-1">
-                        <GripVertical className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div className="space-y-1 flex-1 min-w-0">
-                        <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                          <Hash className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                          <span className="truncate">{order.order_no}</span>
-                        </CardTitle>
-                        {order.cc_email && (
-                          <p className="text-xs text-muted-foreground truncate">{order.cc_email}</p>
-                        )}
-                        {confirmationBadge && (
-                          <Badge className={`w-fit ${confirmationBadge.className} text-[10px] px-1.5 py-0`}>
-                            {confirmationBadge.label}
-                          </Badge>
-                        )}
-                        <CardDescription className="flex items-center gap-1.5 text-xs">
-                          <User className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
-                          <span className="truncate">{order.client_name}</span>
-                        </CardDescription>
-                      </div>
-                      <Badge variant="outline" className={`${getStatusColor(order.status)} border flex-shrink-0 text-xs`}>
-                        {order.status || 'Unknown'}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-
-                  <CardContent className="space-y-2 sm:space-y-3">
-                    <div className="flex items-start gap-2 text-xs sm:text-sm">
-                      <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{order.product_name}</div>
-                        <div className="text-muted-foreground flex items-center gap-1">
-                          <ShoppingCart className="h-3 w-3" />
-                          Qty: {order.quantity}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs sm:text-sm">
-                      <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="font-semibold text-base sm:text-lg">KES {order.amount.toLocaleString()}</span>
-                    </div>
-
-                    {order.address && (
-                      <div className="flex items-start gap-2 text-xs sm:text-sm text-muted-foreground">
-                        <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 mt-0.5 flex-shrink-0" />
-                        <span className="truncate">{order.address}</span>
-                      </div>
-                    )}
-
-                    {order.delivery_date && (
-                      <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                        <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                        <span>{order.delivery_date}</span>
-                      </div>
-                    )}
-
-                    <Separator />
-
-                    <div className="space-y-2">
-                      <Label htmlFor={`phone-${order.id}`} className="text-xs flex items-center gap-1.5">
-                        <Phone className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                        M-Pesa Phone Number
-                      </Label>
-                      <Input
-                        id={`phone-${order.id}`}
-                        value={phoneNumbers[order.id] ?? order.phone}
-                        onChange={e => setPhoneNumbers(prev => ({ ...prev, [order.id]: e.target.value }))}
-                        placeholder="254XXXXXXXXX"
-                        className="h-8 sm:h-9"
-                        disabled={isPaying}
-                      />
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        size="sm"
-                        onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
-                        className="flex-1 gap-2 h-9 bg-success hover:bg-success"
-                        disabled={isPaying}
-                      >
-                        <PhoneCall className="h-4 w-4" />
-                        Call
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => payOrder(order)}
-                        className="flex-1 gap-2 h-9"
-                        disabled={isPaying}
-                      >
-                        {isPaying ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Processing
-                          </>
-                        ) : (
-                          <>
-                            <Smartphone className="h-4 w-4" />
-                            Pay
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setEditingOrder(order)}
-                        className="flex-1 h-9"
-                        disabled={isPaying}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                  </>}
-                </Card>
-              );
-            })}
-          </div>
         )}
         {orders.last_page > 1 && (
-          <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
+          <div className="flex flex-col items-center justify-center gap-2 border-t pt-3">
+            <p className="text-center text-xs text-muted-foreground">
               Showing {(orders.current_page - 1) * orders.per_page + 1}–{Math.min(orders.current_page * orders.per_page, orders.total)} of {orders.total} orders
             </p>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-center gap-2">
               <Button variant="outline" size="sm" onClick={() => goToPage(orders.current_page - 1)} disabled={orders.current_page <= 1}>
                 Previous
               </Button>

@@ -3,8 +3,8 @@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Calendar } from '@/components/ui/calendar';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
@@ -24,16 +23,21 @@ import { format } from 'date-fns';
 import {
     AlertCircle,
     CalendarIcon,
+    Check,
+    ChevronsUpDown,
     CheckCircle2,
+    CircleX,
     Download,
     Edit,
     FileText,
     Filter,
+    Info,
     Loader2,
     Lock,
     Unlock,
     PackageCheck,
     Printer,
+    RefreshCw,
     Trash2,
     Users,
 } from 'lucide-react';
@@ -45,10 +49,10 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dispatch', href: '/dispatch' },
 ];
 
-const DISPATCH_COLUMN_ORDER = ['order_no', 'client_name', 'product_name', 'quantity', 'amount', 'phone', 'delivery_date', 'address', 'agent', 'active', 'status', 'actions'];
+const DISPATCH_COLUMN_ORDER = ['cc_email', 'order_no', 'client_name', 'product_name', 'quantity', 'amount', 'phone', 'delivery_date', 'address', 'agent', 'confirmed', 'status', 'actions'];
 const DISPATCH_COLUMN_WIDTHS: Record<string, number> = {
-    order_no: 130, client_name: 160, product_name: 180, quantity: 70, amount: 110, phone: 130,
-    delivery_date: 120, address: 220, agent: 170, active: 70, status: 110, actions: 130,
+    cc_email: 150, order_no: 130, client_name: 160, product_name: 180, quantity: 70, amount: 110, phone: 130,
+    delivery_date: 120, address: 220, agent: 170, confirmed: 110, status: 130, actions: 130,
 };
 
 function dispatchStatusClass(status: string | null | undefined): string {
@@ -116,6 +120,7 @@ function getXsrfToken() {
 
 interface SheetOrder {
     id: number;
+    cc_email?: string | null;
     order_no: string;
     product_name: string;
     quantity: number;
@@ -127,9 +132,12 @@ interface SheetOrder {
     status: string;
     delivery_date: string;
     instructions?: string;
-    agent?: string;
+    agent?: string | null;
+    agent_id?: number | null;
+    order_type?: string | null;
     created_at?: string;
-    confirmed?: number;
+    confirmed?: boolean | number | string | null;
+    comments?: string | null;
 }
 
 interface EditOrderDialogProps {
@@ -253,6 +261,54 @@ interface Agent {
     name: string;
 }
 
+interface CommandFilterSelectProps {
+    id: string;
+    value: string;
+    options: Array<{ value: string; label: string }>;
+    placeholder: string;
+    searchPlaceholder: string;
+    onValueChange: (value: string) => void;
+}
+
+function CommandFilterSelect({ id, value, options, placeholder, searchPlaceholder, onValueChange }: CommandFilterSelectProps) {
+    const [open, setOpen] = React.useState(false);
+    const selectedLabel = options.find((option) => option.value === value)?.label ?? placeholder;
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button id={id} type="button" variant="outline" role="combobox" aria-expanded={open} className="h-11 w-full justify-between font-normal">
+                    <span className="truncate">{selectedLabel}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+                <Command>
+                    <CommandInput placeholder={searchPlaceholder} />
+                    <CommandList className="max-h-60 overflow-y-auto">
+                        <CommandEmpty>No matching options.</CommandEmpty>
+                        <CommandGroup>
+                            {options.map((option) => (
+                                <CommandItem
+                                    key={option.value}
+                                    value={option.label}
+                                    onSelect={() => {
+                                        onValueChange(option.value);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                                    {option.label}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 interface OrdersTableProps {
     orders: any;
     agents: Agent[];
@@ -260,17 +316,17 @@ interface OrdersTableProps {
     isBulkAssigning: boolean;
     isBulkDownloading: boolean;
     isFiltering: boolean;
+    isRefreshing: boolean;
     hasActiveFilters: boolean;
     updatingAgentId: number | null;
-    togglingAgentId: number | null;
     isDownloading: number | null;
     onOpenBulkAssign: () => void;
     onOpenBulkDownload: () => void;
     onOpenPrint: () => void;
     onOpenFilter: () => void;
+    onRefresh: () => void;
     onGoToPage: (page: number) => void;
-    onAgentChange: (orderId: number, agentName: string | null) => void;
-    onAgentToggle: (order: SheetOrder, checked: boolean) => void;
+    onAgentChange: (orderId: number, agentId: string | null) => void;
     onEdit: (order: SheetOrder) => void;
     onDelete: (order: SheetOrder) => void;
     onDownload: (orderId: number) => void;
@@ -283,17 +339,17 @@ const OrdersTable = React.memo(function OrdersTable({
     isBulkAssigning,
     isBulkDownloading,
     isFiltering,
+    isRefreshing,
     hasActiveFilters,
     updatingAgentId,
-    togglingAgentId,
     isDownloading,
     onOpenBulkAssign,
     onOpenBulkDownload,
     onOpenPrint,
     onOpenFilter,
+    onRefresh,
     onGoToPage,
     onAgentChange,
-    onAgentToggle,
     onEdit,
     onDelete,
     onDownload,
@@ -318,7 +374,7 @@ const OrdersTable = React.memo(function OrdersTable({
     const columnHeader = (key: string, title: string, className?: string) => (
         <TableHead className={cn('whitespace-nowrap', className, isColumnLocked(key) && 'sticky z-20 bg-muted')} style={isColumnLocked(key) ? { left: lockedColumnOffsets[key] } : undefined}>
             <div className="flex items-center justify-between gap-2">
-                <span>{title}</span>
+                <span className="min-w-0 truncate" title={title}>{title}</span>
                 <button
                     type="button"
                     className={cn('shrink-0 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground', isColumnLocked(key) && 'text-primary')}
@@ -420,6 +476,17 @@ const OrdersTable = React.memo(function OrdersTable({
                                     <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary" />
                                 )}
                             </Button>
+                            <Button
+                                variant="outline"
+                                onClick={onRefresh}
+                                size="icon"
+                                className="h-9 w-9 shrink-0"
+                                disabled={isRefreshing || isFiltering}
+                                title="Refresh Dispatch orders"
+                                aria-label="Refresh Dispatch orders"
+                            >
+                                {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                            </Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -430,10 +497,11 @@ const OrdersTable = React.memo(function OrdersTable({
                             <p className="text-lg text-muted-foreground">No orders available.</p>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto rounded-lg border">
-                            <Table className="table-fixed">
-                                <TableHeader>
+                        <div className="max-h-[70vh] overflow-auto rounded-lg border">
+                            <Table className="min-w-[1850px] table-fixed">
+                                <TableHeader className="sticky top-0 z-30 bg-muted/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-muted/90">
                                     <TableRow className="bg-muted/60 hover:bg-muted/60">
+                                        {columnHeader('cc_email', 'CC Email', 'w-[150px]')}
                                         {columnHeader('order_no', 'Order No', 'w-[130px]')}
                                         {columnHeader('client_name', 'Client', 'w-[160px]')}
                                         {columnHeader('product_name', 'Product', 'w-[180px]')}
@@ -443,8 +511,8 @@ const OrdersTable = React.memo(function OrdersTable({
                                         {columnHeader('delivery_date', 'Delivery Date', 'w-[120px]')}
                                         {columnHeader('address', 'Address / City', 'w-[220px]')}
                                         {columnHeader('agent', 'Agent', 'w-[170px]')}
-                                        {columnHeader('active', 'Active', 'w-[70px]')}
-                                        {columnHeader('status', 'Status', 'w-[110px]')}
+                                        {columnHeader('confirmed', 'Confirmed', 'w-[110px] text-center')}
+                                        {columnHeader('status', 'Status', 'w-[130px]')}
                                         {columnHeader('actions', 'Actions', 'w-[130px] text-right')}
                                     </TableRow>
                                 </TableHeader>
@@ -458,6 +526,9 @@ const OrdersTable = React.memo(function OrdersTable({
                                                     'bg-primary/5 hover:bg-primary/10 data-[state=selected]:bg-primary/10',
                                             )}
                                         >
+                                            <TableCell {...lockedCellProps('cc_email')} className={cn('truncate text-xs', lockedCellProps('cc_email').className)} title={order.cc_email ?? ''}>
+                                                {order.cc_email || '—'}
+                                            </TableCell>
                                             <TableCell {...lockedCellProps('order_no')} className={cn('truncate text-xs font-medium', lockedCellProps('order_no').className)} title={order.order_no}>
                                                 {order.order_no}
                                             </TableCell>
@@ -483,10 +554,10 @@ const OrdersTable = React.memo(function OrdersTable({
                                             <TableCell {...lockedCellProps('agent')}>
                                                 <div className="relative">
                                                     <Select
-                                                        value={order.agent || 'none'}
+                                                        value={order.agent_id ? String(order.agent_id) : agents?.find((agent) => agent.name === order.agent)?.id.toString() ?? 'none'}
                                                         onValueChange={(value) => {
-                                                            const agentName = value === 'none' ? null : value;
-                                                            onAgentChange(order.id, agentName);
+                                                            const agentId = value === 'none' ? null : value;
+                                                            onAgentChange(order.id, agentId);
                                                         }}
                                                         disabled={updatingAgentId === order.id || readOnly}
                                                     >
@@ -496,7 +567,7 @@ const OrdersTable = React.memo(function OrdersTable({
                                                         <SelectContent>
                                                             <SelectItem value="none">No Agent</SelectItem>
                                                             {agents?.map((agent) => (
-                                                                <SelectItem key={agent.id} value={agent.name}>
+                                                                <SelectItem key={agent.id} value={String(agent.id)}>
                                                                     {agent.name}
                                                                 </SelectItem>
                                                             ))}
@@ -509,25 +580,32 @@ const OrdersTable = React.memo(function OrdersTable({
                                                     )}
                                                 </div>
                                             </TableCell>
-                                            <TableCell {...lockedCellProps('active')}>
-                                                {order.agent ? (
-                                                    <div className="flex items-center justify-center">
-                                                        {togglingAgentId === order.id ? (
-                                                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                                        ) : (
-                                                            <Switch
-                                                                checked={!!order.agent}
-                                                                onCheckedChange={(checked) => onAgentToggle(order, checked)}
-                                                                disabled={togglingAgentId === order.id || readOnly}
-                                                                className="data-[state=checked]:bg-success"
-                                                            />
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center justify-center">
-                                                        <span className="text-xs text-muted-foreground">—</span>
-                                                    </div>
-                                                )}
+                                            <TableCell {...lockedCellProps('confirmed')} className={cn('text-center', lockedCellProps('confirmed').className)}>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    {order.confirmed === true || order.confirmed === 1 || String(order.confirmed ?? '').trim().toLowerCase() === 'true' || String(order.confirmed ?? '').trim() === '1' ? (
+                                                        <CheckCircle2 className="h-5 w-5 text-success" aria-label="Confirmed" />
+                                                    ) : (
+                                                        <CircleX className="h-5 w-5 text-destructive" aria-label="Not confirmed" />
+                                                    )}
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                                                aria-label={`View rider's comment for order ${order.order_no}`}
+                                                                title="View rider's comment"
+                                                            >
+                                                                <Info className="h-4 w-4" />
+                                                            </button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent side="top" className="max-w-xs">
+                                                            <p className="mb-1 text-xs font-semibold">Rider's comment</p>
+                                                            <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                                                                {order.comments?.trim() || 'No rider comment recorded.'}
+                                                            </p>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                </div>
                                             </TableCell>
                                             <TableCell {...lockedCellProps('status')}>
                                                 <Badge variant="outline" className={cn('whitespace-nowrap', dispatchStatusClass(order.status))}>
@@ -620,9 +698,10 @@ const OrdersTable = React.memo(function OrdersTable({
 });
 
 export default function DispatchView() {
-    const { orders, agents, filters, auth, flash } = usePage<{
+    const { orders, agents, ccEmails, filters, auth, flash } = usePage<{
         orders: any;
         agents: Agent[];
+        ccEmails: string[];
         filters: any;
         auth: any;
         flash?: { success?: string; error?: string };
@@ -641,6 +720,8 @@ export default function DispatchView() {
     });
     const [selectedAgent, setSelectedAgent] = React.useState(filters?.agent || 'all');
     const [selectedCountry, setSelectedCountry] = React.useState(filters?.country || 'all');
+    const [selectedOrderType, setSelectedOrderType] = React.useState(filters?.order_type || 'all');
+    const [selectedCcEmail, setSelectedCcEmail] = React.useState(filters?.cc_email || 'all');
     const [showFilterModal, setShowFilterModal] = React.useState(false);
     const [showBulkAssignModal, setShowBulkAssignModal] = React.useState(false);
     const [showBulkDownloadModal, setShowBulkDownloadModal] = React.useState(false);
@@ -648,8 +729,10 @@ export default function DispatchView() {
     const [bulkOrderNumbers, setBulkOrderNumbers] = React.useState('');
     const [bulkDownloadOrderNumbers, setBulkDownloadOrderNumbers] = React.useState('');
     const [bulkSelectedAgent, setBulkSelectedAgent] = React.useState('');
+    const bulkSelectedAgentName = agents?.find((agent) => String(agent.id) === bulkSelectedAgent)?.name ?? '';
     const [bulkOrderType, setBulkOrderType] = React.useState('');
     const [printAgents, setPrintAgents] = React.useState<string[]>([]);
+    const [printAgentSelectorOpen, setPrintAgentSelectorOpen] = React.useState(false);
     const [printDateRange, setPrintDateRange] = React.useState<{
         from: Date | undefined;
         to: Date | undefined;
@@ -665,13 +748,13 @@ export default function DispatchView() {
     }>({ from: undefined, to: undefined });
     // Loading states
     const [isFiltering, setIsFiltering] = React.useState(false);
+    const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [isBulkAssigning, setIsBulkAssigning] = React.useState(false);
     const [isBulkDownloading, setIsBulkDownloading] = React.useState(false);
     const [isUpdating, setIsUpdating] = React.useState(false);
     const [isDeleting, setIsDeleting] = React.useState(false);
     const [isDownloading, setIsDownloading] = React.useState<number | null>(null);
     const [updatingAgentId, setUpdatingAgentId] = React.useState<number | null>(null);
-    const [togglingAgentId, setTogglingAgentId] = React.useState<number | null>(null);
     const [displayOrders, setDisplayOrders] = React.useState<SheetOrder[]>(orders?.data ?? []);
 
     React.useEffect(() => {
@@ -696,6 +779,8 @@ export default function DispatchView() {
                 end_date: dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '',
                 agent: selectedAgent === 'all' ? '' : selectedAgent,
                 country: selectedCountry === 'all' ? '' : selectedCountry,
+                order_type: selectedOrderType === 'all' ? '' : selectedOrderType,
+                cc_email: selectedCcEmail === 'all' ? '' : selectedCcEmail,
             },
             {
                 preserveState: true,
@@ -714,6 +799,8 @@ export default function DispatchView() {
         setDateRange({ from: undefined, to: undefined });
         setSelectedAgent('all');
         setSelectedCountry('all');
+        setSelectedOrderType('all');
+        setSelectedCcEmail('all');
         setIsFiltering(true);
         router.get(
             '/dispatch',
@@ -728,6 +815,15 @@ export default function DispatchView() {
             },
         );
     };
+
+    const handleRefreshOrders = React.useCallback(() => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        router.reload({
+            only: ['orders'],
+            onFinish: () => setIsRefreshing(false),
+        });
+    }, [isRefreshing]);
 
     const handleBulkAssign = () => {
         if (readOnly) return handleRestrictedAction();
@@ -757,7 +853,7 @@ export default function DispatchView() {
 
         const agentInput = document.createElement('input');
         agentInput.type = 'hidden';
-        agentInput.name = 'agent_name';
+        agentInput.name = 'agent_id';
         agentInput.value = bulkSelectedAgent;
         form.appendChild(agentInput);
 
@@ -778,7 +874,7 @@ export default function DispatchView() {
             setBulkOrderNumbers('');
             setBulkSelectedAgent('');
             setBulkOrderType('');
-            toast.success(`Successfully assigned orders to ${bulkSelectedAgent}. PDF is downloading...`);
+            toast.success(`Successfully assigned orders to ${bulkSelectedAgentName}. PDF is downloading...`);
 
             // Reload the page data to show updated assignments
             router.reload({ only: ['orders'] });
@@ -956,9 +1052,10 @@ export default function DispatchView() {
         }, 2500);
     }, [readOnly]);
 
-    const handleAgentChange = React.useCallback(async (orderId: number, agentName: string | null) => {
+    const handleAgentChange = React.useCallback(async (orderId: number, agentId: string | null) => {
         if (readOnly) return handleRestrictedAction();
         setUpdatingAgentId(orderId);
+        const selectedAgent = agents.find((agent) => String(agent.id) === agentId);
 
         try {
             const response = await fetch(`/sheet_orders/${orderId}`, {
@@ -969,7 +1066,7 @@ export default function DispatchView() {
                     'Content-Type': 'application/json',
                     'X-XSRF-TOKEN': getXsrfToken(),
                 },
-                body: JSON.stringify({ agent: agentName }),
+                body: JSON.stringify({ agent_id: agentId ? Number(agentId) : null }),
             });
             const result = await response.json().catch(() => ({}));
 
@@ -982,47 +1079,26 @@ export default function DispatchView() {
             setDisplayOrders((current) => current.map((order) => order.id === orderId
                 ? {
                     ...order,
-                    agent: updatedOrder.agent ?? agentName ?? undefined,
+                    agent: updatedOrder.agent ?? selectedAgent?.name ?? (agentId === null ? null : undefined),
+                    agent_id: updatedOrder.agent_id ?? selectedAgent?.id ?? null,
                     delivery_date: updatedOrder.delivery_date
                         ? String(updatedOrder.delivery_date).slice(0, 10)
                         : order.delivery_date,
                 }
                 : order));
-            toast.success(`Agent ${agentName ? 'assigned' : 'removed'} successfully!`);
+            toast.success(`Agent ${selectedAgent ? 'assigned' : 'removed'} successfully!`);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Failed to update agent. Please try again.');
         } finally {
             setUpdatingAgentId(null);
         }
-    }, [readOnly]);
+    }, [agents, readOnly]);
 
-    const handleAgentToggle = React.useCallback((order: SheetOrder, checked: boolean) => {
-        if (readOnly) return handleRestrictedAction();
-        if (!checked && order.agent) {
-            // Directly unassign without confirmation modal
-            setTogglingAgentId(order.id);
-            router.put(
-                `/sheet_orders/${order.id}`,
-                { agent: null },
-                {
-                    preserveState: true,
-                    onSuccess: () => {
-                        toast.success(`Agent unassigned from order ${order.order_no} successfully!`);
-                    },
-                    onError: (errors) => {
-                        toast.error('Failed to unassign agent. Please try again.');
-                    },
-                    onFinish: () => setTogglingAgentId(null),
-                },
-            );
-        }
-    }, [readOnly]);
-
-    const filtersRef = React.useRef({ searchTerm, dateRange, selectedAgent, selectedCountry });
-    filtersRef.current = { searchTerm, dateRange, selectedAgent, selectedCountry };
+    const filtersRef = React.useRef({ searchTerm, dateRange, selectedAgent, selectedCountry, selectedOrderType, selectedCcEmail });
+    filtersRef.current = { searchTerm, dateRange, selectedAgent, selectedCountry, selectedOrderType, selectedCcEmail };
 
     const goToPage = React.useCallback((page: number) => {
-        const { searchTerm, dateRange, selectedAgent, selectedCountry } = filtersRef.current;
+        const { searchTerm, dateRange, selectedAgent, selectedCountry, selectedOrderType, selectedCcEmail } = filtersRef.current;
         router.get(
             `/dispatch?page=${page}`,
             {
@@ -1031,6 +1107,8 @@ export default function DispatchView() {
                 end_date: dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : '',
                 agent: selectedAgent === 'all' ? '' : selectedAgent,
                 country: selectedCountry === 'all' ? '' : selectedCountry,
+                order_type: selectedOrderType === 'all' ? '' : selectedOrderType,
+                cc_email: selectedCcEmail === 'all' ? '' : selectedCcEmail,
             },
             { preserveState: true },
         );
@@ -1047,7 +1125,7 @@ export default function DispatchView() {
 
     const parsedDownloadOrders = React.useMemo(() => parseOrderNumbers(bulkDownloadOrderNumbers), [bulkDownloadOrderNumbers]);
 
-    const hasActiveFilters = searchTerm || dateRange.from || dateRange.to || selectedAgent !== 'all' || selectedCountry !== 'all';
+    const hasActiveFilters = searchTerm || dateRange.from || dateRange.to || selectedAgent !== 'all' || selectedCountry !== 'all' || selectedOrderType !== 'all' || selectedCcEmail !== 'all';
 
     const handleOpenBulkAssign = React.useCallback(() => setShowBulkAssignModal(true), []);
     const handleOpenBulkDownload = React.useCallback(() => setShowBulkDownloadModal(true), []);
@@ -1082,17 +1160,17 @@ export default function DispatchView() {
                     isBulkAssigning={isBulkAssigning}
                     isBulkDownloading={isBulkDownloading}
                     isFiltering={isFiltering}
+                    isRefreshing={isRefreshing}
                     hasActiveFilters={hasActiveFilters}
                     updatingAgentId={updatingAgentId}
-                    togglingAgentId={togglingAgentId}
                     isDownloading={isDownloading}
                     onOpenBulkAssign={handleOpenBulkAssign}
                     onOpenBulkDownload={handleOpenBulkDownload}
                     onOpenPrint={handleOpenPrint}
                     onOpenFilter={handleOpenFilter}
+                    onRefresh={handleRefreshOrders}
                     onGoToPage={goToPage}
                     onAgentChange={handleAgentChange}
-                    onAgentToggle={handleAgentToggle}
                     onEdit={handleEditOpen}
                     onDelete={handleDeleteOpen}
                     onDownload={handleDownload}
@@ -1120,22 +1198,36 @@ export default function DispatchView() {
                                     {printAgents.length === agents.length ? 'Deselect All' : 'Select All'}
                                 </button>
                             </div>
-                            <div className="max-h-[240px] overflow-y-auto rounded-lg border p-3">
-                                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-                                    {agents?.map((agent) => (
-                                        <label
-                                            key={agent.id}
-                                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                                        >
-                                            <Checkbox
-                                                checked={printAgents.includes(agent.name)}
-                                                onCheckedChange={() => handlePrintAgentToggle(agent.name)}
-                                            />
-                                            <span className="truncate">{agent.name}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
+                            <Popover open={printAgentSelectorOpen} onOpenChange={setPrintAgentSelectorOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button type="button" variant="outline" role="combobox" aria-expanded={printAgentSelectorOpen} className="h-11 w-full justify-between font-normal">
+                                        <span className="truncate">
+                                            {printAgents.length > 0 ? `${printAgents.length} agent(s) selected` : 'Select agents...'}
+                                        </span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+                                    <Command>
+                                        <CommandInput placeholder="Search agents..." />
+                                        <CommandList className="max-h-60 overflow-y-auto">
+                                            <CommandEmpty>No agents found.</CommandEmpty>
+                                            <CommandGroup>
+                                                <CommandItem value="select all agents" onSelect={handlePrintSelectAllAgents}>
+                                                    <Check className={cn('mr-2 h-4 w-4', printAgents.length === agents.length && agents.length > 0 ? 'opacity-100' : 'opacity-0')} />
+                                                    {printAgents.length === agents.length && agents.length > 0 ? 'Deselect all agents' : 'Select all agents'}
+                                                </CommandItem>
+                                                {agents?.map((agent) => (
+                                                    <CommandItem key={agent.id} value={agent.name} onSelect={() => handlePrintAgentToggle(agent.name)}>
+                                                        <Check className={cn('mr-2 h-4 w-4', printAgents.includes(agent.name) ? 'opacity-100' : 'opacity-0')} />
+                                                        {agent.name}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
                             <p className="mt-1 text-xs text-muted-foreground">
                                 {printAgents.length > 0
                                     ? `${printAgents.length} agent(s) selected`
@@ -1438,7 +1530,7 @@ export default function DispatchView() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {agents?.map((agent) => (
-                                        <SelectItem key={agent.id} value={agent.name}>
+                                        <SelectItem key={agent.id} value={String(agent.id)}>
                                             {agent.name}
                                         </SelectItem>
                                     ))}
@@ -1469,7 +1561,7 @@ export default function DispatchView() {
                                     <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground" />
                                     <div className="space-y-1">
                                         <p className="text-sm font-medium text-foreground">
-                                            Ready to assign {parsedOrders.length} order(s) to <strong>{bulkSelectedAgent}</strong>
+                                            Ready to assign {parsedOrders.length} order(s) to <strong>{bulkSelectedAgentName}</strong>
                                         </p>
                                         <div className="mt-2 flex flex-wrap gap-1">
                                             {parsedOrders.slice(0, 10).map((order, idx) => (
@@ -1526,15 +1618,15 @@ export default function DispatchView() {
 
             {/* Filter Modal */}
             <Dialog open={showFilterModal} onOpenChange={setShowFilterModal}>
-                <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto">
+                <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">
                             <Filter className="h-5 w-5" />
                             Filter Orders
                         </DialogTitle>
-                        <DialogDescription>Narrow down orders by search, date range, or assigned agent.</DialogDescription>
+                        <DialogDescription>Narrow down orders by search, delivery dates, agent, country, order type, or CC email.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-5 py-4">
+                    <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="search" className="text-base font-semibold">
                                 Search
@@ -1586,47 +1678,72 @@ export default function DispatchView() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="agent_filter" className="text-base font-semibold">
-                                Assigned Agent
-                            </Label>
-                            <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-                                <SelectTrigger id="agent_filter" className="h-11">
-                                    <SelectValue placeholder="All Agents" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Agents</SelectItem>
-                                    {agents?.map((agent) => (
-                                        <SelectItem key={agent.id} value={agent.name}>
-                                            {agent.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Label htmlFor="order_type_filter" className="text-base font-semibold">Order Type</Label>
+                            <CommandFilterSelect
+                                id="order_type_filter"
+                                value={selectedOrderType}
+                                onValueChange={setSelectedOrderType}
+                                placeholder="All order types"
+                                searchPlaceholder="Search order types..."
+                                options={[
+                                    { value: 'all', label: 'All order types' },
+                                    { value: 'inbound', label: 'Inbound' },
+                                    { value: 'outbound', label: 'Outbound' },
+                                ]}
+                            />
+                            <p className="text-xs text-muted-foreground">Show inbound or outbound orders</p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="agent_filter" className="text-base font-semibold">Assigned Agent</Label>
+                            <CommandFilterSelect
+                                id="agent_filter"
+                                value={selectedAgent}
+                                onValueChange={setSelectedAgent}
+                                placeholder="All agents"
+                                searchPlaceholder="Search agents..."
+                                options={[
+                                    { value: 'all', label: 'All agents' },
+                                    ...(agents ?? []).map((agent) => ({ value: agent.name, label: agent.name })),
+                                ]}
+                            />
                             <p className="text-xs text-muted-foreground">Shows orders assigned to a specific agent, or all agents</p>
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="country_filter" className="text-base font-semibold">
-                                Country
-                            </Label>
-                            <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                                <SelectTrigger id="country_filter" className="h-11">
-                                    <SelectValue placeholder="All Countries" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Countries</SelectItem>
-                                    {EAST_AFRICAN_COUNTRIES.map((country) => (
-                                        <SelectItem key={country} value={country}>
-                                            {country}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Label htmlFor="country_filter" className="text-base font-semibold">Country</Label>
+                            <CommandFilterSelect
+                                id="country_filter"
+                                value={selectedCountry}
+                                onValueChange={setSelectedCountry}
+                                placeholder="All countries"
+                                searchPlaceholder="Search countries..."
+                                options={[
+                                    { value: 'all', label: 'All countries' },
+                                    ...EAST_AFRICAN_COUNTRIES.map((country) => ({ value: country, label: country })),
+                                ]}
+                            />
                             <p className="text-xs text-muted-foreground">Narrow dispatch orders to one East African country</p>
                         </div>
 
+                        <div className="space-y-2">
+                            <Label htmlFor="cc_email_filter" className="text-base font-semibold">CC Email</Label>
+                            <CommandFilterSelect
+                                id="cc_email_filter"
+                                value={selectedCcEmail}
+                                onValueChange={setSelectedCcEmail}
+                                placeholder="All CC emails"
+                                searchPlaceholder="Search CC emails..."
+                                options={[
+                                    { value: 'all', label: 'All CC emails' },
+                                    ...(ccEmails ?? []).map((email) => ({ value: email, label: email })),
+                                ]}
+                            />
+                            <p className="text-xs text-muted-foreground">Show orders assigned to a specific CC email.</p>
+                        </div>
+
                         {hasActiveFilters && (
-                            <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
+                            <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 sm:col-span-2">
                                 <div className="flex items-start gap-2">
                                     <Filter className="mt-0.5 h-5 w-5 flex-shrink-0 text-warning-foreground" />
                                     <div>
@@ -1640,6 +1757,8 @@ export default function DispatchView() {
                                             )}
                                             {selectedAgent !== 'all' && <li>Agent: {selectedAgent}</li>}
                                             {selectedCountry !== 'all' && <li>Country: {selectedCountry}</li>}
+                                            {selectedOrderType !== 'all' && <li>Order Type: {selectedOrderType}</li>}
+                                            {selectedCcEmail !== 'all' && <li>CC Email: {selectedCcEmail}</li>}
                                         </ul>
                                     </div>
                                 </div>

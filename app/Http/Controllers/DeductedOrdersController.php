@@ -100,6 +100,7 @@ class DeductedOrdersController extends Controller
                     'delivery_date' => $order->delivery_date?->format('Y-m-d'),
                     'inventory_deducted_at' => $order->inventory_deducted_at?->format('Y-m-d H:i'),
                     'inventory_deducted_by' => $order->inventory_deducted_by,
+                    'inventory_deduction_actor' => $order->inventory_deduction_actor,
                     'inventory_product_id' => $order->inventory_product_id,
                     'linked_product' => $product ? [
                         'id' => $product->id,

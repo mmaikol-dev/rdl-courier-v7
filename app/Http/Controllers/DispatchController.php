@@ -6,9 +6,11 @@ use App\Models\Dispatch;
 use App\Models\OrderHistory;
 use App\Models\SheetOrder;
 use App\Models\User;
+use App\Services\DeliveredOrderInventoryDeductionService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use ZipArchive;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -19,6 +21,26 @@ use App\Support\CountryAccess;
 
 class DispatchController extends Controller
 {
+    private function resolveAgent(User $assigner, ?int $agentId = null, ?string $agentName = null): ?User
+    {
+        if ($agentId === null && ($agentName === null || trim($agentName) === '')) {
+            return null;
+        }
+
+        $agents = CountryAccess::scopeUsers(
+            User::query()->whereRaw('LOWER(TRIM(roles)) = ?', ['agent']),
+            $assigner
+        );
+
+        $agent = $agentId !== null
+            ? $agents->whereKey($agentId)->first()
+            : $agents->where('name', $agentName)->first();
+
+        abort_unless($agent, 422, 'Select a valid agent in your assigned country.');
+
+        return $agent;
+    }
+
     private function markDispatchedUnlessDelivered(SheetOrder $order, ?User $user): void
     {
         $oldStatus = $order->getRawOriginal('status');
@@ -39,12 +61,13 @@ class DispatchController extends Controller
 
     public function index(Request $request)
     {
-        $today = Carbon::today()->toDateString();
         $search = $request->input('search', '');
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
         $agentFilter = $request->input('agent');
         $countryFilter = $request->input('country');
+        $orderTypeFilter = $request->input('order_type');
+        $ccEmailFilter = $request->input('cc_email');
         $user = $request->user()->loadMissing('country');
 
         // Build base query
@@ -63,6 +86,7 @@ class DispatchController extends Controller
                 'quantity',
                 'status',
                 'agent',
+                'agent_id',
                 'delivery_date',
                 'instructions',
                 'cc_email',
@@ -72,14 +96,29 @@ class DispatchController extends Controller
                 'sheet_name',
                 'created_at',
                 'updated_at',
+                'edited_at',
                 'code',
                 'store_name',
                 'processed',
                 'confirmed',
+                'comments',
             ]), $user)
             ->whereIn('status', ['scheduled', 'dispatched','delivered',])
-            ->orderByRaw("CASE WHEN delivery_date = ? THEN 0 ELSE 1 END", [$today])
-            ->orderBy('delivery_date', 'asc');
+            ->orderByRaw('GREATEST(COALESCE(edited_at, created_at), COALESCE(updated_at, created_at), created_at) DESC');
+
+        $ccEmailsQuery = CountryAccess::scopeByCountryName(
+            SheetOrder::query()->whereIn('status', ['scheduled', 'dispatched', 'delivered']),
+            $user
+        );
+        if ($user->roles === 'merchant') {
+            $ccEmailsQuery->where('merchant', $user->name);
+        }
+        $ccEmails = $ccEmailsQuery
+            ->whereNotNull('cc_email')
+            ->where('cc_email', '<>', '')
+            ->distinct()
+            ->orderBy('cc_email')
+            ->pluck('cc_email');
 
         // Restrict merchants to their orders only
         if ($user->roles === 'merchant') {
@@ -111,6 +150,14 @@ class DispatchController extends Controller
             $ordersQuery->whereRaw('LOWER(country) = ?', [mb_strtolower(trim($countryFilter))]);
         }
 
+        if (in_array($orderTypeFilter, ['inbound', 'outbound'], true)) {
+            $ordersQuery->whereRaw('LOWER(TRIM(order_type)) = ?', [$orderTypeFilter]);
+        }
+
+        if ($ccEmailFilter) {
+            $ordersQuery->where('cc_email', $ccEmailFilter);
+        }
+
         // Get agents for dropdown
         $agents = CountryAccess::scopeUsers(
             User::query()->where('roles', 'agent')->select('id', 'name'),
@@ -136,12 +183,15 @@ class DispatchController extends Controller
                 return $orders;
             }),
             'agents' => $agents,
+            'ccEmails' => $ccEmails,
             'filters' => [
                 'search' => $search,
                 'start_date' => $startDate,
                 'end_date' => $endDate,
                 'agent' => $agentFilter,
                 'country' => $countryFilter,
+                'order_type' => $orderTypeFilter,
+                'cc_email' => $ccEmailFilter,
             ],
         ]);
     }
@@ -244,7 +294,7 @@ class DispatchController extends Controller
 {
     $validated = $request->validate([
         'order_numbers' => 'required|string',
-        'agent_name' => 'required|string',
+        'agent_id' => 'required|integer',
         'order_type' => 'required|string|in:inbound,outbound',
     ]);
     
@@ -258,8 +308,10 @@ class DispatchController extends Controller
     
     // Update orders
     $user = $request->user()->loadMissing('country');
+    $assignedAgent = $this->resolveAgent($user, (int) $validated['agent_id']);
+    $validated['agent_name'] = $assignedAgent->name;
     $affectedOrders = CountryAccess::scopeByCountryName(
-        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'merchant', 'agent', 'clearance_status', 'order_type', 'status']),
+        SheetOrder::query()->whereIn('order_no', $orderNumbers)->select(['id', 'order_no', 'merchant', 'agent', 'agent_id', 'clearance_status', 'order_type', 'status']),
         $user
     )->get();
 
@@ -269,10 +321,11 @@ class DispatchController extends Controller
 
     foreach ($affectedOrders as $order) {
         $oldAgent = $order->getRawOriginal('agent');
+        $oldAgentId = $order->getRawOriginal('agent_id');
         $oldClearance = $order->getRawOriginal('clearance_status');
         $oldOrderType = $order->getRawOriginal('order_type');
         $oldStatus = $order->getRawOriginal('status');
-        $agentChanged = $oldAgent !== $validated['agent_name'];
+        $agentChanged = (int) $oldAgentId !== $assignedAgent->id || $oldAgent !== $validated['agent_name'];
         $delivered = mb_strtolower(trim((string) $oldStatus)) === 'delivered';
         $statusChanged = ! $delivered && mb_strtolower(trim((string) $oldStatus)) !== 'dispatched';
 
@@ -282,6 +335,8 @@ class DispatchController extends Controller
 
         $order->update([
             'agent' => $validated['agent_name'],
+            'agent_id' => $assignedAgent->id,
+            ...($agentChanged ? ['assigned_at' => $now] : []),
             'order_type' => $validated['order_type'],
             'clearance_status' => 'not_cleared',
             ...($agentChanged ? ['delivery_date' => $assignDate] : []),
@@ -454,29 +509,62 @@ public function bulkDownloadWaybills(Request $request)
     @ini_set('max_input_time', 300);
     
     $validated = $request->validate([
-        'order_numbers' => 'required|string',
+        'order_numbers' => 'nullable|string',
+        'agent' => 'nullable|string',
+        'start_date' => 'nullable|date_format:Y-m-d',
+        'end_date' => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
     ]);
 
-    // Split order numbers (comma, space, or newline)
-    $orderNumbers = preg_split('/[\s,\n,]+/', trim($validated['order_numbers']));
-    $orderNumbers = array_filter($orderNumbers);
+    $orderNumbers = ! empty($validated['order_numbers'])
+        ? array_values(array_filter(preg_split('/[\s,]+/', trim($validated['order_numbers']))))
+        : [];
+    $hasFilters = ! empty($validated['agent']) || ! empty($validated['start_date']) || ! empty($validated['end_date']);
 
-    if (empty($orderNumbers)) {
-        return back()->withErrors(['order_numbers' => 'Please provide valid order numbers.']);
+    if (empty($orderNumbers) && ! $hasFilters) {
+        return back()->withErrors(['order_numbers' => 'Enter order numbers or select an agent/date filter.']);
     }
 
-    // Optional: Limit maximum orders to prevent server overload
     if (count($orderNumbers) > 50) {
-        return back()->withErrors(['order_numbers' => 'Maximum 50 waybills allowed at once.']);
+        return back()->withErrors(['order_numbers' => 'Maximum 50 waybills allowed when entering order numbers.']);
     }
 
     try {
         $user = $request->user()?->loadMissing('country');
-        // Fetch orders
-        $orders = CountryAccess::scopeByCountryName(
-            \App\Models\SheetOrder::query()->whereIn('order_no', $orderNumbers),
-            $user
-        )->get();
+        $ordersQuery = CountryAccess::scopeByCountryName(\App\Models\SheetOrder::query(), $user);
+
+        if ($user->roles === 'merchant') {
+            $ordersQuery->where('merchant', $user->name);
+        }
+
+        if (! empty($orderNumbers)) {
+            $ordersQuery->whereIn('order_no', $orderNumbers);
+        } else {
+            $ordersQuery->whereIn('status', ['scheduled', 'dispatched']);
+
+            if (! empty($validated['agent'])) {
+                $validAgent = CountryAccess::scopeUsers(
+                    User::query()->where('roles', 'agent'),
+                    $user
+                )->where('name', $validated['agent'])->exists();
+                if (! $validAgent) {
+                    return back()->withErrors(['agent' => 'Select a valid agent in your assigned country.']);
+                }
+
+                $ordersQuery->where('agent', $validated['agent']);
+            }
+
+            if (! empty($validated['start_date'])) {
+                $start = Carbon::parse($validated['start_date'], config('app.timezone'))->startOfDay()->setTimezone('UTC');
+                $ordersQuery->where('delivery_date', '>=', $start);
+            }
+
+            if (! empty($validated['end_date'])) {
+                $end = Carbon::parse($validated['end_date'], config('app.timezone'))->endOfDay()->setTimezone('UTC');
+                $ordersQuery->where('delivery_date', '<=', $end);
+            }
+        }
+
+        $orders = $ordersQuery->orderBy('delivery_date')->get();
 
         if ($orders->isEmpty()) {
             return back()->withErrors(['order_numbers' => 'No matching orders found.']);
@@ -554,14 +642,27 @@ public function bulkDownloadWaybills(Request $request)
             'client_name' => 'sometimes|string',
             'phone' => 'sometimes|string',
             'agent' => 'nullable|string',
+            'agent_id' => 'nullable|integer|exists:users,id',
             'status' => 'sometimes|string',
             'delivery_date' => 'sometimes|date',
             'instructions' => 'nullable|string',
         ]);
 
-        $newAgent = $validated['agent'] ?? null;
+        $agentWasSubmitted = array_key_exists('agent', $validated) || array_key_exists('agent_id', $validated);
+        $assignedAgent = $agentWasSubmitted
+            ? $this->resolveAgent(
+                $user,
+                isset($validated['agent_id']) ? (int) $validated['agent_id'] : null,
+                isset($validated['agent']) ? (string) $validated['agent'] : null
+            )
+            : null;
+        $newAgent = $assignedAgent?->name;
+        $agentChanged = $agentWasSubmitted && (
+            (int) $order->getRawOriginal('agent_id') !== (int) ($assignedAgent?->id ?? 0)
+            || $order->getRawOriginal('agent') !== $newAgent
+        );
 
-        if ($newAgent !== null && trim((string) $newAgent) !== '' && $newAgent !== $order->getRawOriginal('agent')) {
+        if ($agentChanged && $assignedAgent !== null) {
             $now = now();
             $assignDate = $now->toDateString();
             $oldAgent = $order->getRawOriginal('agent');
@@ -574,6 +675,9 @@ public function bulkDownloadWaybills(Request $request)
 
             $order->update([
                 ...$validated,
+                'agent' => $assignedAgent->name,
+                'agent_id' => $assignedAgent->id,
+                'assigned_at' => $now,
                 'delivery_date' => $assignDate,
                 'clearance_status' => 'not_cleared',
                 ...($statusChanged ? ['status' => 'Dispatched'] : []),
@@ -617,7 +721,36 @@ public function bulkDownloadWaybills(Request $request)
                 ]);
             }
         } else {
+            $oldAgent = $order->getRawOriginal('agent');
+            if ($agentWasSubmitted) {
+                $validated['agent'] = $newAgent;
+                $validated['agent_id'] = $assignedAgent?->id;
+                $validated['assigned_at'] = $assignedAgent
+                    ? $order->getRawOriginal('assigned_at')
+                    : null;
+            }
             $order->update($validated);
+
+            if ($agentChanged) {
+                OrderHistory::create([
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'attribute' => 'agent',
+                    'old_value' => $oldAgent,
+                    'new_value' => $newAgent,
+                ]);
+            }
+        }
+
+        if (mb_strtolower(trim((string) $order->status)) === 'delivered' && ! $order->inventory_deducted_at) {
+            try {
+                app(DeliveredOrderInventoryDeductionService::class)->deduct($order);
+            } catch (\Throwable $exception) {
+                Log::error('Dispatch update could not deduct inventory for delivered order.', [
+                    'order_id' => $order->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
 
         if ($request->expectsJson()) {

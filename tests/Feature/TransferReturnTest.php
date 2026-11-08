@@ -317,8 +317,9 @@ class TransferReturnTest extends TestCase
             ->get('/transfer')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('products/transfer')
-                ->has('agents', 1)
-                ->where('agents.0.transfers_count', 1));
+                ->loadDeferredProps(fn (Assert $deferredPage) => $deferredPage
+                    ->has('agents', 1)
+                    ->where('agents.0.transfers_count', 1)));
 
         $this->actingAs($merchant)
             ->get('/transfers/agent/' . $agent->id)
@@ -389,5 +390,258 @@ class TransferReturnTest extends TestCase
         $this->assertSame(100.0, $log->previous_quantity);
         $this->assertSame(5.0, $log->updated_quantity);
         $this->assertSame(105.0, $log->current_quantity);
+    }
+
+    public function test_agents_are_redirected_to_and_only_see_their_own_transfers()
+    {
+        $operator = $this->operator();
+        $product = $this->product($operator);
+        $agent = $this->agent('Transfer Page Agent');
+        $otherAgent = $this->agent('Other Transfer Page Agent');
+
+        $this->transfer($product, $agent, 5);
+        $this->transfer($product, $otherAgent, 7);
+
+        $this->actingAs($agent)
+            ->get('/transfer')
+            ->assertRedirect('/transfers/agent/' . $agent->id);
+
+        $this->get('/transfers/agent/' . $otherAgent->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('products/agent-transfers')
+                ->where('agent.id', $agent->id)
+                ->has('dateGroups', 1)
+                ->where('dateGroups.0.total_quantity', 5)
+            );
+    }
+
+    public function test_agent_transfer_creation_automatically_uses_their_agent_id()
+    {
+        $agent = $this->agent('Automatic Transfer Agent');
+        $product = $this->product($agent);
+
+        $this->actingAs($agent)->post('/transfers', [
+            'region' => 'Nairobi',
+            'from' => 'Main Warehouse',
+            'transfers' => [[
+                'product_id' => $product->id,
+                'quantity' => 3,
+            ]],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('transfers', [
+            'product_id' => $product->id,
+            'agent_id' => $agent->id,
+            'quantity' => 3,
+        ]);
+    }
+
+    public function test_bulk_transfer_can_allocate_one_product_to_multiple_agents_in_one_submission()
+    {
+        $operator = $this->operator();
+        $product = $this->product($operator, 'Bulk Transfer Widget');
+        $firstAgent = $this->agent('First Bulk Transfer Agent');
+        $secondAgent = $this->agent('Second Bulk Transfer Agent');
+
+        $this->actingAs($operator)->post('/transfers', [
+            'region' => 'Nairobi',
+            'from' => 'Main Warehouse',
+            'transfers' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 4,
+                    'agent_id' => $firstAgent->id,
+                ],
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 6,
+                    'agent_id' => $secondAgent->id,
+                ],
+            ],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('transfers', [
+            'product_id' => $product->id,
+            'agent_id' => $firstAgent->id,
+            'quantity' => 4,
+        ]);
+        $this->assertDatabaseHas('transfers', [
+            'product_id' => $product->id,
+            'agent_id' => $secondAgent->id,
+            'quantity' => 6,
+        ]);
+        $this->assertSame(2, Transfer::where('product_id', $product->id)->count());
+    }
+
+    public function test_agent_transfer_page_groups_receipts_by_date_and_product()
+    {
+        $operator = $this->operator();
+        $agent = $this->agent('Grouped Transfer Agent');
+        $firstProduct = $this->product($operator, 'Grouped Widget');
+        $secondProduct = $this->product($operator, 'Grouped Gadget');
+        $this->transfer($firstProduct, $agent, 4, 'Uganda');
+        $this->transfer($firstProduct, $agent, 3);
+        $this->transfer($secondProduct, $agent, 2);
+
+        $this->actingAs($agent)
+            ->get('/transfers/agent/' . $agent->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('products/agent-transfers')
+                ->where('isAgentView', true)
+                ->has('dateGroups', 1)
+                ->where('dateGroups.0.transfer_count', 3)
+                ->where('dateGroups.0.total_quantity', 9)
+                ->has('dateGroups.0.products', 2)
+            );
+    }
+
+    public function test_agent_can_ungroup_transfers_to_see_all_products_across_dates()
+    {
+        $operator = $this->operator();
+        $agent = $this->agent('Ungrouped Transfer Agent');
+        $firstProduct = $this->product($operator, 'Earlier Widget');
+        $secondProduct = $this->product($operator, 'Later Gadget');
+        $firstTransfer = $this->transfer($firstProduct, $agent, 4);
+        $firstTransfer->update(['date' => '2026-11-04']);
+        $this->transfer($secondProduct, $agent, 3)->update(['date' => '2026-11-05']);
+
+        $this->actingAs($agent)
+            ->get('/transfers/agent/' . $agent->id . '?view=all')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('products/agent-transfers')
+                ->where('isUngroupedView', true)
+                ->has('dateGroups', 0)
+                ->has('transfers.data', 2)
+                ->where('transfers.data', fn ($rows) => $rows
+                    ->pluck('product_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->sort()
+                    ->values()
+                    ->all() === collect([$firstProduct->id, $secondProduct->id])->sort()->values()->all())
+            );
+    }
+
+    public function test_agent_can_confirm_all_transfers_for_a_date_only_once()
+    {
+        $operator = $this->operator();
+        $agent = $this->agent('Receipt Confirmation Agent');
+        $otherAgent = $this->agent('Other Receipt Agent');
+        $firstProduct = $this->product($operator, 'Received Widget');
+        $secondProduct = $this->product($operator, 'Received Gadget');
+        $firstTransfer = $this->transfer($firstProduct, $agent, 4);
+        $secondTransfer = $this->transfer($secondProduct, $agent, 2);
+        $otherTransfer = $this->transfer($firstProduct, $otherAgent, 7);
+        $date = now()->toDateString();
+
+        $this->actingAs($agent)
+            ->post('/transfers/receive-date', ['date' => $date])
+            ->assertRedirect();
+
+        $this->assertNotNull($firstTransfer->fresh()->received_at);
+        $this->assertNotNull($secondTransfer->fresh()->received_at);
+        $this->assertNull($otherTransfer->fresh()->received_at);
+
+        $this->post('/transfers/receive-date', ['date' => $date])
+            ->assertRedirect();
+    }
+
+    public function test_agent_transfer_details_include_returns_recorded_under_another_country()
+    {
+        $operator = $this->operator('Kenya');
+        $agent = $this->agent('Returned Stock Agent', 'Kenya');
+        $product = $this->product($operator);
+        $this->transfer($product, $agent, 10, 'Kenya');
+
+        Deduction::create([
+            'code' => 'RET-' . Str::upper(Str::random(8)),
+            'product_id' => $product->id,
+            'agent_id' => $agent->id,
+            'quantity' => 6,
+            'reason' => 'Product returned',
+            'deducted_by' => 'God Operator',
+            'country' => 'Uganda',
+        ]);
+
+        $this->actingAs($agent)
+            ->get('/transfers/agent/' . $agent->id . '?date=' . now()->toDateString())
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('transfers.data.0.total_quantity', '10')
+                ->where('transfers.data.0.total_deducted', 6)
+            );
+
+        $this->actingAs($agent)
+            ->get('/transfers/' . $product->id . '/' . $agent->id)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('totalTransferred', '10')
+                ->where('totalDeducted', '6')
+                ->where('remainingQuantity', 4)
+                ->has('deductions', 1)
+            );
+    }
+
+    public function test_agent_return_deductions_are_allocated_across_transfer_dates_without_negative_balances()
+    {
+        $operator = $this->operator();
+        $agent = $this->agent('Multi-date Return Agent');
+        $product = $this->product($operator);
+
+        $firstTransfer = $this->transfer($product, $agent, 5);
+        $firstTransfer->update(['date' => '2026-11-04']);
+        $secondTransfer = $this->transfer($product, $agent, 4);
+        $secondTransfer->update(['date' => '2026-11-05']);
+
+        $this->actingAs($operator)
+            ->postJson('/transfers/bulk-deduct', [
+                'product_id' => $product->id,
+                'agent_ids' => [$agent->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('units', 9);
+
+        $this->actingAs($agent)
+            ->get('/transfers/agent/' . $agent->id . '?date=2026-11-04')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('transfers.data.0.total_quantity', '5')
+                ->where('transfers.data.0.total_deducted', 5)
+            );
+
+        $this->actingAs($agent)
+            ->get('/transfers/agent/' . $agent->id . '?date=2026-11-05')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('transfers.data.0.total_quantity', '4')
+                ->where('transfers.data.0.total_deducted', 4)
+            );
+    }
+
+    public function test_god_must_choose_a_country_when_creating_a_transfer()
+    {
+        $god = $this->operator();
+        $god->forceFill(['roles' => 'g.o.d'])->save();
+        $agent = $this->agent('Country Selection Agent');
+        $product = $this->product($god);
+
+        $this->actingAs($god)
+            ->post('/transfers', [
+                'region' => 'Nairobi',
+                'from' => 'Main Warehouse',
+                'transfers' => [[
+                    'product_id' => $product->id,
+                    'quantity' => 3,
+                    'agent_id' => $agent->id,
+                ]],
+            ])
+            ->assertSessionHasErrors('country');
+
+        $this->assertDatabaseMissing('transfers', [
+            'product_id' => $product->id,
+            'agent_id' => $agent->id,
+        ]);
     }
 }

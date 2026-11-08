@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\SheetOrder;
 use App\Models\Product;
+use App\Models\Transfer;
+use App\Models\Deduction;
 use App\Models\User;
 use App\Support\CountryAccess;
 use Carbon\Carbon;
@@ -21,6 +23,10 @@ class DashboardReportService
     ): array
     {
         $user->loadMissing('country');
+
+        if (strtolower(trim((string) $user->roles)) === 'agent') {
+            return $this->buildPayload($user, $period, $product, $country);
+        }
 
         return Cache::remember(
             $this->cacheKey($user, $period, $product, $country),
@@ -137,13 +143,28 @@ class DashboardReportService
             $productQuery->where('merchant', $user->name);
         }
 
-        $stockMetrics = (clone $productQuery)
-            ->selectRaw("
-                COUNT(*) as products_count,
-                COALESCE(SUM(quantity), 0) as stock_available,
-                SUM(CASE WHEN COALESCE(quantity_alert, 0) > 0 AND COALESCE(quantity, 0) <= quantity_alert THEN 1 ELSE 0 END) as low_stock_products
-            ")
-            ->first();
+        $stockMetrics = strtolower(trim((string) $user->roles)) === 'agent'
+            ? (object) ['products_count' => 0, 'stock_available' => 0, 'low_stock_products' => 0]
+            : (clone $productQuery)
+                ->selectRaw("
+                    COUNT(*) as products_count,
+                    COALESCE(SUM(quantity), 0) as stock_available,
+                    SUM(CASE WHEN COALESCE(quantity_alert, 0) > 0 AND COALESCE(quantity, 0) <= quantity_alert THEN 1 ELSE 0 END) as low_stock_products
+                ")
+                ->first();
+
+        $agentStockAvailable = 0;
+        if (strtolower(trim((string) $user->roles)) === 'agent') {
+            $transferredStock = CountryAccess::scopeByCountryName(
+                Transfer::query()->where('agent_id', $user->getKey()),
+                $user
+            )->sum('quantity');
+            $deductedStock = CountryAccess::scopeByCountryName(
+                Deduction::query()->where('agent_id', $user->getKey()),
+                $user
+            )->sum('quantity');
+            $agentStockAvailable = (int) $transferredStock - (int) $deductedStock;
+        }
 
         $currentMonthStart = Carbon::now()->startOfMonth();
         $lastMonthStart = Carbon::now()->subMonth()->startOfMonth();
@@ -425,6 +446,7 @@ class DashboardReportService
                 'remittedAmount' => (float) $orderOperations->remitted_amount,
                 'productsCount' => (int) $stockMetrics->products_count,
                 'stockAvailable' => (int) $stockMetrics->stock_available,
+                'agentStockAvailable' => $agentStockAvailable,
                 'lowStockProducts' => (int) $stockMetrics->low_stock_products,
                 'codCollected' => null,
                 'courierHeldAmount' => null,
@@ -533,6 +555,16 @@ class DashboardReportService
     private function baseQuery(User $user): Builder
     {
         $query = CountryAccess::scopeByCountryName(SheetOrder::query(), $user);
+        if (strtolower(trim((string) $user->roles)) === 'agent') {
+            $agentName = mb_strtolower(trim((string) $user->name));
+            $query->where(function (Builder $assignedOrders) use ($user, $agentName): void {
+                $assignedOrders->where('agent_id', $user->getKey())
+                    ->orWhere(function (Builder $legacyOrders) use ($agentName): void {
+                        $legacyOrders->whereNull('agent_id')
+                            ->whereRaw('LOWER(TRIM(agent)) = ?', [$agentName]);
+                    });
+            });
+        }
 
         if (strtolower(trim((string) $user->roles)) === 'merchant') {
             $query->where('merchant', $user->name);
@@ -582,7 +614,7 @@ class DashboardReportService
         $fallback = strtolower(trim((string) CountryAccess::userCountryName($user)));
 
         return sprintf(
-            'dashboard-report:v6:user:%s:role:%s:session-country:%s:period:%s:country-filter:%s:product:%s',
+            'dashboard-report:v7:user:%s:role:%s:session-country:%s:period:%s:country-filter:%s:product:%s',
             $user->getKey(),
             $role,
             $selectedCountry ?: $fallback,

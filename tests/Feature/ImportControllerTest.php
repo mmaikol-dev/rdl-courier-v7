@@ -74,4 +74,30 @@ class ImportControllerTest extends TestCase
             SheetOrder::where('order_no', 'ORD-C')->first()->order_date?->format('Y-m-d')
         );
     }
+
+    public function test_fields_without_a_csv_column_are_not_overwritten_on_existing_orders(): void
+    {
+        $user = User::factory()->create([
+            'roles' => 'dispatch',
+            'store_address' => 'Kenya',
+            'email_verified_at' => now(),
+        ]);
+
+        $this->upload($user, $this->csv(implode("\n", [
+            'order_no,client_name,city,agent,code',
+            'ORD-KEEP,Existing customer,Nairobi,Assigned agent,SKU-123',
+        ])));
+
+        $this->upload($user, $this->csv(implode("\n", [
+            'order_no',
+            'ORD-KEEP',
+        ])));
+
+        $order = SheetOrder::where('order_no', 'ORD-KEEP')->firstOrFail();
+
+        $this->assertSame('Existing customer', $order->client_name);
+        $this->assertSame('Nairobi', $order->city);
+        $this->assertSame('Assigned agent', $order->agent);
+        $this->assertSame('SKU-123', $order->code);
+    }
 }

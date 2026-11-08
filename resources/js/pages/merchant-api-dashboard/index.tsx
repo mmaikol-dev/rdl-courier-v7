@@ -6,7 +6,7 @@ import { ControlStrip, DashboardHeader, Footnote, Inspector, Panel, SegmentedChi
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Deferred, Head, Link } from '@inertiajs/react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Check, Clipboard, Clock3, KeyRound, Search, ShieldCheck, Waypoints, X } from 'lucide-react';
+import { Activity, AlertTriangle, Check, Clipboard, Clock3, KeyRound, Search, ShieldCheck, Waypoints, X } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@/lib/toast';
 
@@ -103,7 +103,6 @@ function MerchantApiDashboardContent({ canManage, stats, chart, logs, integratio
         return matchesMethod && matchesStatus && matchesSearch;
     }), [logs, method, status, search]);
     const activeLog = filteredLogs.find((log) => log.id === selectedLogId) ?? filteredLogs[0] ?? null;
-    const failedLogs = filteredLogs.filter((log) => (log.status_code ?? 500) >= 400).length;
     const failedEndpoints = endpointStats.filter((endpoint) => endpoint.errors > 0 && endpoint.errors >= endpoint.requests).length;
     const degradedEndpoints = endpointStats.filter((endpoint) => endpointHealth(endpoint, slo) === 'Degraded').length;
     const healthyEndpoints = Math.max(endpointStats.length - failedEndpoints - degradedEndpoints, 0);
@@ -185,10 +184,11 @@ function MerchantApiDashboardContent({ canManage, stats, chart, logs, integratio
     const logsPanel = <Panel className="overflow-hidden">
         <ControlStrip label="Filter requests"><div className="flex flex-wrap gap-2"><SegmentedChips label="Filter by request method" values={methods} value={method} onChange={setMethod} /><SegmentedChips label="Filter by response status" values={statuses} value={status} onChange={setStatus} /></div></ControlStrip>
         <ControlStrip label="Search access log"><div className="relative w-full sm:w-72"><Search aria-label="Search" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search path or integration" className="h-9 pl-9" /></div></ControlStrip>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-4 py-2"><span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Request stream · last 24 hours</span><span className="text-[10px] tabular-nums text-muted-foreground">{filteredLogs.length} shown / {logs.length} captured</span></div>
         <div className="sticky top-0 grid grid-cols-[minmax(90px,0.8fr)_minmax(150px,1.8fr)_72px_72px] gap-3 border-b bg-card px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:grid-cols-[minmax(130px,0.9fr)_minmax(200px,2fr)_minmax(110px,0.8fr)_75px_86px]"><span>Time</span><span>Request</span><span className="hidden sm:block">Integration</span><span className="text-right">Status</span><span className="text-right">Time taken</span></div>
         {filteredLogs.length === 0 ? <div className="p-10 text-center"><Search aria-label="No matching requests" className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm">No requests match these filters</p><p className="mt-1 text-xs text-muted-foreground">Try another method, status, or search phrase.</p></div> : <div role="listbox" aria-label="Recent API access log" tabIndex={0} onKeyDown={selectLogWithKeys} className="max-h-[520px] divide-y divide-border overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {filteredLogs.map((log) => <button type="button" role="option" aria-selected={activeLog?.id === log.id} key={log.id} onClick={() => setSelectedLogId(log.id)} className={`grid w-full grid-cols-[minmax(90px,0.8fr)_minmax(150px,1.8fr)_72px_72px] items-center gap-3 px-4 py-3 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(130px,0.9fr)_minmax(200px,2fr)_minmax(110px,0.8fr)_75px_86px] ${activeLog?.id === log.id ? 'bg-accent/70' : ''}`}>
-                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{formatDate(log.requested_at)}</span><span className="flex min-w-0 items-center gap-2"><Badge variant="outline" className="font-mono text-[9px]">{log.method}</Badge><code className="truncate text-xs" title={log.path}>{log.path}</code></span><span className="hidden truncate text-xs text-muted-foreground sm:block">{log.integration}</span><span className="flex items-center justify-end gap-1 font-mono text-xs tabular-nums">{(log.status_code ?? 500) >= 500 && <AlertTriangle aria-label="Server error" className="size-3" />}{log.status_code ?? '—'}</span><span className="text-right font-mono text-xs tabular-nums">{log.duration_ms ?? '—'} ms</span>
+                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{formatDate(log.requested_at)}</span><span className="flex min-w-0 items-center gap-2"><Badge variant="outline" className="font-mono text-[9px]">{log.method}</Badge><code className="truncate text-xs" title={log.path}>{log.path}</code></span><span className="hidden truncate text-xs text-muted-foreground sm:block">{log.integration}</span><span className="flex justify-end"><Badge variant={(log.status_code ?? 500) >= 400 ? 'destructive' : 'secondary'} className="font-mono text-[9px]">{log.status_code ?? '—'}</Badge></span><span className="text-right font-mono text-xs tabular-nums">{log.duration_ms ?? '—'} ms</span>
             </button>)}
         </div>}
         <Footnote>Showing {filteredLogs.length} of {logs.length} requests from the last 24 hours{method !== 'All' || status !== 'All' || search ? ' · filters applied' : ' · no filters'}. Only authenticated merchant API calls are logged.</Footnote>

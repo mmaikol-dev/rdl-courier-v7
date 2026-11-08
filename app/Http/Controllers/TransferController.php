@@ -44,7 +44,11 @@ class TransferController extends Controller
 
     private function scopeTransfersForUser(Builder $query, ?User $user): Builder
     {
-        CountryAccess::scopeByCountryName($query, $user);
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'agent') {
+            $query->where('agent_id', $user->getKey());
+        } else {
+            CountryAccess::scopeByCountryName($query, $user);
+        }
 
         if (strtolower(trim((string) ($user?->roles ?? ''))) === 'merchant') {
             $query->whereHas('product', fn (Builder $products) => $products->where('merchant', $user->name));
@@ -174,8 +178,13 @@ class TransferController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
 
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'agent') {
+            return redirect()->route('transfers.agent.show', ['agentId' => $user->getKey()]);
+        }
+
         $countryName = null;
-        if (!CountryAccess::hasGlobalAccess($user)) {
+        $isAgent = strtolower(trim((string) ($user?->roles ?? ''))) === 'agent';
+        if (! $isAgent && !CountryAccess::hasGlobalAccess($user)) {
             $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
         }
 
@@ -215,6 +224,10 @@ class TransferController extends Controller
                 }], 'created_at')
                 ->orderBy('name')
                 ->get()),
+            'products' => Inertia::defer(fn () => $this->scopeProductsForUser(Product::query(), $user)
+                ->select('id', 'name', 'merchant', 'country')
+                ->orderBy('name')
+                ->get()),
         ]);
     }
 
@@ -222,13 +235,58 @@ class TransferController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
 
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'agent') {
+            $agentId = $user->getKey();
+        }
+
         $agent = CountryAccess::scopeUsers(
             User::query()->where('roles', 'agent'),
             $user
         )->findOrFail($agentId);
 
+        $isAgent = strtolower(trim((string) ($user?->roles ?? ''))) === 'agent';
+        $selectedTransferDate = $request->query('date');
+        $isUngroupedView = $isAgent && $request->query('view') === 'all';
+
+        if ($isAgent && ! $selectedTransferDate && ! $isUngroupedView) {
+            $dateRows = $this->scopeTransfersForUser(Transfer::query(), $user)
+                ->where('agent_id', $agent->getKey())
+                ->selectRaw('COALESCE(date, DATE(created_at)) as transfer_date, product_id')
+                ->selectRaw('COUNT(*) as transfer_count, SUM(quantity) as total_quantity, COUNT(received_at) as received_count, MAX(received_at) as received_at')
+                ->with('product:id,name,merchant,code')
+                ->groupBy('transfer_date', 'product_id')
+                ->orderByDesc('transfer_date')
+                ->get()
+                ->groupBy('transfer_date')
+                ->map(fn ($rows, $date) => [
+                    'date' => $date,
+                    'transfer_count' => (int) $rows->sum('transfer_count'),
+                    'total_quantity' => (int) $rows->sum('total_quantity'),
+                    'received' => (int) $rows->sum('received_count') === (int) $rows->sum('transfer_count'),
+                    'received_at' => $rows->max('received_at'),
+                    'products' => $rows->map(fn (Transfer $transfer) => [
+                        'id' => $transfer->product_id,
+                        'name' => $transfer->product?->name ?? 'Unknown product',
+                        'merchant' => $transfer->product?->merchant,
+                        'quantity' => (int) $transfer->total_quantity,
+                        'transfer_count' => (int) $transfer->transfer_count,
+                    ])->values(),
+                ])
+                ->values();
+
+            return inertia('products/agent-transfers', [
+                'agent' => $agent,
+                'dateGroups' => $dateRows,
+                'isAgentView' => true,
+                'isUngroupedView' => false,
+                'products' => $this->scopeProductsForUser(Product::query(), $user)
+                    ->select('id', 'name', 'merchant', 'code')
+                    ->get(),
+            ]);
+        }
+
         $countryName = null;
-        if (!CountryAccess::hasGlobalAccess($user)) {
+        if (! $isAgent && !CountryAccess::hasGlobalAccess($user)) {
             $countryName = CountryAccess::normalizeCountryName(CountryAccess::userCountryName($user));
         }
 
@@ -240,7 +298,7 @@ class TransferController extends Controller
         }
         $deductionSubquery .= ')';
 
-        $transfers = $this->scopeTransfersForUser(Transfer::query(), $user)
+        $transfersQuery = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('agent_id', $agentId)
             ->select(
                 'product_id',
@@ -254,28 +312,105 @@ class TransferController extends Controller
             ->with(['product:id,name,merchant,code', 'agent:id,name'])
             ->groupBy('product_id', 'agent_id');
 
+        if ($isAgent && is_string($selectedTransferDate)) {
+            $request->validate(['date' => 'required|date_format:Y-m-d']);
+            $transfersQuery->where(function (Builder $query) use ($selectedTransferDate): void {
+                $query->whereDate('date', $selectedTransferDate)
+                    ->orWhere(function (Builder $legacyTransfers) use ($selectedTransferDate): void {
+                        $legacyTransfers->whereNull('date')
+                            ->whereDate('created_at', $selectedTransferDate);
+                    });
+            });
+        }
+
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
-            $transfers->whereHas('product', function ($q) use ($search) {
+            $transfersQuery->whereHas('product', function ($q) use ($search) {
                 $q->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])
                   ->orWhereRaw('LOWER(merchant) LIKE ?', ['%' . mb_strtolower($search) . '%'])
                   ->orWhereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%']);
             });
         }
 
-        $transfers = $transfers->latest('last_transfer_date')
+        $transfers = $transfersQuery->latest('last_transfer_date')
             ->paginate(20)
             ->withQueryString();
 
+        if ($isAgent && is_string($selectedTransferDate)) {
+            $productIds = $transfers->getCollection()->pluck('product_id')->unique();
+
+            if ($productIds->isNotEmpty()) {
+                $previousTransferQuantities = $this->scopeTransfersForUser(Transfer::query(), $user)
+                    ->where('agent_id', $agent->getKey())
+                    ->whereIn('product_id', $productIds)
+                    ->whereRaw('COALESCE(date, DATE(created_at)) < ?', [$selectedTransferDate])
+                    ->selectRaw('product_id, SUM(quantity) as total_quantity')
+                    ->groupBy('product_id')
+                    ->pluck('total_quantity', 'product_id');
+
+                $deductionTotals = Deduction::query()
+                    ->where('agent_id', $agent->getKey())
+                    ->whereIn('product_id', $productIds)
+                    ->selectRaw('product_id, SUM(quantity) as total_quantity')
+                    ->groupBy('product_id')
+                    ->pluck('total_quantity', 'product_id');
+
+                foreach ($transfers->getCollection() as $transfer) {
+                    $deductedBeforeDate = (int) $previousTransferQuantities->get($transfer->product_id, 0);
+                    $totalDeducted = (int) $deductionTotals->get($transfer->product_id, 0);
+                    $deductedForDate = min(
+                        (int) $transfer->total_quantity,
+                        max(0, $totalDeducted - $deductedBeforeDate)
+                    );
+
+                    $transfer->setAttribute('total_deducted', $deductedForDate);
+                }
+            }
+        }
+
         $products = $this->scopeProductsForUser(Product::query(), $user)
-            ->select('id', 'name', 'merchant', 'code')
+            ->select('id', 'name', 'merchant', 'code', 'country')
             ->get();
 
         return inertia('products/agent-transfers', [
             'agent' => $agent,
             'transfers' => $transfers,
+            'dateGroups' => [],
+            'isAgentView' => $isAgent,
+            'isUngroupedView' => $isUngroupedView,
+            'selectedTransferDate' => $isAgent && is_string($selectedTransferDate) ? $selectedTransferDate : null,
             'products' => $products,
         ]);
+    }
+
+    public function receiveDate(Request $request)
+    {
+        $user = $request->user();
+        abort_unless(strtolower(trim((string) ($user?->roles ?? ''))) === 'agent', 403);
+
+        $validated = $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+        ]);
+
+        $query = Transfer::query()
+            ->where('agent_id', $user->getKey())
+            ->where(function (Builder $transfers) use ($validated): void {
+                $transfers->whereDate('date', $validated['date'])
+                    ->orWhere(function (Builder $legacyTransfers) use ($validated): void {
+                        $legacyTransfers->whereNull('date')
+                            ->whereDate('created_at', $validated['date']);
+                    });
+            });
+        $updated = (clone $query)
+            ->whereNull('received_at')
+            ->update(['received_at' => now()]);
+
+        abort_if($updated === 0 && ! $query->exists(), 404);
+
+        return redirect()->back()->with(
+            'success',
+            $updated > 0 ? 'Transfers marked as received.' : 'These transfers were already confirmed as received.'
+        );
     }
 
     public function groupedView(Request $request)
@@ -371,6 +506,11 @@ class TransferController extends Controller
     public function show(Request $request, $productId, $agentId)
     {
         $user = $request->user()?->loadMissing('country');
+        $isAgent = strtolower(trim((string) ($user?->roles ?? ''))) === 'agent';
+        if ($isAgent && (int) $agentId !== (int) $user->getKey()) {
+            abort(403);
+        }
+
         $this->scopeProductsForUser(Product::query(), $user)->findOrFail($productId);
 
         $query = $this->scopeTransfersForUser(Transfer::query(), $user)
@@ -384,19 +524,18 @@ class TransferController extends Controller
 
         $transfers = $query->latest()->paginate(20);
 
-        $deductions = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+        $deductionsQuery = CountryAccess::scopeByCountryName(Deduction::query(), $isAgent ? null : $user)
             ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser($products, $user))
             ->where('product_id', $productId)
-            ->where('agent_id', $agentId)
-            ->latest()
-            ->get();
+            ->where('agent_id', $agentId);
+        $deductions = $deductionsQuery->latest()->get();
 
         $totalTransferred = $this->scopeTransfersForUser(Transfer::query(), $user)
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
             ->sum('quantity');
 
-        $totalDeducted = CountryAccess::scopeByCountryName(Deduction::query(), $user)
+        $totalDeducted = CountryAccess::scopeByCountryName(Deduction::query(), $isAgent ? null : $user)
             ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser($products, $user))
             ->where('product_id', $productId)
             ->where('agent_id', $agentId)
@@ -418,28 +557,49 @@ class TransferController extends Controller
     public function store(Request $request)
     {
         $user = $request->user()?->loadMissing('country');
-        $country = $this->resolveCountryOrFail($user);
+        $isGod = strtolower(trim((string) ($user?->roles ?? ''))) === 'g.o.d';
+        $isAgent = strtolower(trim((string) ($user?->roles ?? ''))) === 'agent';
 
         $validated = $request->validate([
+            'country' => $isGod ? 'required|string|exists:countries,name' : 'nullable|string',
             'region' => 'required|string',
             'from' => 'required|string',
             'transfers' => 'required|array|min:1',
             'transfers.*.product_id' => 'required|exists:products,id',
             'transfers.*.quantity' => 'required|integer|min:1',
-            'transfers.*.agent_id' => 'required|exists:users,id',
+            'transfers.*.agent_id' => $isAgent ? 'nullable|integer' : 'required|exists:users,id',
         ]);
+        $country = $isGod
+            ? $validated['country']
+            : $this->resolveCountryOrFail($user);
 
-        DB::transaction(function () use ($validated, $user, $country) {
+        if ($isAgent) {
+            foreach ($validated['transfers'] as &$transferData) {
+                $transferData['agent_id'] = $user->getKey();
+            }
+            unset($transferData);
+        }
+
+        DB::transaction(function () use ($validated, $user, $country, $isAgent, $isGod) {
             foreach ($validated['transfers'] as $transferData) {
-                $product = $this->scopeProductsForUser(
-                    Product::query(),
-                    $user
-                )->findOrFail($transferData['product_id']);
+                $productQuery = $this->scopeProductsForUser(Product::query(), $user);
+                if ($isGod) {
+                    $productQuery->whereRaw('LOWER(TRIM(country)) = ?', [strtolower(trim($country))]);
+                }
+                $product = $productQuery->findOrFail($transferData['product_id']);
 
-                $agent = CountryAccess::scopeUsers(
-                    User::query()->where('roles', 'agent'),
-                    $user
-                )->findOrFail($transferData['agent_id']);
+                if ($isAgent) {
+                    $agent = $user;
+                } else {
+                    $agentQuery = CountryAccess::scopeUsers(
+                        User::query()->where('roles', 'agent'),
+                        $user
+                    );
+                    if ($isGod) {
+                        $agentQuery->whereRaw('LOWER(TRIM(store_address)) = ?', [strtolower(trim($country))]);
+                    }
+                    $agent = $agentQuery->findOrFail($transferData['agent_id']);
+                }
 
                 Transfer::create([
                     'product_id' => $product->id,
@@ -474,6 +634,7 @@ class TransferController extends Controller
     public function storeDeduction(Request $request, $productId, $agentId)
     {
         $user = $request->user()?->loadMissing('country');
+        abort_if(strtolower(trim((string) ($user?->roles ?? ''))) === 'agent', 403, 'Agents cannot add manual deductions.');
         $country = $this->resolveCountryOrFail($user);
 
         $validated = $request->validate([
@@ -535,15 +696,22 @@ class TransferController extends Controller
     }
     public function destroyDeduction($id)
     {
-        $deduction = CountryAccess::scopeByCountryName(
+        $user = request()->user()?->loadMissing('country');
+        abort_if(strtolower(trim((string) ($user?->roles ?? ''))) === 'agent', 403, 'Agents cannot delete deductions.');
+        $deductionQuery = CountryAccess::scopeByCountryName(
             Deduction::query(),
-            request()->user()?->loadMissing('country')
+            $user
         )
             ->whereHas('product', fn (Builder $products) => $this->scopeProductsForUser(
                 $products,
-                request()->user()?->loadMissing('country')
-            ))
-            ->findOrFail($id);
+                $user
+            ));
+
+        if (strtolower(trim((string) ($user?->roles ?? ''))) === 'agent') {
+            $deductionQuery->where('agent_id', $user->getKey());
+        }
+
+        $deduction = $deductionQuery->findOrFail($id);
 
         $deduction->delete();
 

@@ -121,6 +121,21 @@ class MerchantApiAccessController extends Controller
             'is_active' => true,
         ]);
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'key' => [
+                    'id' => (string) $integration->id,
+                    'name' => $integration->name,
+                    'prefix' => $integration->token_prefix,
+                    'last4' => substr($token, -4),
+                    'scopes' => $integration->scopes,
+                    'createdAt' => $integration->created_at?->toISOString(),
+                    'lastUsedAt' => null,
+                ],
+                'secret' => $token,
+            ]);
+        }
+
         return back()->with('new_api_credentials', [
             'integration_id' => $integration->id,
             'token' => $token,
@@ -255,6 +270,10 @@ class MerchantApiAccessController extends Controller
     {
         $this->ensureAccess($request, $integration);
         $integration->update(['is_active' => false]);
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Merchant API access revoked.']);
+        }
 
         return back()->with('success', 'Merchant API access revoked.');
     }

@@ -7,12 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ControlStrip, DashboardHeader, Footnote, Panel } from '@/components/api-dashboard/blueprint';
+import { ApiKeys, type ApiKey, type ApiKeyCreated, type ApiKeyScope } from '@/components/api-keys';
+import { Integrations, type Integration as IntegrationCard } from '@/components/integrations';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { csrfHeaders } from '@/lib/csrf';
 import { Deferred, Head, Link, router, useForm } from '@inertiajs/react';
-import { Activity, BookOpen, ChevronLeft, ChevronRight, Clipboard, KeyRound, LoaderCircle, RefreshCw, Search, Send, ShieldCheck, Trash2, Webhook } from 'lucide-react';
+import { Activity, BookOpen, Check, ChevronLeft, ChevronRight, Clipboard, Eye, EyeOff, KeyRound, LoaderCircle, RefreshCw, Search, Send, ShieldCheck, Webhook, X } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@/lib/toast';
 
@@ -36,10 +38,49 @@ interface Integration {
 interface Credentials { integration_id: number; token: string | null; webhook_secret: string | null; }
 interface NewIntegrationForm { merchant_user_id: string; name: string; scopes: string[]; webhook_url: string; webhook_events: string[]; }
 interface IntegrationEdit { name: string; scopes: string[]; webhook_url: string; webhook_events: string[]; is_active: boolean; }
+type WebhookTestResult = { state: 'success'; status: number; duration_ms: number } | { state: 'error'; message: string };
+interface JsonResult {
+    message?: string;
+    key?: ApiKey;
+    secret?: string;
+    credentials?: Credentials;
+    token_prefix?: string | null;
+    webhook_secret?: string | null;
+    status?: number;
+    duration_ms?: number;
+}
+
+function toApiKey(integration: Integration, canManage: boolean): ApiKey {
+    return {
+        id: String(integration.id),
+        name: canManage ? `${integration.name} · ${integration.merchant ?? 'Merchant'}` : integration.name,
+        prefix: integration.token_prefix,
+        scopes: integration.scopes,
+        createdAt: integration.created_at ?? undefined,
+        lastUsedAt: integration.last_used_at,
+    };
+}
+
+function toIntegrationCard(integration: Integration, canManage: boolean): IntegrationCard {
+    return {
+        id: String(integration.id),
+        name: integration.name,
+        description: `${canManage ? `${integration.merchant ?? 'Merchant'} · ` : ''}${integration.is_active ? 'API access enabled' : 'API access disabled'}`,
+        account: integration.is_active ? {
+            name: 'Enabled',
+            detail: integration.scopes.map((scope) => scopeLabels[scope] ?? scope).join(' · '),
+        } : null,
+        scopes: integration.scopes.map((scope) => scopeLabels[scope] ?? scope),
+        connectDisabled: !canManage,
+    };
+}
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Merchant API Access', href: '/merchant-api-access' }];
 const scopeLabels: Record<string, string> = { 'orders:read': 'Read orders', 'orders:write': 'Submit orders', 'products:read': 'Read products', 'transfers:read': 'Read transfers' };
 const eventLabels: Record<string, string> = { 'order.created': 'Order created', 'order.updated': 'Order updated', 'product.created': 'Product created', 'product.updated': 'Product updated', 'transfer.created': 'Transfer sent', 'transfer.returned': 'Transfer returned' };
+const EMPTY_MERCHANTS: Merchant[] = [];
+const EMPTY_INTEGRATIONS: Integration[] = [];
+
 function ToggleList({ values, selected, onChange, columns = 2, compact = false }: { values: string[]; selected: string[]; onChange: (value: string) => void; columns?: 1 | 2; compact?: boolean }) {
     return <div className={`grid ${compact ? 'gap-1.5' : 'gap-2'} ${columns === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>{values.map((value) => <label key={value} className={`flex cursor-pointer items-center rounded-lg border transition-colors hover:bg-accent/50 ${compact ? 'min-h-8 gap-1.5 px-2 py-1 text-[10px] leading-tight' : 'min-h-10 gap-2 px-3 py-2 text-sm'}`}>
         <Checkbox className={compact ? 'size-3.5' : undefined} checked={selected.includes(value)} onCheckedChange={() => onChange(value)} />
@@ -47,11 +88,66 @@ function ToggleList({ values, selected, onChange, columns = 2, compact = false }
     </label>)}</div>;
 }
 
-function AccessCardsSkeleton({ cards = 5 }: { cards?: number }) {
+    function SecretField({ value, label, onCopy }: { value: string; label: string; onCopy: (value: string, label: string) => void }) {
+        const [revealed, setRevealed] = React.useState(false);
+
+        React.useEffect(() => {
+            if (!revealed) return;
+            const timeout = window.setTimeout(() => setRevealed(false), 6000);
+            const dismiss = (event: KeyboardEvent) => {
+                if (event.key === 'Escape') setRevealed(false);
+            };
+            window.addEventListener('keydown', dismiss);
+            return () => {
+                window.clearTimeout(timeout);
+                window.removeEventListener('keydown', dismiss);
+            };
+        }, [revealed]);
+
+        return <div className="flex min-w-0 items-center gap-2 rounded-lg border p-2">
+            <span className="w-24 shrink-0 truncate text-[11px] font-medium text-muted-foreground" title={label}>{label}</span>
+            <span className={`min-w-0 flex-1 truncate font-mono text-xs transition-[filter] duration-200 ${revealed ? '' : 'select-none blur-[5px]'}`} aria-hidden="true" title={revealed ? value : undefined}>{value}</span>
+            <span className="sr-only">{revealed ? value : `${label}, hidden`}</span>
+            <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={revealed ? `Hide ${label}` : `Reveal ${label}`} onClick={() => setRevealed((current) => !current)}>
+                {revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="h-8 shrink-0 px-2" onClick={() => onCopy(value, label)}>
+                <Clipboard className="mr-1.5 size-3.5" />Copy
+            </Button>
+        </div>;
+    }
+
+    function WebhookTestTrace({ result, testing }: { result: WebhookTestResult | null; testing: boolean }) {
+        const failed = result?.state === 'error';
+        const stages = ['Sign test event', 'Send over HTTPS', 'Receive response'];
+
+        return <div className="rounded-lg border bg-muted/20 p-3" aria-live="polite">
+            <div className="grid grid-cols-3 gap-2">
+                {stages.map((stage, index) => {
+                    const complete = result?.state === 'success' || (failed && index === 0);
+                    const current = testing && index === 1;
+                    const error = failed && index === 1;
+
+                    return <div key={stage} className="relative flex flex-col items-center gap-2 text-center">
+                        {index < stages.length - 1 && <span className={`absolute left-1/2 top-3 h-px w-full ${complete ? 'bg-primary' : 'bg-border'}`} aria-hidden="true" />}
+                        <span className={`relative z-10 grid size-6 place-items-center rounded-full border bg-background ${complete ? 'border-primary text-primary' : error ? 'border-destructive text-destructive' : current ? 'border-primary text-primary' : 'text-muted-foreground'}`}>
+                            {complete ? <Check className="size-3.5" /> : error ? <X className="size-3.5" /> : current ? <LoaderCircle className="size-3.5 animate-spin" /> : <span className="size-1.5 rounded-full bg-current" />}
+                        </span>
+                        <span className="text-[10px] leading-4 text-muted-foreground">{stage}</span>
+                    </div>;
+                })}
+            </div>
+            {testing && <p className="mt-3 text-xs text-muted-foreground">Sending signed <code>integration.test</code> event…</p>}
+            {result?.state === 'success' && <p className="mt-3 text-xs font-medium text-foreground">Receiver returned HTTP {result.status} in {result.duration_ms} ms.</p>}
+            {result?.state === 'error' && <p className="mt-3 break-words text-xs text-destructive">{result.message}</p>}
+        </div>;
+    }
+
+    function AccessCardsSkeleton({ cards = 5 }: { cards?: number }) {
     return <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" role="status" aria-label="Loading merchant API access" aria-live="polite">{Array.from({ length: cards }).map((_, index) => <div key={index} className="space-y-3 rounded-lg border p-4"><Skeleton className="h-4 w-28" /><Skeleton className="h-3 w-36" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>)}</div>;
 }
 
-export default function MerchantApiAccess({ integrations = [], merchants = [], canManage, currentMerchant, availableScopes, availableEvents, newCredentials }: {
+export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, merchants = EMPTY_MERCHANTS, canManage, currentMerchant, availableScopes, availableEvents, newCredentials }: {
     integrations: Integration[]; merchants: Merchant[]; canManage: boolean; currentMerchant: Merchant | null; availableScopes: string[]; availableEvents: string[]; newCredentials: Credentials | null;
 }) {
     const allowedScopes = canManage ? availableScopes : (currentMerchant?.merchant_api_scopes ?? availableScopes);
@@ -67,13 +163,15 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
     })));
     const [savingId, setSavingId] = React.useState<number | null>(null);
     const [testingWebhookId, setTestingWebhookId] = React.useState<number | null>(null);
+    const [webhookTestResults, setWebhookTestResults] = React.useState<Record<number, WebhookTestResult>>({});
     const [rotatingId, setRotatingId] = React.useState<number | null>(null);
     const [credentialRequest, setCredentialRequest] = React.useState<{ integration: Integration; choice: 'token' | 'webhook' | 'both' } | null>(null);
     const [issuedCredentials, setIssuedCredentials] = React.useState<Credentials | null>(null);
     const [credentialsModalOpen, setCredentialsModalOpen] = React.useState(Boolean(newCredentials));
     const [savedWebhookUrls, setSavedWebhookUrls] = React.useState<Record<number, string | null>>({});
     const [webhookSecretConfigured, setWebhookSecretConfigured] = React.useState<Record<number, boolean>>({});
-    const [tokenPrefixOverrides, setTokenPrefixOverrides] = React.useState<Record<number, string>>({});
+    const [apiKeys, setApiKeys] = React.useState<ApiKey[]>(() => integrations.filter((integration) => integration.is_active).map((integration) => toApiKey(integration, canManage)));
+    const [integrationCards, setIntegrationCards] = React.useState<IntegrationCard[]>(() => integrations.map((integration) => toIntegrationCard(integration, canManage)));
     const [integrationPage, setIntegrationPage] = React.useState(1);
     const [merchantPage, setMerchantPage] = React.useState(1);
     const [createIntegrationOpen, setCreateIntegrationOpen] = React.useState(false);
@@ -97,6 +195,10 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
         })));
     }, [integrations]);
     React.useEffect(() => {
+        setApiKeys(integrations.filter((integration) => integration.is_active).map((integration) => toApiKey(integration, canManage)));
+        setIntegrationCards(integrations.map((integration) => toIntegrationCard(integration, canManage)));
+    }, [integrations, canManage]);
+    React.useEffect(() => {
         if (!merchants.length) return;
         setMerchantControls(Object.fromEntries(merchants.map((merchant) => [merchant.id, {
             enabled: merchant.merchant_api_enabled, scopes: merchant.merchant_api_scopes ?? availableScopes,
@@ -114,16 +216,63 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
     const visibleMerchants = filteredMerchants.slice((safeMerchantPage - 1) * merchantPageSize, safeMerchantPage * merchantPageSize);
 
     const toggle = (values: string[], value: string) => values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-    const requestJson = async (url: string, method: 'POST' | 'PUT', body: Record<string, unknown> = {}) => {
+    const requestJson = async (url: string, method: 'POST' | 'PUT' | 'DELETE', body?: Record<string, unknown>): Promise<JsonResult> => {
         const response = await fetch(url, {
             method,
             credentials: 'same-origin',
-            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...csrfHeaders() },
-            body: JSON.stringify(body),
+            headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), 'X-Requested-With': 'XMLHttpRequest', ...csrfHeaders() },
+            ...(body ? { body: JSON.stringify(body) } : {}),
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.message ?? `Request failed with HTTP ${response.status}.`);
         return result;
+    };
+    const createApiKey = canManage || !currentMerchant?.merchant_api_enabled ? undefined : async (input: { name: string; scopes: string[] }): Promise<ApiKeyCreated> => {
+        const result = await requestJson('/merchant-api-access', 'POST', { name: input.name, scopes: input.scopes, webhook_url: null, webhook_events: [] });
+        if (!result.key || !result.secret) throw new Error('The server did not return the new API key. Please try again.');
+        return { key: result.key, secret: result.secret };
+    };
+    const rotateApiKey = async (key: ApiKey) => {
+        const integration = integrations.find((item) => String(item.id) === key.id);
+        if (!integration) throw new Error('This API key is no longer available. Refresh the page and try again.');
+        const result = await requestJson(`/merchant-api-access/${integration.id}/rotate`, 'POST', { credentials: 'token' });
+        const token = result.credentials?.token;
+        if (!token || !result.token_prefix) throw new Error('The server did not return the replacement token. Please try again.');
+        return {
+            key: { ...key, prefix: result.token_prefix, last4: token.slice(-4), createdAt: new Date().toISOString(), lastUsedAt: null },
+            secret: token,
+        };
+    };
+    const revokeApiKey = async (key: ApiKey) => {
+        await requestJson(`/merchant-api-access/${key.id}`, 'DELETE');
+        setEdits((previous) => ({
+            ...previous,
+            [Number(key.id)]: { ...previous[Number(key.id)], is_active: false },
+        }));
+        setIntegrationCards((previous) => previous.map((item) => item.id === key.id
+            ? { ...item, description: `${canManage ? `${integrations.find((integration) => String(integration.id) === key.id)?.merchant ?? 'Merchant'} · ` : ''}API access revoked`, account: null, connectDisabled: !canManage }
+            : item));
+    };
+    const setIntegrationEnabled = async (item: IntegrationCard, enabled: boolean) => {
+        const id = Number(item.id);
+        const integration = integrations.find((candidate) => candidate.id === id);
+        if (!integration) throw new Error('This API integration is no longer available. Refresh the page and try again.');
+        const current = edits[id] ?? {
+            name: integration.name,
+            scopes: integration.scopes,
+            webhook_url: integration.webhook_url ?? '',
+            webhook_events: integration.webhook_events,
+            is_active: integration.is_active,
+        };
+        await requestJson(`/merchant-api-access/${id}`, 'PUT', { ...current, is_active: enabled });
+        setEdits((previous) => ({ ...previous, [id]: { ...current, is_active: enabled } }));
+        setIntegrationCards((previous) => previous.map((card) => card.id === item.id ? {
+            ...card,
+            description: `${canManage ? `${integration.merchant ?? 'Merchant'} · ` : ''}API access ${enabled ? 'enabled' : 'disabled'}`,
+            account: enabled ? { name: 'Enabled', detail: current.scopes.map((scope) => scopeLabels[scope] ?? scope).join(' · ') } : null,
+        } : card));
+        toast.success(enabled ? 'API integration enabled.' : 'API integration disabled.');
+        return { name: enabled ? 'Enabled' : 'Disabled', detail: current.scopes.map((scope) => scopeLabels[scope] ?? scope).join(' · ') };
     };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
@@ -152,14 +301,34 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
     };
     const testWebhook = (integrationId: number) => {
         setTestingWebhookId(integrationId);
+        setWebhookTestResults((previous) => {
+            const next = { ...previous };
+            delete next[integrationId];
+            return next;
+        });
         void requestJson(`/merchant-api-access/${integrationId}/test-webhook`, 'POST')
-            .then((result) => toast.success(`Webhook accepted · HTTP ${result.status} · ${result.duration_ms} ms`))
-            .catch((error: Error) => toast.error(error.message || 'Webhook test failed.'))
+            .then((result) => {
+                const status = result.status;
+                const durationMs = result.duration_ms;
+                if (typeof status !== 'number' || typeof durationMs !== 'number') throw new Error('The webhook test did not return a valid result.');
+                setWebhookTestResults((previous) => ({
+                    ...previous,
+                    [integrationId]: { state: 'success', status, duration_ms: durationMs },
+                }));
+                toast.success(`Webhook accepted · HTTP ${status} · ${durationMs} ms`);
+            })
+            .catch((error: Error) => {
+                setWebhookTestResults((previous) => ({
+                    ...previous,
+                    [integrationId]: { state: 'error', message: error.message || 'Webhook test failed.' },
+                }));
+                toast.error(error.message || 'Webhook test failed.');
+            })
             .finally(() => setTestingWebhookId(null));
     };
     const requestNewCredentials = (integration: Integration) => {
         if (rotatingId !== null) return;
-        setCredentialRequest({ integration, choice: 'token' });
+        setCredentialRequest({ integration, choice: 'webhook' });
     };
     const rotateCredentials = () => {
         if (!credentialRequest) return;
@@ -168,8 +337,8 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
         setRotatingId(integration.id);
         void requestJson(`/merchant-api-access/${integration.id}/rotate`, 'POST', { credentials: choice })
             .then((result) => {
+                if (!result.credentials) throw new Error('The server did not return the replacement webhook secret.');
                 setIssuedCredentials(result.credentials);
-                if (result.token_prefix) setTokenPrefixOverrides((previous) => ({ ...previous, [integration.id]: result.token_prefix }));
                 setCredentialsModalOpen(true);
                 toast.success(result.message ?? 'Credentials rotated.');
             })
@@ -205,13 +374,30 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
             </div>
 
             <Dialog open={credentialsModalOpen && Boolean(credentialsToShow)} onOpenChange={setCredentialsModalOpen}>
-                <DialogContent className="sm:max-w-xl">
-                    <DialogHeader><DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5" />Copy your new credentials</DialogTitle><DialogDescription>These secrets are shown once. Save them securely; they cannot be viewed again.</DialogDescription></DialogHeader>
-                <div className="space-y-3 py-2">
-                    {credentialsToShow?.token && <div className="flex min-w-0 items-center gap-2"><Input readOnly value={credentialsToShow.token} className="min-w-0 flex-1 truncate font-mono text-xs" aria-label="New API token" /><Button type="button" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => copy(credentialsToShow.token!, 'API token')}><Clipboard aria-label="Copy API token" className="mr-2 size-4" />Copy token</Button></div>}
-                    {credentialsToShow?.webhook_secret && <div className="flex min-w-0 items-center gap-2"><Input readOnly value={credentialsToShow.webhook_secret} className="min-w-0 flex-1 truncate font-mono text-xs" aria-label="New webhook signing secret" /><Button type="button" variant="outline" className="shrink-0 whitespace-nowrap" onClick={() => copy(credentialsToShow.webhook_secret!, 'Webhook secret')}><Clipboard aria-label="Copy webhook secret" className="mr-2 size-4" />Copy signing secret</Button></div>}
-                    {credentialsToShow?.webhook_secret && <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">The integration is saved. Send a signed test event to confirm your webhook receiver works.</p><Button type="button" size="sm" variant="outline" className="shrink-0" disabled={testingWebhookId === credentialsToShow.integration_id} onClick={() => testWebhook(credentialsToShow.integration_id)}>{testingWebhookId === credentialsToShow.integration_id ? <LoaderCircle aria-label="Sending test webhook" className="mr-2 size-4 animate-spin" /> : <Send aria-label="Test webhook" className="mr-2 size-4" />}Test webhook</Button></div>}
+                <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+                    <DialogHeader className="min-w-0 pr-8 text-left">
+                        <DialogTitle className="flex min-w-0 items-start gap-2 whitespace-normal break-words leading-snug">
+                            <ShieldCheck className="mt-0.5 size-5 shrink-0" />
+                            <span>Copy your new credentials</span>
+                        </DialogTitle>
+                        <DialogDescription className="pt-1 leading-relaxed">
+                            These secrets are shown once. Save them securely; they cannot be viewed again.
+                        </DialogDescription>
+                    </DialogHeader>
+                <div className="grid min-w-0 gap-2 py-2 sm:grid-cols-2">
+                    {credentialsToShow?.token && <SecretField value={credentialsToShow.token} label="API token" onCopy={copy} />}
+                    {credentialsToShow?.webhook_secret && <SecretField value={credentialsToShow.webhook_secret} label="Webhook signing secret" onCopy={copy} />}
                 </div>
+                {credentialsToShow?.webhook_secret && <div className="space-y-2">
+                    <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs leading-relaxed text-muted-foreground">The integration is saved. Send a signed test event to confirm your webhook receiver works.</p>
+                        <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={testingWebhookId === credentialsToShow.integration_id} onClick={() => testWebhook(credentialsToShow.integration_id)}>
+                            {testingWebhookId === credentialsToShow.integration_id ? <LoaderCircle aria-label="Sending test webhook" className="mr-2 size-4 animate-spin" /> : <Send aria-label="Test webhook" className="mr-2 size-4" />}
+                            Test webhook
+                        </Button>
+                    </div>
+                    <WebhookTestTrace result={webhookTestResults[credentialsToShow.integration_id] ?? null} testing={testingWebhookId === credentialsToShow.integration_id} />
+                </div>}
                 <Footnote>Credentials are returned once by the server and are not stored in readable form.</Footnote>
                     <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Done</Button></DialogClose></DialogFooter>
                 </DialogContent>
@@ -220,30 +406,36 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
             <Dialog open={Boolean(credentialRequest)} onOpenChange={(open) => { if (!open) setCredentialRequest(null); }}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Choose credentials to replace</DialogTitle>
-                        <DialogDescription>Select what you want to renew for {credentialRequest?.integration.name}. Replacing a credential immediately invalidates its current value.</DialogDescription>
+                        <DialogTitle>Replace webhook signing secret</DialogTitle>
+                        <DialogDescription>The current secret for {credentialRequest?.integration.name} will stop working immediately. Update the receiver with the new secret.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2 py-2">
-                        {([
-                            ['token', 'API token', 'The current API token will stop working.'],
-                            ['webhook', 'Webhook signing secret', 'Webhook signatures must use the new secret.'],
-                            ['both', 'Both credentials', 'Both current credentials will stop working.'],
-                        ] as const).map(([value, label, description]) => <label key={value} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 hover:bg-accent/50">
-                            <Checkbox checked={credentialRequest?.choice === value} onCheckedChange={() => setCredentialRequest((current) => current ? { ...current, choice: value } : current)} />
-                            <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{description}</span></span>
-                        </label>)}
+                        <div className="rounded-lg border p-3"><p className="text-sm font-medium">Webhook signing secret</p><p className="mt-1 text-xs text-muted-foreground">Webhook signatures must use the replacement value.</p></div>
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                        <Button type="button" disabled={!credentialRequest || rotatingId !== null} onClick={rotateCredentials}>{rotatingId !== null && <LoaderCircle className="mr-2 size-4 animate-spin" />}Replace selected credentials</Button>
+                        <Button type="button" disabled={!credentialRequest || rotatingId !== null} onClick={rotateCredentials}>{rotatingId !== null && <LoaderCircle className="mr-2 size-4 animate-spin" />}Replace webhook secret</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             {!canManage && currentMerchant && !currentMerchant.merchant_api_enabled && <Panel className="border-dashed p-4"><p className="text-sm font-medium">API access is disabled</p><p className="mt-1 text-xs text-muted-foreground">Ask an administrator to enable self-service access for your merchant account.</p></Panel>}
 
+            <ApiKeys
+                value={apiKeys}
+                onValueChange={setApiKeys}
+                onCreate={createApiKey}
+                onRoll={rotateApiKey}
+                onRevoke={revokeApiKey}
+                scopes={allowedScopes.map((scope): ApiKeyScope => ({ value: scope, label: scopeLabels[scope] ?? scope }))}
+                defaultScopes={canManage ? [] : allowedScopes}
+                title="API keys"
+                description="Rotate or revoke API tokens here. Full secrets are shown only when created or rotated."
+                placeholder="e.g. Production server"
+            />
+
             {canManage && <Panel className="overflow-hidden">
-                <Deferred data="merchants" fallback={<><ControlStrip label="Merchant self-service access" /><AccessCardsSkeleton /></>}>
+                <Deferred data="merchants" fallback={<><ControlStrip label="Merchant self-service access"><span className="sr-only">Loading merchant access controls</span></ControlStrip><AccessCardsSkeleton /></>}>
                 {() => <>
                 <ControlStrip label="Merchant self-service access"><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"><p className="text-xs text-muted-foreground">Disable an account to revoke its active keys immediately.</p><div className="relative w-full sm:w-64"><Search aria-label="Search merchants" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={merchantSearch} onChange={(event) => { setMerchantSearch(event.target.value); setMerchantPage(1); }} placeholder="Search name or email" aria-label="Search merchants by name or email" className="h-9 pl-9" /></div></div></ControlStrip>
                 {merchants.length === 0 ? <p className="p-5 text-sm text-muted-foreground">No merchant accounts are available.</p> : <>
@@ -285,22 +477,37 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
 
             <Deferred data="integrations" fallback={<section className="space-y-3"><DashboardHeader title={canManage ? 'Existing integrations' : 'Your integrations'} summary="Edit access, rotate credentials, and configure event delivery for each connection." /><AccessCardsSkeleton cards={6} /></section>}>
             {() => <section className="space-y-3">
+                <Integrations
+                    value={integrationCards}
+                    onValueChange={setIntegrationCards}
+                    onConnect={canManage ? (item) => setIntegrationEnabled(item, true) : undefined}
+                    onDisconnect={(item) => setIntegrationEnabled(item, false)}
+                    settingsHref={(item) => `#api-integration-${item.id}`}
+                    title="Merchant API integrations"
+                    description="Enable or disable a token and review its granted scopes."
+                    connectLabel="Enable"
+                    connectingLabel="Enabling"
+                    connectedLabel="Enabled"
+                    connectedCountLabel="enabled"
+                    disconnectLabel="Disable"
+                    disconnectingLabel="Disabling"
+                />
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><DashboardHeader title={canManage ? 'Existing integrations' : 'Your integrations'} summary="Edit access, rotate credentials, and configure event delivery for each connection." /><div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative w-full sm:w-72"><Search aria-label="Search integrations" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={integrationSearch} onChange={(event) => { setIntegrationSearch(event.target.value); setIntegrationPage(1); }} placeholder="Search integrations" aria-label="Search by integration, merchant, email, or token" className="h-9 pl-9" /></div><span className="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">{filteredIntegrations.length} of {integrations.length} integrations</span></div></div>
                 {integrations.length === 0 ? <Panel className="p-10 text-center"><KeyRound aria-label="No integrations" className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm">No merchant API integrations yet</p><p className="mt-1 text-xs text-muted-foreground">Create an integration above to issue the first key.</p></Panel> : <>
                     {filteredIntegrations.length === 0 ? <Panel className="p-10 text-center"><Search aria-label="No matching integrations" className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm">No integrations match “{integrationSearch}”.</p></Panel> : <>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {visibleIntegrations.map((integration) => {
                     const integrationScopes = canManage ? (integration.merchant_allowed_scopes ?? availableScopes) : allowedScopes;
                     const edit = edits[integration.id] ?? { name: integration.name, scopes: integration.scopes.filter((scope) => integrationScopes.includes(scope)), webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active };
                     const configuredWebhookUrl = Object.prototype.hasOwnProperty.call(savedWebhookUrls, integration.id) ? savedWebhookUrls[integration.id] : integration.webhook_url;
                     const webhookUrlNeedsSave = Boolean(edit.webhook_url) && edit.webhook_url !== (configuredWebhookUrl ?? '');
                     const setField = <K extends keyof IntegrationEdit>(key: K, value: IntegrationEdit[K]) => setEdits((previous) => ({ ...previous, [integration.id]: { ...edit, [key]: value } }));
-                    return <Panel key={integration.id} className="flex min-w-0 flex-col overflow-hidden">
+                    return <Panel id={`api-integration-${integration.id}`} key={integration.id} className="flex min-w-0 flex-col overflow-hidden">
                         <div className="border-b p-3">
-                            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold" title={integration.name}>{integration.name}</h3><p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{tokenPrefixOverrides[integration.id] ?? integration.token_prefix}••••</p></div><Badge variant={edit.is_active ? 'secondary' : 'outline'}>{edit.is_active ? 'Active' : 'Revoked'}</Badge></div>
+                            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold" title={integration.name}>{integration.name}</h3></div><Badge variant={edit.is_active ? 'secondary' : 'outline'}>{edit.is_active ? 'Active' : 'Revoked'}</Badge></div>
                             {canManage && <p className="mt-2 truncate text-[10px] text-muted-foreground" title={`${integration.merchant} · ${integration.email}`}>{integration.merchant ?? 'Merchant'}</p>}
                             <p className="mt-1 truncate text-[10px] text-muted-foreground">Last used · {integration.last_used_at ?? 'Never'}</p>
-                            <div className="mt-3 flex gap-2"><Button type="button" size="sm" variant="outline" className="h-8 flex-1 px-2 text-xs" disabled={rotatingId !== null} onClick={() => requestNewCredentials(integration)}>{rotatingId === integration.id ? <LoaderCircle aria-label="Rotating credentials" className="mr-1.5 size-3.5 animate-spin" /> : <RefreshCw aria-label="Rotate credentials" className="mr-1.5 size-3.5" />}New credentials</Button><Button size="sm" variant="outline" className="h-8 flex-1 px-2 text-xs" onClick={() => router.delete(`/merchant-api-access/${integration.id}`, { preserveScroll: true, onSuccess: () => setField('is_active', false), onError: () => toast.error('Could not revoke access.') })}><Trash2 aria-label="Revoke integration" className="mr-1.5 size-3.5" />Revoke</Button></div>
+                            {integration.has_webhook_secret && <Button type="button" size="sm" variant="outline" className="mt-3 w-full px-2 text-xs" disabled={rotatingId !== null} onClick={() => requestNewCredentials(integration)}>{rotatingId === integration.id ? <LoaderCircle aria-label="Rotating webhook signing secret" className="mr-1.5 size-3.5 animate-spin" /> : <RefreshCw aria-label="Rotate webhook signing secret" className="mr-1.5 size-3.5" />}Rotate webhook secret</Button>}
                         </div>
                         <Dialog open={editingIntegrationId === integration.id} onOpenChange={(open) => setEditingIntegrationId(open ? integration.id : null)}>
                             <DialogTrigger asChild><Button type="button" variant="ghost" className="w-full justify-start rounded-none px-3 py-2.5 text-xs font-medium text-muted-foreground">Edit integration settings</Button></DialogTrigger>
@@ -308,11 +515,11 @@ export default function MerchantApiAccess({ integrations = [], merchants = [], c
                                 <DialogHeader className="rounded-xl border bg-muted/20 p-4"><DialogTitle className="flex items-center gap-2"><KeyRound className="size-4 text-primary" />Edit {integration.name}</DialogTitle><DialogDescription>Manage the integration identity, data access, and webhook delivery settings.</DialogDescription></DialogHeader>
                             <div className="divide-y rounded-xl border">
                                 <div className="grid gap-2 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center"><div><Label>Integration name</Label><p className="mt-1 text-[10px] text-muted-foreground">Shown in your access dashboard.</p></div><Input className="h-9" value={edit.name} onChange={(event) => setField('name', event.target.value)} /></div>
-                                <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>Webhook endpoint</Label><p className="mt-1 text-[10px] text-muted-foreground">Public HTTPS URL for event delivery.</p></div><div className="space-y-2"><div className="flex flex-col gap-2 sm:flex-row"><Input className="h-9 min-w-0 flex-1" type="url" value={edit.webhook_url} onChange={(event) => setField('webhook_url', event.target.value)} placeholder="https://merchant.example/webhooks/rdl" /><Button type="button" size="sm" variant="outline" className="shrink-0" disabled={!edit.webhook_url || savingId === integration.id || testingWebhookId === integration.id} onClick={() => webhookUrlNeedsSave ? save(integration, () => testWebhook(integration.id)) : testWebhook(integration.id)}>{testingWebhookId === integration.id ? <LoaderCircle aria-label="Sending test webhook" className="mr-2 size-4 animate-spin" /> : <Send aria-label="Test webhook" className="mr-2 size-4" />}{webhookUrlNeedsSave ? 'Save and test' : 'Send test'}</Button></div><p className="text-[10px] text-muted-foreground">A changed endpoint is saved before the signed <code>integration.test</code> event is sent.</p></div></div>
+                                <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>Webhook endpoint</Label><p className="mt-1 text-[10px] text-muted-foreground">Public HTTPS URL for event delivery.</p></div><div className="space-y-2"><div className="flex flex-col gap-2 sm:flex-row"><Input className="h-9 min-w-0 flex-1" type="url" value={edit.webhook_url} onChange={(event) => setField('webhook_url', event.target.value)} placeholder="https://merchant.example/webhooks/rdl" /><Button type="button" size="sm" variant="outline" className="shrink-0" disabled={!edit.webhook_url || savingId === integration.id || testingWebhookId === integration.id} onClick={() => webhookUrlNeedsSave ? save(integration, () => testWebhook(integration.id)) : testWebhook(integration.id)}>{testingWebhookId === integration.id ? <LoaderCircle aria-label="Sending test webhook" className="mr-2 size-4 animate-spin" /> : <Send aria-label="Test webhook" className="mr-2 size-4" />}{webhookUrlNeedsSave ? 'Save and test' : 'Send test'}</Button></div><p className="text-[10px] text-muted-foreground">A changed endpoint is saved before the signed <code>integration.test</code> event is sent.</p><WebhookTestTrace result={webhookTestResults[integration.id] ?? null} testing={testingWebhookId === integration.id} /></div></div>
                                 <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>API permissions</Label><p className="mt-1 text-[10px] text-muted-foreground">Choose which resources this key can read.</p></div><ToggleList columns={2} values={integrationScopes} selected={edit.scopes} onChange={(value) => setField('scopes', toggle(edit.scopes, value))} /></div>
                                 <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label className="flex items-center gap-2"><Webhook aria-label="Webhook events" className="size-4" />Webhook events</Label><p className="mt-1 text-[10px] text-muted-foreground">Choose which changes trigger a delivery.</p></div><ToggleList columns={2} values={availableEvents} selected={edit.webhook_events} onChange={(value) => setField('webhook_events', toggle(edit.webhook_events, value))} /></div>
                                 <div className="grid gap-2 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center"><span className="text-xs font-medium">Signing secret</span><div className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground"><ShieldCheck className="size-4 shrink-0 text-primary" />{(webhookSecretConfigured[integration.id] ?? integration.has_webhook_secret) ? 'Configured · value is hidden for security.' : 'Not configured yet. Saving a webhook URL creates one.'}</div></div>
-                                <div className="flex items-center justify-between gap-4 p-4"><div><p className="text-xs font-medium">Integration access</p><p className="mt-1 text-[10px] text-muted-foreground">Turn off to prevent this key from accessing data.</p></div><label className="flex shrink-0 items-center gap-2 text-xs"><Checkbox checked={edit.is_active} disabled={!canManage && !integration.is_active} onCheckedChange={(checked) => setField('is_active', checked === true)} />Active</label></div>
+                                <div className="flex items-center justify-between gap-4 p-4"><div><p className="text-xs font-medium">Integration access</p><p className="mt-1 text-[10px] text-muted-foreground">Use the enable or disable control in Merchant API integrations above.</p></div><Badge variant={edit.is_active ? 'secondary' : 'outline'}>{edit.is_active ? 'Enabled' : 'Disabled'}</Badge></div>
                             </div>
                                 <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Close</Button></DialogClose><Button type="button" onClick={() => save(integration)} disabled={savingId === integration.id || edit.scopes.length === 0}>{savingId === integration.id && <LoaderCircle aria-label="Saving" className="mr-2 size-4 animate-spin" />}Save settings</Button></DialogFooter>
                             </DialogContent>

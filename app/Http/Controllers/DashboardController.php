@@ -20,7 +20,8 @@ class DashboardController extends Controller
         $range = in_array($range, $allowed, true) ? $range : 'last30Days';
         $period = $range === 'allTime' ? null : $range;
 
-        $product = $request->query('product');
+        $isAgent = strtolower(trim((string) $user->roles)) === 'agent';
+        $product = $isAgent ? null : $request->query('product');
         $product = is_string($product) && trim($product) !== '' ? $product : null;
         $country = $request->query('country');
         $country = is_string($country) && trim($country) !== '' ? $country : null;
@@ -29,7 +30,6 @@ class DashboardController extends Controller
             ?? (CountryAccess::hasGlobalAccess($user)
                 ? 'All countries'
                 : CountryAccess::userCountryName($user) ?? 'Assigned country');
-
         return Inertia::render('dashboard', [
             'dashboardReport' => Inertia::defer(
                 fn () => $reportService->build($user, $period, $product, $country),
@@ -41,7 +41,14 @@ class DashboardController extends Controller
             'countryLabel' => $countryLabel,
             'userName' => $user->name,
             'userRole' => $user->roles,
-            'needsYou' => [
+            'needsYou' => $isAgent ? [
+                'toConfirm' => 0,
+                'outOfStock' => 0,
+                'toPrepare' => 0,
+                'readyForCourier' => 0,
+                'expectedBack' => 0,
+                'cashUpsToSettle' => 0,
+            ] : [
                 'toConfirm' => 2,
                 'outOfStock' => 1,
                 'toPrepare' => 1,
@@ -49,7 +56,7 @@ class DashboardController extends Controller
                 'expectedBack' => 2,
                 'cashUpsToSettle' => 1,
             ],
-            'needsYouSample' => true,
+            'needsYouSample' => ! $isAgent,
         ]);
     }
 }

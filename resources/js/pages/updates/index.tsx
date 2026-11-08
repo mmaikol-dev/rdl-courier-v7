@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import type { BreadcrumbItem } from '@/components/ui/breadcrumb';
+import type { BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ interface SheetOrder {
     sheet_name: string;
     merchant: string;
     status: string;
-    updated_at: string;
+    edited_at: string;
 }
 
 const EMPTY_UPDATES: SheetOrder[] = [];
@@ -74,7 +74,7 @@ export default function PendingUpdates() {
 
     const sheetCount = React.useMemo(() => new Set(updates.map((order) => order.sheet_id)).size, [updates]);
     const merchantCount = React.useMemo(() => new Set(updates.map((order) => order.merchant).filter(Boolean)).size, [updates]);
-    const oldestUpdate = updates[0]?.updated_at ?? '—';
+    const oldestUpdate = updates[0]?.edited_at ?? '—';
 
     const runUpdateCommand = () => {
         setIsRunning(true);
@@ -154,7 +154,7 @@ export default function PendingUpdates() {
 
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                             <span>{isUpdatesLoaded ? `${filtered.length} visible of ${updates.length} queued` : <Skeleton className="h-3 w-36" />}</span>
-                            <span>{isUpdatesLoaded ? `Oldest update: ${oldestUpdate}` : <Skeleton className="h-3 w-40" />}</span>
+                            <span>{isUpdatesLoaded ? `Oldest edit: ${oldestUpdate}` : <Skeleton className="h-3 w-40" />}</span>
                         </div>
                     </CardHeader>
 
@@ -175,7 +175,7 @@ export default function PendingUpdates() {
                                                     <TableHead>Merchant</TableHead>
                                                     <TableHead className="w-[140px]">Sheet ID</TableHead>
                                                     <TableHead className="w-[130px]">Status</TableHead>
-                                                    <TableHead className="w-[190px]">Last updated</TableHead>
+                                                    <TableHead className="w-[190px]">Edited at</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -192,7 +192,7 @@ export default function PendingUpdates() {
                                                                 Pending
                                                             </Badge>
                                                         </TableCell>
-                                                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{order.updated_at}</TableCell>
+                                                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{order.edited_at}</TableCell>
                                                     </TableRow>
                                                 ))}
                                             </TableBody>

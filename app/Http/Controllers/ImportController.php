@@ -185,6 +185,30 @@ class ImportController extends Controller
             ];
 
             if ($existingOrder) {
+                if ($isNamedCsv) {
+                    foreach ([
+                        'order_date',
+                        'amount',
+                        'client_name',
+                        'address',
+                        'phone',
+                        'alt_no',
+                        'city',
+                        'product_name',
+                        'quantity',
+                        'status',
+                        'delivery_date',
+                        'agent',
+                        'instructions',
+                        'cc_email',
+                        'code',
+                    ] as $field) {
+                        if (! array_key_exists($field, $headerMap)) {
+                            unset($data[$field]);
+                        }
+                    }
+                }
+
                 // Keep an existing order date when the incoming cell is blank
                 // rather than replacing it with the upload date.
                 if ($importedOrderDate === null && $existingOrder->order_date !== null) {
@@ -192,9 +216,9 @@ class ImportController extends Controller
                 }
 
                 // Keep imported rows out of the update sync queue.
-                SheetOrder::withoutTimestamps(function () use ($existingOrder, $data): void {
+                SheetOrder::withoutEditTracking(fn () => SheetOrder::withoutTimestamps(function () use ($existingOrder, $data): void {
                     $existingOrder->forceFill($data)->save();
-                });
+                }));
                 $this->autoMatch->applyMatches($existingOrder, $this->autoMatch->match($existingOrder));
                 $updated++;
             } else {

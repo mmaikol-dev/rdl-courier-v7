@@ -326,27 +326,15 @@ function humanizeField(field: string): string {
     return field.replaceAll('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-function buildCcAgentsJson(existingRaw: string | undefined, selections: Record<string, string[]>): string {
-    const base: Record<string, string[]> = {};
-
-    if (existingRaw) {
-        try {
-            const parsed = JSON.parse(existingRaw);
-            if (parsed && typeof parsed === 'object') {
-                Object.assign(base, parsed);
-            }
-        } catch {
-            // ignore invalid JSON, will rebuild from scratch
-        }
-    }
+function buildCcAgentsJson(selections: Record<string, string[]>): string {
+    const assigned: Record<string, string[]> = {};
 
     Object.entries(selections).forEach(([key, agents]) => {
         const name = key.trim();
-        if (!name) return;
-        base[name] = agents;
+        if (name) assigned[name] = agents;
     });
 
-    return JSON.stringify(base, null, 2);
+    return JSON.stringify(assigned, null, 2);
 }
 
 interface ImportOrdersDialogProps {
@@ -744,6 +732,21 @@ export default function SheetsView() {
         });
     };
 
+    const toggleEditPickupTab = (tab: string, selected: boolean) => {
+        setEditValues((current) => {
+            const selectedTabs = current.auto_pickup_tabs ?? [];
+            return {
+                ...current,
+                auto_pickup_tabs: selected
+                    ? selectedTabs.includes(tab) ? selectedTabs : [...selectedTabs, tab]
+                    : selectedTabs.filter((selectedTab) => selectedTab !== tab),
+            };
+        });
+        if (selected) {
+            setEditCcAgents((current) => tab in current ? current : { ...current, [tab]: [] });
+        }
+    };
+
     const removeCreateCcKey = (key: string) => {
         setCreateCcAgents((current) => {
             const next = { ...current };
@@ -754,12 +757,17 @@ export default function SheetsView() {
 
     const handleEditOpen = (sheet: Sheet) => {
         setEditingSheet(sheet);
+        const selectedTabs = sheet.auto_pickup_tabs ?? [];
         setEditValues({
             ...sheet,
             auto_pickup_enabled: Boolean(sheet.auto_pickup_enabled),
-            auto_pickup_tabs: sheet.auto_pickup_tabs ?? [],
+            auto_pickup_tabs: selectedTabs,
         });
-        setEditCcAgents(parseCcAgentsMap(sheet.cc_agents));
+        const ccAgents = parseCcAgentsMap(sheet.cc_agents);
+        selectedTabs.forEach((tab) => {
+            if (!(tab in ccAgents)) ccAgents[tab] = [];
+        });
+        setEditCcAgents(ccAgents);
         setEditKeyInput('');
         setEditTabOptions([]);
         setLoadingEditTabs(true);
@@ -779,7 +787,7 @@ export default function SheetsView() {
     const handleEditSave = () => {
         if (!editingSheet) return;
         setIsUpdating(true);
-        const ccAgentsPayload = buildCcAgentsJson(editValues.cc_agents as string | undefined, editCcAgents);
+        const ccAgentsPayload = buildCcAgentsJson(editCcAgents);
         router.put(
             `/sheets/${editingSheet.id}`,
             {
@@ -818,7 +826,7 @@ export default function SheetsView() {
 
     const handleCreateSave = () => {
         setIsCreating(true);
-        const ccAgentsPayload = buildCcAgentsJson(createValues.cc_agents as string | undefined, createCcAgents);
+        const ccAgentsPayload = buildCcAgentsJson(createCcAgents);
         router.post(
             `/sheets`,
             {
@@ -1223,14 +1231,7 @@ export default function SheetsView() {
                                                 <label key={tab} className="flex items-center gap-2 text-sm">
                                                     <Checkbox
                                                         checked={selectedTabs.includes(tab)}
-                                                        onCheckedChange={(checked) =>
-                                                            setEditValues({
-                                                                ...editValues,
-                                                                auto_pickup_tabs: checked
-                                                                    ? [...selectedTabs, tab]
-                                                                    : selectedTabs.filter((selectedTab) => selectedTab !== tab),
-                                                            })
-                                                        }
+                                                        onCheckedChange={(checked) => toggleEditPickupTab(tab, checked === true)}
                                                     />
                                                     <span className="truncate" title={tab}>{tab}</span>
                                                 </label>

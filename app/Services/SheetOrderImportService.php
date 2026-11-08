@@ -38,7 +38,6 @@ class SheetOrderImportService
             'amount' => 'required|numeric',
             'quantity' => 'required|integer',
             'client_name' => 'nullable|string|max:255',
-            'client_city' => 'nullable|string|max:255',
             'address' => 'nullable|string',
             'city' => 'nullable|string',
             'store_name' => 'nullable|string',
@@ -79,9 +78,9 @@ class SheetOrderImportService
 
                 $existingOrder->updated_at = null;
 
-                SheetOrder::withoutTimestamps(function () use ($existingOrder): void {
+                SheetOrder::withoutEditTracking(fn () => SheetOrder::withoutTimestamps(function () use ($existingOrder): void {
                     $existingOrder->save();
-                });
+                }));
 
                 $this->autoMatch->applyMatches($existingOrder, $this->autoMatch->match($existingOrder));
 
@@ -122,7 +121,7 @@ class SheetOrderImportService
         $cleanAmount = preg_replace('/[^\d.]/', '', (string) ($payload['amount'] ?? ''));
 
         preg_match('/\d+/', (string) ($payload['quantity'] ?? ''), $matches);
-        $cleanQuantity = isset($matches[0]) ? (int) $matches[0] : null;
+        $cleanQuantity = isset($matches[0]) ? (int) $matches[0] : 1;
 
         return [
             ...$payload,

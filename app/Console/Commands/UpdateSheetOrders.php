@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Google_Client;
 use Google_Service_Sheets;
 use Google_Service_Sheets_ValueRange;
@@ -43,13 +44,12 @@ class UpdateSheetOrders extends Command
             // but the actual per-run limit is enforced below.
             $fetchSize = max(1, (int) ($this->option('limit') ?: $this->maxPerRun));
 
-            // Fetch records that are due for syncing. Future timestamps are used
-            // as a retry delay, so they must not be picked up immediately.
-            $sheetOrders = SheetOrder::whereNotNull('updated_at')
-                ->where('updated_at', '<=', now())
+            // edited_at is the dedicated sync queue; future timestamps delay retries.
+            $sheetOrders = SheetOrder::whereNotNull('edited_at')
+                ->where('edited_at', '<=', now())
                 ->whereNotNull('sheet_id')
                 ->whereNotNull('sheet_name')
-                ->orderBy('updated_at')
+                ->orderBy('edited_at')
                 ->limit($fetchSize)
                 ->get();
 
@@ -200,17 +200,19 @@ class UpdateSheetOrders extends Command
 
                         if ($hasStatus && $hasDeliveryDate && $hasInstructions) {
                             // All required fields present - mark as fully synced
-                            $order->updated_at = null;
-                            $order->processed = 2;
-                            $order->save();
+                            DB::table('sheet_orders')->where('id', $order->id)->update([
+                                'edited_at' => null,
+                                'processed' => 2,
+                            ]);
                             $fullyProcessedCount++;
 
                             Log::debug("Order #{$order->order_no} marked as fully synced (all required fields present)");
                         } else {
                             // Some required fields missing - update the timestamp to delay retry
                             // This prevents it from being picked up immediately in the next run
-                            $order->updated_at = now()->addMinutes(30);
-                            $order->save();
+                            DB::table('sheet_orders')->where('id', $order->id)->update([
+                                'edited_at' => now()->addMinutes(30),
+                            ]);
                             $partiallyProcessedCount++;
 
                             Log::info("Order #{$order->order_no} synced to sheet but missing required fields - will retry in 30 minutes", [
@@ -253,8 +255,10 @@ class UpdateSheetOrders extends Command
                         'error_message' => $msg
                     ]);
 
-                    SheetOrder::whereIn('id', collect($allProcessedOrders)->pluck('id'))
-                        ->update(['updated_at' => now()->addMinutes(15)]);
+                    DB::table('sheet_orders')->whereIn('id', collect($allProcessedOrders)->pluck('id'))
+                        ->update([
+                            'edited_at' => now()->addMinutes(15),
+                        ]);
 
                     // Don't hold a PHP process asleep; delay the affected rows instead.
                     return 0;

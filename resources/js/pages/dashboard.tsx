@@ -86,6 +86,7 @@ const emptyDashboardReport: DashboardReportData = {
         remittedAmount: 0,
         productsCount: 0,
         stockAvailable: 0,
+        agentStockAvailable: 0,
         lowStockProducts: 0,
         codCollected: null,
         courierHeldAmount: null,
@@ -106,7 +107,20 @@ const emptyDashboardReport: DashboardReportData = {
     },
 }
 
-function DashboardLoadingSkeleton() {
+function DashboardLoadingSkeleton({ isAgent = false }: { isAgent?: boolean }) {
+    if (isAgent) {
+        return (
+            <div className="grid grid-cols-2 gap-4 xl:grid-cols-4" role="status" aria-label="Loading order summary" aria-live="polite">
+                {Array.from({ length: 4 }).map((_, index) => (
+                    <div key={index} className="min-w-0 space-y-4 rounded-2xl border bg-card p-4">
+                        <Skeleton className="h-4 w-32 max-w-[70%]" />
+                        <Skeleton className="h-8 w-20" />
+                        <Skeleton className="h-3 w-40 max-w-full" />
+                    </div>
+                ))}
+            </div>
+        )
+    }
     return (
         <div className="space-y-4" role="status" aria-label="Loading dashboard data" aria-live="polite">
             <section aria-label="Loading key performance indicators" className="space-y-4">
@@ -174,6 +188,7 @@ export default function Dashboard() {
         userRole,
     } = page.props
     const dashboardReport = page.props.dashboardReport
+    const isAgent = userRole.trim().toLowerCase() === 'agent'
     const {
         countryOptions,
         productOptions,
@@ -221,6 +236,10 @@ export default function Dashboard() {
     }, [productPerformance, productPage])
 
     const totalProductPages = Math.ceil(productPerformance.length / productsPerPage)
+    const agentScheduledDispatchedCount = statusSummary.reduce((total, item) => {
+        const status = item.status.trim().toLowerCase()
+        return status === 'scheduled' || status === 'dispatched' ? total + item.totalOrders : total
+    }, 0)
 
     // Prepare chart data
     const dataForChart = useMemo(() => {
@@ -279,18 +298,60 @@ export default function Dashboard() {
                     countryOptions={countryOptions}
                     productOptions={productOptions}
                     canFilterCountries={['g.o.d', 'merchant'].includes(userRole.trim().toLowerCase())}
+                    isAgent={isAgent}
                     isLoading={!dashboardReport}
                 />
                 <Deferred
                     key={`${range}:${country ?? ''}:${product ?? ''}`}
                     data="dashboardReport"
-                    fallback={<DashboardLoadingSkeleton />}
+                    fallback={<DashboardLoadingSkeleton isAgent={isAgent} />}
                 >
                     {() => (
                       <>
                 <NeedsYouBanner counts={needsYou} isSample={needsYouSample} />
 
                 <section aria-label="Key performance indicators" className="space-y-4">
+                    {isAgent ? (
+                        <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+                            <KpiCard
+                                label="Stock Available"
+                                value={kpiMetrics.agentStockAvailable.toLocaleString()}
+                                helper="Total units left from your transfers"
+                                icon={Boxes}
+                                href="/transfer"
+                                variant="featured"
+                            />
+                            <KpiCard
+                                label="All Orders"
+                                value={kpiMetrics.totalLeads.toLocaleString()}
+                                helper="All orders assigned to you"
+                                icon={ShoppingBag}
+                                href="/stk"
+                            />
+                            <KpiCard
+                                label="Scheduled + Dispatched"
+                                value={agentScheduledDispatchedCount.toLocaleString()}
+                                helper="Orders scheduled or dispatched"
+                                icon={Truck}
+                                href="/stk"
+                            />
+                            <KpiCard
+                                label="Delivered"
+                                value={kpiMetrics.deliveredOrders.toLocaleString()}
+                                helper="Orders marked delivered"
+                                icon={DeliveredIcon}
+                                href="/stk"
+                            />
+                            <KpiCard
+                                label="Returned"
+                                value={kpiMetrics.returnedOrders.toLocaleString()}
+                                helper={`${kpiMetrics.returnRate.toFixed(1)}% return rate`}
+                                icon={Undo2}
+                                href="/stk"
+                            />
+                        </div>
+                    ) : (
+                    <>
                     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
                         <KpiCard
                             label="Total Revenue"
@@ -396,15 +457,19 @@ export default function Dashboard() {
                         { label: 'Upsell rate', value: `${(kpiMetrics.upsellRate ?? 12.5).toFixed(1)}%${kpiMetrics.upsellRate === null ? ' · sample' : ''}`, icon: TrendingUp, href: '/sheetorders' },
                         { label: 'Average order value', value: formatCurrency(kpiMetrics.averageOrderValue), icon: ShoppingCart, href: '/sheetorders' },
                     ]} />
+                    </>
+                    )}
                 </section>
 
-                <section aria-label="Revenue trends and top products" className="grid gap-4 xl:grid-cols-3">
-                    <DailyTrendCard data={dailyTrend} range={range} formatCurrency={formatCurrency} />
-                    <TopProductsCard products={topProducts} />
-                </section>
+                {!isAgent && (
+                    <section aria-label="Revenue trends and top products" className="grid gap-4 xl:grid-cols-3">
+                        <DailyTrendCard data={dailyTrend} range={range} formatCurrency={formatCurrency} />
+                        <TopProductsCard products={topProducts} />
+                    </section>
+                )}
 
                 {/* Product Performance Table */}
-                {productPerformance.length > 0 && (
+                {!isAgent && productPerformance.length > 0 && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-xl flex items-center gap-2">
@@ -590,6 +655,8 @@ export default function Dashboard() {
                     </Card>
                 )}
 
+                {!isAgent && (
+                <>
                 {/* Bottom Section: Status Distribution and Quick Stats */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Order Status Distribution */}
@@ -741,9 +808,11 @@ export default function Dashboard() {
                         </CardFooter>
                     </Card>
                 </div>
+                </>
+                )}
 
                 {/* Recent Orders Table */}
-                {recentOrders.length > 0 && (
+                {!isAgent && recentOrders.length > 0 && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-xl">Recent Orders</CardTitle>

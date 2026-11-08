@@ -26,6 +26,14 @@ class RestrictAgentAccess
     private function isAllowedForAgent(Request $request): bool
     {
         return $request->routeIs([
+            'dashboard',
+            'transfers.index',
+            'transfers.store',
+            'transfers.receive-date',
+            'transfers.agent.show',
+            'transfers.show',
+            'transfers.deductions.store',
+            'deductions.destroy',
             'stk.*',
             'logout',
             'profile.*',

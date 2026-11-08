@@ -36,3 +36,8 @@ Schedule::command('whatsapp:notify-overdue')
 Schedule::command('storeep:sync-orders')
     ->everyFiveMinutes()
     ->withoutOverlapping(30);
+
+// Partner feeds use their own adapter and feed the shared incoming-order queue.
+Schedule::command('partner-orders:sync')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(30);

@@ -14,6 +14,7 @@ class SidebarRegistry
             ['key' => 'waredash', 'title' => 'Warehouse Dashboard', 'href' => '/waredash', 'group' => 'General'],
             ['key' => 'stats', 'title' => 'Stats', 'href' => '/stats', 'group' => 'General'],
             ['key' => 'sheetorders', 'title' => 'Orders', 'href' => '/sheetorders', 'group' => 'Operations'],
+            ['key' => 'order-product-matching', 'title' => 'Order Product Matching', 'href' => '/order-product-matching', 'group' => 'Operations'],
             ['key' => 'updates', 'title' => 'Updates', 'href' => '/updates', 'group' => 'Operations'],
             ['key' => 'assign', 'title' => 'Re/Assign Orders', 'href' => '/assign', 'group' => 'Operations'],
             ['key' => 'dispatch', 'title' => 'Dispatch', 'href' => '/dispatch', 'group' => 'Operations'],
@@ -68,7 +69,7 @@ class SidebarRegistry
         $normalizedRole = self::normalizeRole($role);
 
         if ($normalizedRole === 'agent') {
-            return ['stk'];
+            return ['dashboard', 'transfer', 'stk'];
         }
 
         return self::allKeys();
@@ -106,6 +107,14 @@ class SidebarRegistry
             $visible = array_values(array_intersect($saved, self::allKeys()));
         } else {
             $visible = self::defaultVisibleKeysForRole($role);
+        }
+
+        if (self::normalizeRole($role) === 'agent') {
+            foreach (['dashboard', 'transfer'] as $requiredKey) {
+                if (! in_array($requiredKey, $visible, true)) {
+                    $visible[] = $requiredKey;
+                }
+            }
         }
 
         if (self::normalizeRole($role) === 'merchant') {

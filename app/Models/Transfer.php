@@ -20,6 +20,12 @@ class Transfer extends Model
         'store_name',
         'from',
         'country',
+        'received_at',
+    ];
+
+    protected $casts = [
+        'date' => 'date',
+        'received_at' => 'datetime',
     ];
 
     // 🔗 Relationship to Product

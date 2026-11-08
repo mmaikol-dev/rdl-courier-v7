@@ -364,7 +364,6 @@ class AiController extends Controller
             'groups.*.orders.*.client_name' => 'required|string|max:255',
             'groups.*.orders.*.delivery_date' => 'nullable|date',
             'groups.*.orders.*.item' => 'nullable|string|max:255',
-            'groups.*.orders.*.client_city' => 'nullable|string|max:255',
             'groups.*.orders.*.address' => 'nullable|string|max:255',
             'groups.*.orders.*.product_name' => 'nullable|string|max:255',
             'groups.*.orders.*.city' => 'nullable|string|max:255',

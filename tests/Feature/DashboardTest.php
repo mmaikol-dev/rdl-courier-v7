@@ -21,4 +21,13 @@ class DashboardTest extends TestCase
 
         $this->get('/dashboard')->assertOk();
     }
+
+    public function test_agents_can_visit_the_dashboard()
+    {
+        $agent = User::factory()->create(['roles' => 'agent']);
+
+        $this->actingAs($agent)
+            ->get('/dashboard')
+            ->assertOk();
+    }
 }
