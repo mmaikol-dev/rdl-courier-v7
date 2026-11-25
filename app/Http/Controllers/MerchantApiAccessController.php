@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Country;
 use App\Models\MerchantApiIntegration;
 use App\Models\User;
 use App\Services\MerchantWebhookService;
-use App\Support\SidebarRegistry;
+use App\Support\CountryAccess;
 use App\Support\MerchantApiFieldCatalog;
+use App\Support\SidebarRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -14,7 +16,7 @@ use Inertia\Inertia;
 
 class MerchantApiAccessController extends Controller
 {
-    private const SCOPES = ['orders:read', 'orders:write', 'products:read', 'transfers:read'];
+    private const SCOPES = ['orders:read', 'orders:write', 'products:read', 'products:write', 'transfers:read', 'shipments:write'];
 
     private const EVENTS = ['order.created', 'order.updated', 'product.created', 'product.updated', 'transfer.created', 'transfer.returned'];
 
@@ -44,25 +46,35 @@ class MerchantApiAccessController extends Controller
             ->when(! $isManager, fn ($query) => $query->where('merchant_user_id', $user->id))
             ->latest('id');
 
+        $ccUsers = $isManager
+            ? CountryAccess::scopeUsers(
+                User::query()->where('roles', 'callcenter1'),
+                $user,
+            )->orderBy('name')->pluck('name')->unique()->values()->all()
+            : [];
+        $ccUsersByCountry = $isManager ? $this->callcenterUsersByCountry($request) : [];
+
         return Inertia::render('merchant-api-access/index', [
             'integrations' => Inertia::defer(fn () => $integrationsQuery->get()
-            ->map(fn (MerchantApiIntegration $integration) => [
-                'id' => $integration->id,
-                'merchant_user_id' => $integration->merchant_user_id,
-                'merchant' => $integration->merchantUser?->name,
-                'email' => $integration->merchantUser?->email,
-                'name' => $integration->name,
-                'token_prefix' => $integration->token_prefix,
-                'scopes' => $integration->scopes ?? [],
-                'transfer_fields' => $integration->transfer_fields ?? MerchantApiFieldCatalog::TRANSFER_FIELDS,
-                'merchant_allowed_scopes' => $integration->merchantUser?->merchant_api_scopes ?? self::SCOPES,
-                'webhook_url' => $integration->webhook_url,
-                'webhook_events' => $integration->webhook_events ?? [],
-                'has_webhook_secret' => filled($integration->webhook_secret),
-                'is_active' => $integration->is_active,
-                'last_used_at' => $integration->last_used_at?->toDateTimeString(),
-                'created_at' => $integration->created_at?->toDateTimeString(),
-            ]), 'integrations'),
+                ->map(fn (MerchantApiIntegration $integration) => [
+                    'id' => $integration->id,
+                    'merchant_user_id' => $integration->merchant_user_id,
+                    'merchant' => $integration->merchantUser?->name,
+                    'email' => $integration->merchantUser?->email,
+                    'name' => $integration->name,
+                    'token_prefix' => $integration->token_prefix,
+                    'scopes' => $integration->scopes ?? [],
+                    'transfer_fields' => $integration->transfer_fields ?? MerchantApiFieldCatalog::TRANSFER_FIELDS,
+                    'cc_emails' => $integration->cc_emails ?? [],
+                    'cc_country_assignments' => $integration->cc_country_assignments ?? [],
+                    'merchant_allowed_scopes' => $integration->merchantUser?->merchant_api_scopes ?? self::SCOPES,
+                    'webhook_url' => $integration->webhook_url,
+                    'webhook_events' => $integration->webhook_events ?? [],
+                    'has_webhook_secret' => filled($integration->webhook_secret),
+                    'is_active' => $integration->is_active,
+                    'last_used_at' => $integration->last_used_at?->toDateTimeString(),
+                    'created_at' => $integration->created_at?->toDateTimeString(),
+                ]), 'integrations'),
             'merchants' => $isManager
                 ? Inertia::defer(fn () => User::query()->where('roles', 'merchant')->orderBy('name')->get(['id', 'name', 'email', 'merchant_api_enabled', 'merchant_api_scopes']))
                 : [],
@@ -77,6 +89,9 @@ class MerchantApiAccessController extends Controller
             'availableScopes' => self::SCOPES,
             'availableTransferFields' => MerchantApiFieldCatalog::TRANSFER_FIELDS,
             'availableEvents' => self::EVENTS,
+            'ccUsers' => $ccUsers,
+            'ccUsersByCountry' => $ccUsersByCountry,
+            'availableCountries' => $isManager ? $this->availableCountryNames($request) : [],
             'newCredentials' => $request->session()->get('new_api_credentials'),
         ]);
     }
@@ -101,6 +116,12 @@ class MerchantApiAccessController extends Controller
         ];
         if ($isManager) {
             $rules['merchant_user_id'] = ['required', 'integer', Rule::exists('users', 'id')->where('roles', 'merchant')];
+            $rules['cc_emails'] = ['nullable', 'array'];
+            $rules['cc_emails.*'] = ['required', 'string', Rule::in($this->callcenterNames($request))];
+            $rules['cc_country_assignments'] = ['nullable', 'array'];
+            $rules['cc_country_assignments.*.country'] = ['required', 'string', Rule::in($this->availableCountryNames($request))];
+            $rules['cc_country_assignments.*.cc_emails'] = ['required', 'array', 'min:1'];
+            $rules['cc_country_assignments.*.cc_emails.*'] = ['required', 'string'];
         } elseif (! $request->user()->merchant_api_enabled) {
             abort(403, 'API access for your merchant account is disabled. Contact an administrator to enable it.');
         }
@@ -115,6 +136,8 @@ class MerchantApiAccessController extends Controller
             'token_prefix' => substr($token, 0, 16),
             'scopes' => array_values(array_unique($validated['scopes'])),
             'transfer_fields' => array_values(array_unique($validated['transfer_fields'] ?? MerchantApiFieldCatalog::TRANSFER_FIELDS)),
+            'cc_emails' => $isManager ? $this->normalizeCcEmails($validated['cc_emails'] ?? []) : null,
+            'cc_country_assignments' => $isManager ? $this->normalizeCcCountryAssignments($request, $validated['cc_country_assignments'] ?? []) : null,
             'webhook_url' => $validated['webhook_url'] ?? null,
             'webhook_secret' => $webhookSecret,
             'webhook_events' => $validated['webhook_events'] ?? [],
@@ -148,7 +171,7 @@ class MerchantApiAccessController extends Controller
         $isManager = $this->ensureAccess($request, $integration);
 
         $allowedScopes = $integration->merchantUser?->merchant_api_scopes ?? self::SCOPES;
-        $validated = $request->validate([
+        $rules = [
             'name' => ['required', 'string', 'max:120'],
             'scopes' => ['required', 'array', 'min:1'],
             'scopes.*' => ['required', 'string', Rule::in($allowedScopes)],
@@ -158,7 +181,16 @@ class MerchantApiAccessController extends Controller
             'webhook_events' => ['nullable', 'array'],
             'webhook_events.*' => ['required', 'string', Rule::in(self::EVENTS)],
             'is_active' => ['required', 'boolean'],
-        ]);
+        ];
+        if ($isManager) {
+            $rules['cc_emails'] = ['nullable', 'array'];
+            $rules['cc_emails.*'] = ['required', 'string', Rule::in($this->callcenterNames($request))];
+            $rules['cc_country_assignments'] = ['nullable', 'array'];
+            $rules['cc_country_assignments.*.country'] = ['required', 'string', Rule::in($this->availableCountryNames($request))];
+            $rules['cc_country_assignments.*.cc_emails'] = ['required', 'array', 'min:1'];
+            $rules['cc_country_assignments.*.cc_emails.*'] = ['required', 'string'];
+        }
+        $validated = $request->validate($rules);
 
         $newWebhookSecret = null;
         if (filled($validated['webhook_url'] ?? null) && ! filled($integration->webhook_secret)) {
@@ -169,6 +201,8 @@ class MerchantApiAccessController extends Controller
             'name' => $validated['name'],
             'scopes' => array_values(array_unique($validated['scopes'])),
             'transfer_fields' => array_values(array_unique($validated['transfer_fields'] ?? $integration->transfer_fields ?? MerchantApiFieldCatalog::TRANSFER_FIELDS)),
+            'cc_emails' => $isManager ? $this->normalizeCcEmails($validated['cc_emails'] ?? []) : $integration->cc_emails,
+            'cc_country_assignments' => $isManager ? $this->normalizeCcCountryAssignments($request, $validated['cc_country_assignments'] ?? []) : $integration->cc_country_assignments,
             'webhook_url' => $validated['webhook_url'] ?? null,
             'webhook_events' => $validated['webhook_events'] ?? [],
             'is_active' => $isManager ? $validated['is_active'] : ($integration->is_active && $validated['is_active']),
@@ -264,6 +298,98 @@ class MerchantApiAccessController extends Controller
         }
 
         return back()->with('success', "Test webhook accepted with HTTP {$result['status']} in {$result['duration_ms']} ms.");
+    }
+
+    private function callcenterNames(Request $request): array
+    {
+        return CountryAccess::scopeUsers(
+            User::query()->where('roles', 'callcenter1'),
+            $request->user(),
+        )->pluck('name')->unique()->values()->all();
+    }
+
+    private function normalizeCcEmails(array $ccEmails): ?array
+    {
+        $normalized = array_values(array_unique(array_filter(
+            array_map(static fn (mixed $value): string => trim((string) $value), $ccEmails),
+            static fn (string $value): bool => $value !== '',
+        )));
+
+        return $normalized !== [] ? $normalized : null;
+    }
+
+    private function availableCountryNames(Request $request): array
+    {
+        $names = Country::query()->pluck('name')->all();
+        $allowed = CountryAccess::allowedCountries($request->user(), $names);
+
+        return array_values(array_unique(array_filter(
+            array_map(static fn (mixed $name): string => trim((string) $name), $allowed),
+            static fn (string $name): bool => $name !== '',
+        )));
+    }
+
+    private function callcenterUsersByCountry(Request $request): array
+    {
+        $countryNames = $this->availableCountryNames($request);
+        if ($countryNames === []) {
+            return [];
+        }
+
+        $countries = Country::query()->whereIn('name', $countryNames)->get(['id', 'name']);
+        $users = CountryAccess::scopeUsers(User::query()->where('roles', 'callcenter1'), $request->user())
+            ->get(['name', 'country_id', 'store_address']);
+
+        $result = [];
+        foreach ($countryNames as $countryName) {
+            $country = $countries->firstWhere('name', $countryName);
+            $names = $users
+                ->filter(function (User $user) use ($country, $countryName): bool {
+                    $store = trim((string) ($user->store_address ?? ''));
+                    if ($store !== '') {
+                        return strcasecmp($store, $countryName) === 0;
+                    }
+
+                    return $country && (int) $user->country_id === (int) $country->id;
+                })
+                ->pluck('name')
+                ->map(static fn (mixed $name): string => trim((string) $name))
+                ->filter(static fn (string $name): bool => $name !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            $result[] = ['country' => $countryName, 'users' => $names];
+        }
+
+        return $result;
+    }
+
+    private function normalizeCcCountryAssignments(Request $request, array $assignments): ?array
+    {
+        $allowedByCountry = collect($this->callcenterUsersByCountry($request))
+            ->mapWithKeys(static fn (array $row): array => [strtolower(trim((string) $row['country'])) => $row['users']])
+            ->all();
+
+        $normalized = [];
+        foreach ($assignments as $assignment) {
+            $country = trim((string) ($assignment['country'] ?? ''));
+            if ($country === '') {
+                continue;
+            }
+            $allowed = $allowedByCountry[strtolower($country)] ?? [];
+            $ccEmails = $this->normalizeCcEmails($assignment['cc_emails'] ?? []);
+            if ($ccEmails === null) {
+                continue;
+            }
+            $invalid = array_values(array_diff($ccEmails, $allowed));
+            if ($invalid !== []) {
+                abort(422, "CC users for {$country} are outside the allowed callcenter scope.");
+            }
+            $normalized[strtolower($country)] = ['country' => $country, 'cc_emails' => $ccEmails];
+        }
+
+        return $normalized !== [] ? array_values($normalized) : null;
     }
 
     public function destroy(Request $request, MerchantApiIntegration $integration)

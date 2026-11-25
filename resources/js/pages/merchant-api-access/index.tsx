@@ -1,14 +1,16 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MultiSelect, type MultiOption } from '@/components/multi-select';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
 import { ControlStrip, DashboardHeader, Footnote, Panel } from '@/components/api-dashboard/blueprint';
-import { ApiKeys, type ApiKey, type ApiKeyCreated, type ApiKeyScope } from '@/components/api-keys';
-import { Integrations, type Integration as IntegrationCard } from '@/components/integrations';
+import { ApiKeys, type ApiKey, type ApiKeyScope } from '@/components/api-keys';
+import { useRowMotion } from '@/components/use-row-motion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
@@ -19,6 +21,8 @@ import * as React from 'react';
 import { toast } from '@/lib/toast';
 
 interface Merchant { id: number; name: string; email: string; merchant_api_enabled: boolean; merchant_api_scopes: string[] | null; }
+interface CcCountryAssignment { country: string; cc_emails: string[]; }
+interface CcUsersByCountry { country: string; users: string[]; }
 interface Integration {
     id: number;
     merchant_user_id: number;
@@ -27,6 +31,8 @@ interface Integration {
     name: string;
     token_prefix: string;
     scopes: string[];
+    cc_emails: string[];
+    cc_country_assignments?: CcCountryAssignment[];
     merchant_allowed_scopes?: string[];
     webhook_url: string | null;
     webhook_events: string[];
@@ -36,8 +42,8 @@ interface Integration {
     created_at: string | null;
 }
 interface Credentials { integration_id: number; token: string | null; webhook_secret: string | null; }
-interface NewIntegrationForm { merchant_user_id: string; name: string; scopes: string[]; webhook_url: string; webhook_events: string[]; }
-interface IntegrationEdit { name: string; scopes: string[]; webhook_url: string; webhook_events: string[]; is_active: boolean; }
+interface NewIntegrationForm { merchant_user_id: string; name: string; scopes: string[]; cc_emails: string[]; cc_country_assignments: CcCountryAssignment[]; webhook_url: string; webhook_events: string[]; }
+interface IntegrationEdit { name: string; scopes: string[]; cc_emails: string[]; cc_country_assignments: CcCountryAssignment[]; webhook_url: string; webhook_events: string[]; is_active: boolean; }
 type WebhookTestResult = { state: 'success'; status: number; duration_ms: number } | { state: 'error'; message: string };
 interface JsonResult {
     message?: string;
@@ -61,31 +67,83 @@ function toApiKey(integration: Integration, canManage: boolean): ApiKey {
     };
 }
 
-function toIntegrationCard(integration: Integration, canManage: boolean): IntegrationCard {
-    return {
-        id: String(integration.id),
-        name: integration.name,
-        description: `${canManage ? `${integration.merchant ?? 'Merchant'} · ` : ''}${integration.is_active ? 'API access enabled' : 'API access disabled'}`,
-        account: integration.is_active ? {
-            name: 'Enabled',
-            detail: integration.scopes.map((scope) => scopeLabels[scope] ?? scope).join(' · '),
-        } : null,
-        scopes: integration.scopes.map((scope) => scopeLabels[scope] ?? scope),
-        connectDisabled: !canManage,
-    };
-}
-
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Merchant API Access', href: '/merchant-api-access' }];
-const scopeLabels: Record<string, string> = { 'orders:read': 'Read orders', 'orders:write': 'Submit orders', 'products:read': 'Read products', 'transfers:read': 'Read transfers' };
-const eventLabels: Record<string, string> = { 'order.created': 'Order created', 'order.updated': 'Order updated', 'product.created': 'Product created', 'product.updated': 'Product updated', 'transfer.created': 'Transfer sent', 'transfer.returned': 'Transfer returned' };
+const scopeLabels: Record<string, string> = { 'orders:read': 'Read orders', 'orders:write': 'Submit and update orders', 'products:read': 'Read products', 'products:write': 'Create products', 'transfers:read': 'Read transfers', 'shipments:write': 'Submit shipments' };
+const eventLabels: Record<string, string> = { 'order.created': 'Order created', 'order.updated': 'Order updated', 'order.returned': 'Order returned', 'product.created': 'Product created', 'product.updated': 'Product updated', 'transfer.created': 'Transfer sent', 'transfer.returned': 'Transfer returned' };
 const EMPTY_MERCHANTS: Merchant[] = [];
 const EMPTY_INTEGRATIONS: Integration[] = [];
+const smallScreenQuery = '(max-width: 639px)';
+const subscribeSmallScreen = (callback: () => void) => {
+    const query = window.matchMedia(smallScreenQuery);
+    query.addEventListener('change', callback);
+    return () => query.removeEventListener('change', callback);
+};
+const useSmallScreen = () => React.useSyncExternalStore(
+    subscribeSmallScreen,
+    () => window.matchMedia(smallScreenQuery).matches,
+    () => false,
+);
 
 function ToggleList({ values, selected, onChange, columns = 2, compact = false }: { values: string[]; selected: string[]; onChange: (value: string) => void; columns?: 1 | 2; compact?: boolean }) {
     return <div className={`grid ${compact ? 'gap-1.5' : 'gap-2'} ${columns === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>{values.map((value) => <label key={value} className={`flex cursor-pointer items-center rounded-lg border transition-colors hover:bg-accent/50 ${compact ? 'min-h-8 gap-1.5 px-2 py-1 text-[10px] leading-tight' : 'min-h-10 gap-2 px-3 py-2 text-sm'}`}>
         <Checkbox className={compact ? 'size-3.5' : undefined} checked={selected.includes(value)} onCheckedChange={() => onChange(value)} />
         <span>{scopeLabels[value] ?? eventLabels[value] ?? value}</span>
     </label>)}</div>;
+}
+
+function ccOptions(values: string[]): MultiOption[] {
+    return values.map((value) => ({ value, label: value }));
+}
+
+function CcUserPicker({ values, selected, onChange }: { values: string[]; selected: string[]; onChange: (next: string[]) => void }) {
+    const options = React.useMemo(() => ccOptions(values), [values]);
+
+    if (values.length === 0) return <p className="text-xs text-muted-foreground">No call center users are available for your country.</p>;
+
+    return <MultiSelect
+        label="Call center users"
+        hideLabel
+        placeholder="Select call center users"
+        options={options}
+        value={selected}
+        onValueChange={onChange}
+        searchable
+    />;
+}
+
+function CcCountryAssignments({ assignments, byCountry, onChange }: { assignments: CcCountryAssignment[]; byCountry: CcUsersByCountry[]; onChange: (value: CcCountryAssignment[]) => void }) {
+    const safeAssignments = assignments ?? [];
+    const safeByCountry = byCountry ?? [];
+    const availableCountries = safeByCountry.map((item) => item.country);
+    const used = new Set(safeAssignments.map((item) => item.country.toLowerCase()));
+    const addCountry = availableCountries.find((country) => !used.has(country.toLowerCase()));
+
+    return <div className="space-y-2">
+        {safeAssignments.map((assignment, index) => {
+            const users = safeByCountry.find((item) => item.country.toLowerCase() === assignment.country.toLowerCase())?.users ?? [];
+            return <div key={`${assignment.country}-${index}`} className="space-y-2 rounded-lg border p-3">
+                <div className="flex gap-2">
+                    <Select value={assignment.country} onValueChange={(country) => {
+                        const next = [...safeAssignments];
+                        const nextUsers = safeByCountry.find((item) => item.country === country)?.users ?? [];
+                        next[index] = { country, cc_emails: assignment.cc_emails.filter((name) => nextUsers.includes(name)) };
+                        onChange(next);
+                    }}>
+                        <SelectTrigger className="h-9"><SelectValue placeholder="Select country" /></SelectTrigger>
+                        <SelectContent>{availableCountries.filter((country) => country === assignment.country || !used.has(country.toLowerCase())).map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label={`Remove ${assignment.country}`} onClick={() => onChange(safeAssignments.filter((_, i) => i !== index))}><X className="size-4" /></Button>
+                </div>
+                <CcUserPicker values={users} selected={assignment.cc_emails ?? []} onChange={(cc_emails) => {
+                    const next = [...safeAssignments];
+                    next[index] = { ...assignment, cc_emails };
+                    onChange(next);
+                }} />
+            </div>;
+        })}
+        {addCountry ? <Button type="button" variant="outline" size="sm" onClick={() => onChange([...safeAssignments, { country: addCountry, cc_emails: [] }])}>Add country assignment</Button> : availableCountries.length === 0 ? <p className="text-xs text-muted-foreground">No countries are available for your access scope.</p> : null}
+        <p className="text-xs text-muted-foreground">Orders match by country first; if no country rule matches, the default call center assignment below is used.</p>
+    </div>;
 }
 
     function SecretField({ value, label, onCopy }: { value: string; label: string; onCopy: (value: string, label: string) => void }) {
@@ -144,22 +202,22 @@ function ToggleList({ values, selected, onChange, columns = 2, compact = false }
     }
 
     function AccessCardsSkeleton({ cards = 5 }: { cards?: number }) {
-    return <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" role="status" aria-label="Loading merchant API access" aria-live="polite">{Array.from({ length: cards }).map((_, index) => <div key={index} className="space-y-3 rounded-lg border p-4"><Skeleton className="h-4 w-28" /><Skeleton className="h-3 w-36" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>)}</div>;
+    return <div className="grid grid-cols-2 gap-2 p-2 xl:grid-cols-5" role="status" aria-label="Loading merchant API access" aria-live="polite">{Array.from({ length: cards }).map((_, index) => <div key={index} className="space-y-2 rounded-lg border p-2"><Skeleton className="h-4 w-28" /><Skeleton className="h-3 w-36" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>)}</div>;
 }
 
-export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, merchants = EMPTY_MERCHANTS, canManage, currentMerchant, availableScopes, availableEvents, newCredentials }: {
-    integrations: Integration[]; merchants: Merchant[]; canManage: boolean; currentMerchant: Merchant | null; availableScopes: string[]; availableEvents: string[]; newCredentials: Credentials | null;
+export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, merchants = EMPTY_MERCHANTS, canManage, currentMerchant, availableScopes, availableEvents, ccUsers = [], ccUsersByCountry = [], newCredentials }: {
+    integrations: Integration[]; merchants: Merchant[]; canManage: boolean; currentMerchant: Merchant | null; availableScopes: string[]; availableEvents: string[]; ccUsers: string[]; ccUsersByCountry: CcUsersByCountry[]; availableCountries?: string[]; newCredentials: Credentials | null;
 }) {
     const allowedScopes = canManage ? availableScopes : (currentMerchant?.merchant_api_scopes ?? availableScopes);
     const form = useForm<NewIntegrationForm>({
-        merchant_user_id: canManage ? '' : String(currentMerchant?.id ?? ''), name: '', scopes: canManage ? ['orders:read'] : allowedScopes,
-        webhook_url: '', webhook_events: [],
+        merchant_user_id: canManage ? '' : String(currentMerchant?.id ?? ''), name: '', scopes: canManage ? [] : allowedScopes,
+        cc_emails: [], cc_country_assignments: [], webhook_url: '', webhook_events: [],
     });
     const selectedMerchant = merchants.find((merchant) => String(merchant.id) === form.data.merchant_user_id);
     const formAllowedScopes = canManage ? (selectedMerchant?.merchant_api_scopes ?? availableScopes) : allowedScopes;
     const [edits, setEdits] = React.useState<Record<number, IntegrationEdit>>(() => Object.fromEntries(integrations.map((integration) => {
         const scopeOptions = canManage ? (integration.merchant_allowed_scopes ?? availableScopes) : allowedScopes;
-        return [integration.id, { name: integration.name, scopes: integration.scopes.filter((scope) => scopeOptions.includes(scope)), webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active }] as const;
+        return [integration.id, { name: integration.name, scopes: integration.scopes.filter((scope) => scopeOptions.includes(scope)), cc_emails: integration.cc_emails ?? [], cc_country_assignments: integration.cc_country_assignments ?? [], webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active }] as const;
     })));
     const [savingId, setSavingId] = React.useState<number | null>(null);
     const [testingWebhookId, setTestingWebhookId] = React.useState<number | null>(null);
@@ -171,9 +229,22 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
     const [savedWebhookUrls, setSavedWebhookUrls] = React.useState<Record<number, string | null>>({});
     const [webhookSecretConfigured, setWebhookSecretConfigured] = React.useState<Record<number, boolean>>({});
     const [apiKeys, setApiKeys] = React.useState<ApiKey[]>(() => integrations.filter((integration) => integration.is_active).map((integration) => toApiKey(integration, canManage)));
-    const [integrationCards, setIntegrationCards] = React.useState<IntegrationCard[]>(() => integrations.map((integration) => toIntegrationCard(integration, canManage)));
     const [integrationPage, setIntegrationPage] = React.useState(1);
     const [merchantPage, setMerchantPage] = React.useState(1);
+    const smallScreen = useSmallScreen();
+    const integrationPageSize = smallScreen ? 2 : 5;
+    const merchantPageSize = smallScreen ? 2 : 5;
+    const integrationListRef = React.useRef<HTMLDivElement>(null);
+    const integrationGhostRef = React.useRef<HTMLDivElement>(null);
+    const prefersReducedMotion = React.useSyncExternalStore(
+        (callback) => {
+            const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+            query.addEventListener('change', callback);
+            return () => query.removeEventListener('change', callback);
+        },
+        () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        () => false,
+    );
     const [createIntegrationOpen, setCreateIntegrationOpen] = React.useState(false);
     const [editingIntegrationId, setEditingIntegrationId] = React.useState<number | null>(null);
     const [merchantSearch, setMerchantSearch] = React.useState('');
@@ -191,12 +262,11 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
         if (!integrations.length) return;
         setEdits(Object.fromEntries(integrations.map((integration) => {
             const scopeOptions = canManage ? (integration.merchant_allowed_scopes ?? availableScopes) : allowedScopes;
-            return [integration.id, { name: integration.name, scopes: integration.scopes.filter((scope) => scopeOptions.includes(scope)), webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active }] as const;
+            return [integration.id, { name: integration.name, scopes: integration.scopes.filter((scope) => scopeOptions.includes(scope)), cc_emails: integration.cc_emails ?? [], webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active }] as const;
         })));
     }, [integrations]);
     React.useEffect(() => {
         setApiKeys(integrations.filter((integration) => integration.is_active).map((integration) => toApiKey(integration, canManage)));
-        setIntegrationCards(integrations.map((integration) => toIntegrationCard(integration, canManage)));
     }, [integrations, canManage]);
     React.useEffect(() => {
         if (!merchants.length) return;
@@ -204,12 +274,12 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
             enabled: merchant.merchant_api_enabled, scopes: merchant.merchant_api_scopes ?? availableScopes,
         }] as const)));
     }, [merchants]);
-    const integrationPageSize = 10;
     const filteredIntegrations = integrations.filter((integration) => `${integration.name} ${integration.merchant ?? ''} ${integration.email ?? ''} ${integration.token_prefix}`.toLowerCase().includes(integrationSearch.trim().toLowerCase()));
+    const integrationRanks = React.useMemo(() => new Map(filteredIntegrations.map((item, index) => [String(item.id), index])), [filteredIntegrations]);
+    useRowMotion(integrationListRef, { reduced: prefersReducedMotion, ranks: integrationRanks, ghosts: integrationGhostRef });
     const integrationPageCount = Math.max(1, Math.ceil(filteredIntegrations.length / integrationPageSize));
     const safeIntegrationPage = Math.min(integrationPage, integrationPageCount);
     const visibleIntegrations = filteredIntegrations.slice((safeIntegrationPage - 1) * integrationPageSize, safeIntegrationPage * integrationPageSize);
-    const merchantPageSize = 10;
     const filteredMerchants = merchants.filter((merchant) => `${merchant.name} ${merchant.email}`.toLowerCase().includes(merchantSearch.trim().toLowerCase()));
     const merchantPageCount = Math.max(1, Math.ceil(filteredMerchants.length / merchantPageSize));
     const safeMerchantPage = Math.min(merchantPage, merchantPageCount);
@@ -226,11 +296,6 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.message ?? `Request failed with HTTP ${response.status}.`);
         return result;
-    };
-    const createApiKey = canManage || !currentMerchant?.merchant_api_enabled ? undefined : async (input: { name: string; scopes: string[] }): Promise<ApiKeyCreated> => {
-        const result = await requestJson('/merchant-api-access', 'POST', { name: input.name, scopes: input.scopes, webhook_url: null, webhook_events: [] });
-        if (!result.key || !result.secret) throw new Error('The server did not return the new API key. Please try again.');
-        return { key: result.key, secret: result.secret };
     };
     const rotateApiKey = async (key: ApiKey) => {
         const integration = integrations.find((item) => String(item.id) === key.id);
@@ -249,30 +314,32 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
             ...previous,
             [Number(key.id)]: { ...previous[Number(key.id)], is_active: false },
         }));
-        setIntegrationCards((previous) => previous.map((item) => item.id === key.id
-            ? { ...item, description: `${canManage ? `${integrations.find((integration) => String(integration.id) === key.id)?.merchant ?? 'Merchant'} · ` : ''}API access revoked`, account: null, connectDisabled: !canManage }
-            : item));
     };
-    const setIntegrationEnabled = async (item: IntegrationCard, enabled: boolean) => {
-        const id = Number(item.id);
-        const integration = integrations.find((candidate) => candidate.id === id);
+    const setIntegrationEnabled = async (integration: Integration, enabled: boolean) => {
+        const id = integration.id;
         if (!integration) throw new Error('This API integration is no longer available. Refresh the page and try again.');
         const current = edits[id] ?? {
             name: integration.name,
             scopes: integration.scopes,
+            cc_emails: integration.cc_emails ?? [],
+            cc_country_assignments: integration.cc_country_assignments ?? [],
             webhook_url: integration.webhook_url ?? '',
             webhook_events: integration.webhook_events,
             is_active: integration.is_active,
         };
-        await requestJson(`/merchant-api-access/${id}`, 'PUT', { ...current, is_active: enabled });
-        setEdits((previous) => ({ ...previous, [id]: { ...current, is_active: enabled } }));
-        setIntegrationCards((previous) => previous.map((card) => card.id === item.id ? {
-            ...card,
-            description: `${canManage ? `${integration.merchant ?? 'Merchant'} · ` : ''}API access ${enabled ? 'enabled' : 'disabled'}`,
-            account: enabled ? { name: 'Enabled', detail: current.scopes.map((scope) => scopeLabels[scope] ?? scope).join(' · ') } : null,
-        } : card));
-        toast.success(enabled ? 'API integration enabled.' : 'API integration disabled.');
-        return { name: enabled ? 'Enabled' : 'Disabled', detail: current.scopes.map((scope) => scopeLabels[scope] ?? scope).join(' · ') };
+        setSavingId(id);
+        try {
+            await requestJson(`/merchant-api-access/${id}`, 'PUT', { ...current, is_active: enabled });
+            setEdits((previous) => ({ ...previous, [id]: { ...current, is_active: enabled } }));
+            setApiKeys((previous) => enabled
+                ? previous.some((key) => key.id === String(id)) ? previous : [...previous, toApiKey(integration, canManage)]
+                : previous.filter((key) => key.id !== String(id)));
+            toast.success(enabled ? 'API integration enabled.' : 'API integration disabled.');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Could not update integration access.');
+        } finally {
+            setSavingId(null);
+        }
     };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
@@ -370,7 +437,7 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
         <div className="w-full space-y-5 p-4 md:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <DashboardHeader title="Merchant API access" summary={canManage ? 'Manage merchant permissions, issue credentials, configure webhooks, and monitor each integration from one place.' : 'Connect your systems to your orders, products, and transfers. Manage your own API keys and webhook destinations.'} />
-                <div className="flex flex-wrap gap-2"><Button onClick={() => setCreateIntegrationOpen(true)} disabled={(canManage && !merchants.length) || (!canManage && !currentMerchant?.merchant_api_enabled)}><KeyRound aria-label="Open integration form" className="mr-2 size-4" />Create integration</Button><Button asChild variant="outline"><Link href="/api-dashboard"><Activity aria-label="API dashboard" className="mr-2 size-4" />API health</Link></Button><Button asChild variant="outline"><Link href="/developers/api"><BookOpen aria-label="Developer documentation" className="mr-2 size-4" />Developer docs</Link></Button></div>
+                <div className="flex flex-wrap gap-2"><Button onClick={() => setCreateIntegrationOpen(true)} disabled={(canManage && !merchants.length) || (!canManage && !currentMerchant?.merchant_api_enabled)}><KeyRound aria-label="Open integration form" className="mr-2 size-4" />New integration</Button><Button asChild variant="outline"><Link href="/api-dashboard"><Activity aria-label="API dashboard" className="mr-2 size-4" />API health</Link></Button><Button asChild variant="outline"><Link href="/developers/api"><BookOpen aria-label="Developer documentation" className="mr-2 size-4" />Developer docs</Link></Button></div>
             </div>
 
             <Dialog open={credentialsModalOpen && Boolean(credentialsToShow)} onOpenChange={setCredentialsModalOpen}>
@@ -424,7 +491,6 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
             <ApiKeys
                 value={apiKeys}
                 onValueChange={setApiKeys}
-                onCreate={createApiKey}
                 onRoll={rotateApiKey}
                 onRevoke={revokeApiKey}
                 scopes={allowedScopes.map((scope): ApiKeyScope => ({ value: scope, label: scopeLabels[scope] ?? scope }))}
@@ -440,12 +506,12 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
                 <ControlStrip label="Merchant self-service access"><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"><p className="text-xs text-muted-foreground">Disable an account to revoke its active keys immediately.</p><div className="relative w-full sm:w-64"><Search aria-label="Search merchants" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={merchantSearch} onChange={(event) => { setMerchantSearch(event.target.value); setMerchantPage(1); }} placeholder="Search name or email" aria-label="Search merchants by name or email" className="h-9 pl-9" /></div></div></ControlStrip>
                 {merchants.length === 0 ? <p className="p-5 text-sm text-muted-foreground">No merchant accounts are available.</p> : <>
                     {filteredMerchants.length === 0 ? <p className="p-5 text-sm text-muted-foreground">No merchants match “{merchantSearch}”.</p> : <>
-                    <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                    {visibleMerchants.map((merchant) => <section key={merchant.id} className="flex min-w-0 flex-col rounded-lg border p-4">
+                    <div className="grid grid-cols-2 gap-2 p-2 lg:grid-cols-5">
+                    {visibleMerchants.map((merchant) => <section key={merchant.id} className="flex min-w-0 flex-col rounded-lg border p-2">
                         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold" title={merchant.name}>{merchant.name}</h3><p className="mt-1 truncate text-xs text-muted-foreground" title={merchant.email}>{merchant.email}</p></div><Badge variant={merchantControls[merchant.id]?.enabled ? 'secondary' : 'outline'}>{merchantControls[merchant.id]?.enabled ? 'Enabled' : 'Disabled'}</Badge></div>
-                        <label className="mt-4 flex items-center gap-2 text-xs"><Checkbox checked={merchantControls[merchant.id]?.enabled ?? false} onCheckedChange={(checked) => setMerchantControls((previous) => ({ ...previous, [merchant.id]: { ...previous[merchant.id], enabled: checked === true } }))} />Allow API self-service</label>
-                        <div className="mt-3"><p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Allowed resources</p><ToggleList compact columns={1} values={availableScopes} selected={merchantControls[merchant.id]?.scopes ?? []} onChange={(scope) => setMerchantControls((previous) => ({ ...previous, [merchant.id]: { ...previous[merchant.id], scopes: toggle(previous[merchant.id]?.scopes ?? [], scope) } }))} /></div>
-                        <Button size="sm" variant="outline" className="mt-4 w-full" onClick={() => saveMerchantControl(merchant)}>Save merchant access</Button>
+                        <label className="mt-2 flex items-center gap-2 text-[11px]"><Checkbox checked={merchantControls[merchant.id]?.enabled ?? false} onCheckedChange={(checked) => setMerchantControls((previous) => ({ ...previous, [merchant.id]: { ...previous[merchant.id], enabled: checked === true } }))} />Allow API self-service</label>
+                        <div className="mt-2"><p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Allowed resources</p><ToggleList compact columns={1} values={availableScopes} selected={merchantControls[merchant.id]?.scopes ?? []} onChange={(scope) => setMerchantControls((previous) => ({ ...previous, [merchant.id]: { ...previous[merchant.id], scopes: toggle(previous[merchant.id]?.scopes ?? [], scope) } }))} /></div>
+                        <Button size="sm" variant="outline" className="mt-2 h-8 w-full px-2 text-[11px]" onClick={() => saveMerchantControl(merchant)}>Save access</Button>
                     </section>)}
                     </div>
                     <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -467,6 +533,7 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
                             <div className="space-y-2"><Label>Merchant account</Label>{canManage ? <><Select value={form.data.merchant_user_id} onValueChange={(value) => { const merchant = merchants.find((option) => String(option.id) === value); form.setData({ ...form.data, merchant_user_id: value, scopes: merchant?.merchant_api_scopes ?? availableScopes }); }}><SelectTrigger><SelectValue placeholder="Select merchant" /></SelectTrigger><SelectContent>{merchants.map((merchant) => <SelectItem key={merchant.id} value={String(merchant.id)}>{merchant.name} · {merchant.email}</SelectItem>)}</SelectContent></Select>{form.errors.merchant_user_id && <p className="text-xs text-destructive">{form.errors.merchant_user_id}</p>}</> : <Input readOnly value={currentMerchant ? `${currentMerchant.name} · ${currentMerchant.email}` : ''} />}</div>
                             <div className="space-y-2"><Label htmlFor="integration-name">Integration name</Label><Input id="integration-name" value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} placeholder="Merchant storefront" required />{form.errors.name && <p className="text-xs text-destructive">{form.errors.name}</p>}</div>
                             <div className="space-y-2"><Label>API permissions</Label><ToggleList values={formAllowedScopes} selected={form.data.scopes} onChange={(scope) => form.setData('scopes', toggle(form.data.scopes, scope))} />{form.errors.scopes && <p className="text-xs text-destructive">{form.errors.scopes}</p>}</div>
+                            {canManage && <div className="space-y-3"><div className="space-y-2"><Label>Country-specific call center assignment <span className="font-normal text-muted-foreground">optional</span></Label><CcCountryAssignments assignments={form.data.cc_country_assignments} byCountry={ccUsersByCountry} onChange={(value) => form.setData('cc_country_assignments', value)} /></div><div className="space-y-2"><Label>Default call center assignment <span className="font-normal text-muted-foreground">optional</span></Label><p className="text-xs text-muted-foreground">Used when no country-specific rule matches. Incoming orders rotate between selected users.</p><CcUserPicker values={ccUsers} selected={form.data.cc_emails} onChange={(cc_emails) => form.setData('cc_emails', cc_emails)} />{form.errors.cc_emails && <p className="text-xs text-destructive">{form.errors.cc_emails}</p>}</div></div>}
                             <div className="space-y-2"><Label htmlFor="webhook-url">Webhook URL <span className="font-normal text-muted-foreground">optional</span></Label><Input id="webhook-url" type="url" value={form.data.webhook_url} onChange={(event) => form.setData('webhook_url', event.target.value)} placeholder="https://merchant.example/webhooks/rdl" /><p className="text-xs text-muted-foreground">We’ll POST signed events to this HTTPS address.</p>{form.errors.webhook_url && <p className="text-xs text-destructive">{form.errors.webhook_url}</p>}</div>
                             <div className="space-y-2"><Label className="flex items-center gap-2"><Webhook aria-label="Webhook events" className="size-4" />Webhook events</Label><ToggleList values={availableEvents} selected={form.data.webhook_events} onChange={(value) => form.setData('webhook_events', toggle(form.data.webhook_events, value))} /></div>
                         </div>
@@ -475,38 +542,24 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
                 </SheetContent>
             </Sheet>
 
-            <Deferred data="integrations" fallback={<section className="space-y-3"><DashboardHeader title={canManage ? 'Existing integrations' : 'Your integrations'} summary="Edit access, rotate credentials, and configure event delivery for each connection." /><AccessCardsSkeleton cards={6} /></section>}>
+            <Deferred data="integrations" fallback={<section className="space-y-3"><DashboardHeader title="Integration settings" summary="Manage permissions and webhook delivery for each connection." /><AccessCardsSkeleton cards={6} /></section>}>
             {() => <section className="space-y-3">
-                <Integrations
-                    value={integrationCards}
-                    onValueChange={setIntegrationCards}
-                    onConnect={canManage ? (item) => setIntegrationEnabled(item, true) : undefined}
-                    onDisconnect={(item) => setIntegrationEnabled(item, false)}
-                    settingsHref={(item) => `#api-integration-${item.id}`}
-                    title="Merchant API integrations"
-                    description="Enable or disable a token and review its granted scopes."
-                    connectLabel="Enable"
-                    connectingLabel="Enabling"
-                    connectedLabel="Enabled"
-                    connectedCountLabel="enabled"
-                    disconnectLabel="Disable"
-                    disconnectingLabel="Disabling"
-                />
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><DashboardHeader title={canManage ? 'Existing integrations' : 'Your integrations'} summary="Edit access, rotate credentials, and configure event delivery for each connection." /><div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative w-full sm:w-72"><Search aria-label="Search integrations" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={integrationSearch} onChange={(event) => { setIntegrationSearch(event.target.value); setIntegrationPage(1); }} placeholder="Search integrations" aria-label="Search by integration, merchant, email, or token" className="h-9 pl-9" /></div><span className="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">{filteredIntegrations.length} of {integrations.length} integrations</span></div></div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><DashboardHeader title="Integration settings" summary="Manage permissions and webhook delivery for each connection." /><div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative w-full sm:w-72"><Search aria-label="Search integrations" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={integrationSearch} onChange={(event) => { setIntegrationSearch(event.target.value); setIntegrationPage(1); }} placeholder="Search integrations" aria-label="Search by integration, merchant, email, or token" className="h-9 pl-9" /></div><span className="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">{filteredIntegrations.length} of {integrations.length} integrations</span></div></div>
                 {integrations.length === 0 ? <Panel className="p-10 text-center"><KeyRound aria-label="No integrations" className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm">No merchant API integrations yet</p><p className="mt-1 text-xs text-muted-foreground">Create an integration above to issue the first key.</p></Panel> : <>
                     {filteredIntegrations.length === 0 ? <Panel className="p-10 text-center"><Search aria-label="No matching integrations" className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm">No integrations match “{integrationSearch}”.</p></Panel> : <>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <div ref={integrationListRef} className="relative grid grid-cols-2 gap-2 lg:grid-cols-5">
                     {visibleIntegrations.map((integration) => {
                     const integrationScopes = canManage ? (integration.merchant_allowed_scopes ?? availableScopes) : allowedScopes;
-                    const edit = edits[integration.id] ?? { name: integration.name, scopes: integration.scopes.filter((scope) => integrationScopes.includes(scope)), webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active };
+                    const edit = edits[integration.id] ?? { name: integration.name, scopes: integration.scopes.filter((scope) => integrationScopes.includes(scope)), cc_emails: integration.cc_emails ?? [], cc_country_assignments: integration.cc_country_assignments ?? [], webhook_url: integration.webhook_url ?? '', webhook_events: integration.webhook_events, is_active: integration.is_active };
                     const configuredWebhookUrl = Object.prototype.hasOwnProperty.call(savedWebhookUrls, integration.id) ? savedWebhookUrls[integration.id] : integration.webhook_url;
                     const webhookUrlNeedsSave = Boolean(edit.webhook_url) && edit.webhook_url !== (configuredWebhookUrl ?? '');
                     const setField = <K extends keyof IntegrationEdit>(key: K, value: IntegrationEdit[K]) => setEdits((previous) => ({ ...previous, [integration.id]: { ...edit, [key]: value } }));
-                    return <Panel id={`api-integration-${integration.id}`} key={integration.id} className="flex min-w-0 flex-col overflow-hidden">
-                        <div className="border-b p-3">
-                            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold" title={integration.name}>{integration.name}</h3></div><Badge variant={edit.is_active ? 'secondary' : 'outline'}>{edit.is_active ? 'Active' : 'Revoked'}</Badge></div>
+                    return <Panel id={`api-integration-${integration.id}`} key={integration.id} data-row-id={String(integration.id)} className="flex min-w-0 flex-col overflow-hidden">
+                        <div className="border-b p-2">
+                            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold" title={integration.name}>{integration.name}</h3></div><div className="flex shrink-0 items-center gap-1.5"><Badge variant={edit.is_active ? 'secondary' : 'outline'}>{edit.is_active ? 'Active' : 'Disabled'}</Badge><Switch aria-label={`${edit.is_active ? 'Disable' : 'Enable'} ${integration.name}`} checked={edit.is_active} disabled={savingId === integration.id} onCheckedChange={(enabled) => void setIntegrationEnabled(integration, enabled)} /></div></div>
                             {canManage && <p className="mt-2 truncate text-[10px] text-muted-foreground" title={`${integration.merchant} · ${integration.email}`}>{integration.merchant ?? 'Merchant'}</p>}
                             <p className="mt-1 truncate text-[10px] text-muted-foreground">Last used · {integration.last_used_at ?? 'Never'}</p>
+                            {canManage && <p className="mt-1 truncate text-[10px] text-muted-foreground" title={[...(integration.cc_country_assignments ?? []).map((a) => `${a.country}: ${a.cc_emails.join(', ')}`), ...(integration.cc_emails?.length ? [`Default: ${integration.cc_emails.join(', ')}`] : [])].join(' | ')}>Call center · {(integration.cc_country_assignments?.length || integration.cc_emails?.length) ? `${integration.cc_country_assignments?.length ?? 0} country rule(s)${integration.cc_emails?.length ? ' + default' : ''}` : 'Not assigned'}</p>}
                             {integration.has_webhook_secret && <Button type="button" size="sm" variant="outline" className="mt-3 w-full px-2 text-xs" disabled={rotatingId !== null} onClick={() => requestNewCredentials(integration)}>{rotatingId === integration.id ? <LoaderCircle aria-label="Rotating webhook signing secret" className="mr-1.5 size-3.5 animate-spin" /> : <RefreshCw aria-label="Rotate webhook signing secret" className="mr-1.5 size-3.5" />}Rotate webhook secret</Button>}
                         </div>
                         <Dialog open={editingIntegrationId === integration.id} onOpenChange={(open) => setEditingIntegrationId(open ? integration.id : null)}>
@@ -516,7 +569,9 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
                             <div className="divide-y rounded-xl border">
                                 <div className="grid gap-2 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center"><div><Label>Integration name</Label><p className="mt-1 text-[10px] text-muted-foreground">Shown in your access dashboard.</p></div><Input className="h-9" value={edit.name} onChange={(event) => setField('name', event.target.value)} /></div>
                                 <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>Webhook endpoint</Label><p className="mt-1 text-[10px] text-muted-foreground">Public HTTPS URL for event delivery.</p></div><div className="space-y-2"><div className="flex flex-col gap-2 sm:flex-row"><Input className="h-9 min-w-0 flex-1" type="url" value={edit.webhook_url} onChange={(event) => setField('webhook_url', event.target.value)} placeholder="https://merchant.example/webhooks/rdl" /><Button type="button" size="sm" variant="outline" className="shrink-0" disabled={!edit.webhook_url || savingId === integration.id || testingWebhookId === integration.id} onClick={() => webhookUrlNeedsSave ? save(integration, () => testWebhook(integration.id)) : testWebhook(integration.id)}>{testingWebhookId === integration.id ? <LoaderCircle aria-label="Sending test webhook" className="mr-2 size-4 animate-spin" /> : <Send aria-label="Test webhook" className="mr-2 size-4" />}{webhookUrlNeedsSave ? 'Save and test' : 'Send test'}</Button></div><p className="text-[10px] text-muted-foreground">A changed endpoint is saved before the signed <code>integration.test</code> event is sent.</p><WebhookTestTrace result={webhookTestResults[integration.id] ?? null} testing={testingWebhookId === integration.id} /></div></div>
-                                <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>API permissions</Label><p className="mt-1 text-[10px] text-muted-foreground">Choose which resources this key can read.</p></div><ToggleList columns={2} values={integrationScopes} selected={edit.scopes} onChange={(value) => setField('scopes', toggle(edit.scopes, value))} /></div>
+                                <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>API permissions</Label><p className="mt-1 text-[10px] text-muted-foreground">Choose which resources this key can read or change.</p></div><ToggleList columns={2} values={integrationScopes} selected={edit.scopes} onChange={(value) => setField('scopes', toggle(edit.scopes, value))} /></div>
+                                {canManage && <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>Country assignments</Label><p className="mt-1 text-[10px] text-muted-foreground">Match order country to specific call center users.</p></div><CcCountryAssignments assignments={edit.cc_country_assignments} byCountry={ccUsersByCountry} onChange={(value) => setField('cc_country_assignments', value)} /></div>}
+                                {canManage && <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label>Default assignment</Label><p className="mt-1 text-[10px] text-muted-foreground">Fallback when no country rule matches.</p></div><CcUserPicker values={ccUsers} selected={edit.cc_emails} onChange={(cc_emails) => setField('cc_emails', cc_emails)} /></div>}
                                 <div className="grid gap-3 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"><div><Label className="flex items-center gap-2"><Webhook aria-label="Webhook events" className="size-4" />Webhook events</Label><p className="mt-1 text-[10px] text-muted-foreground">Choose which changes trigger a delivery.</p></div><ToggleList columns={2} values={availableEvents} selected={edit.webhook_events} onChange={(value) => setField('webhook_events', toggle(edit.webhook_events, value))} /></div>
                                 <div className="grid gap-2 p-4 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center"><span className="text-xs font-medium">Signing secret</span><div className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground"><ShieldCheck className="size-4 shrink-0 text-primary" />{(webhookSecretConfigured[integration.id] ?? integration.has_webhook_secret) ? 'Configured · value is hidden for security.' : 'Not configured yet. Saving a webhook URL creates one.'}</div></div>
                                 <div className="flex items-center justify-between gap-4 p-4"><div><p className="text-xs font-medium">Integration access</p><p className="mt-1 text-[10px] text-muted-foreground">Use the enable or disable control in Merchant API integrations above.</p></div><Badge variant={edit.is_active ? 'secondary' : 'outline'}>{edit.is_active ? 'Enabled' : 'Disabled'}</Badge></div>
@@ -526,6 +581,7 @@ export default function MerchantApiAccess({ integrations = EMPTY_INTEGRATIONS, m
                         </Dialog>
                     </Panel>;
                     })}
+                    <div ref={integrationGhostRef} aria-hidden="true" className="pointer-events-none absolute inset-0" />
                     </div>
                     <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
                         <p className="font-mono text-xs tabular-nums text-muted-foreground">Showing {(safeIntegrationPage - 1) * integrationPageSize + 1}–{Math.min(safeIntegrationPage * integrationPageSize, filteredIntegrations.length)} of {filteredIntegrations.length} integrations · page {safeIntegrationPage} of {integrationPageCount}</p>

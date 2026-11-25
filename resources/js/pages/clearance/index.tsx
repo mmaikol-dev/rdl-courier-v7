@@ -4,11 +4,17 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ControlStrip, DashboardHeader, Footnote, Panel } from '@/components/api-dashboard/blueprint';
+import { NumberRoll } from '@/components/number-roll';
 import {
     Command,
     CommandEmpty,
@@ -27,7 +33,7 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from '@/components/ui/pagination';
-import { Check, ChevronsUpDown, FilterIcon, History, LoaderCircle, Pin, RefreshCwIcon, SearchX, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Camera, Check, ChevronsUpDown, ClipboardCheck, Clock3, FilterIcon, History, ListChecks, LoaderCircle, Pin, RefreshCwIcon, ScanLine, SearchX, Store, Users, Wallet, X, XCircle } from 'lucide-react';
 import * as React from 'react';
 import { format } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
@@ -64,8 +70,15 @@ interface ClearanceOrder {
     merchant: string;
     code: string;
     agent: string;
+    agent_id: number | null;
     clearance_status: string;
+    clearance_note: string | null;
     updated_at: string;
+}
+
+interface ClearanceDraft {
+    code: string;
+    clearance_note: string;
 }
 
 interface PaginationLinkData {
@@ -97,6 +110,8 @@ interface OrderHistoryItem {
 const attributeLabels: Record<string, string> = {
     agent: 'Agent',
     clearance_status: 'Clearance Status',
+    clearance_note: 'Clearance Note',
+    code: 'Code',
     status: 'Status',
     amount: 'Amount',
     quantity: 'Quantity',
@@ -107,8 +122,25 @@ const attributeLabels: Record<string, string> = {
     order_no: 'Order No',
 };
 
+const STATUS_OPTIONS = [
+    'New Orders',
+    'Pending',
+    'Scheduled',
+    'Dispatched',
+    'Delivered',
+    'Cancelled',
+    'Followup',
+    'WrongContact',
+];
+
+const statusOptionsFor = (status?: string | null) => {
+    const current = status?.trim() || 'New Orders';
+    return STATUS_OPTIONS.includes(current) ? STATUS_OPTIONS : [current, ...STATUS_OPTIONS];
+};
+
 const COLUMNS: { key: keyof ClearanceOrder; label: string; align?: 'right' }[] = [
     { key: 'order_no', label: 'Order No' },
+    { key: 'code', label: 'Code' },
     { key: 'client_name', label: 'Client' },
     { key: 'product_name', label: 'Product' },
     { key: 'amount', label: 'Amount', align: 'right' },
@@ -120,6 +152,65 @@ const COLUMNS: { key: keyof ClearanceOrder; label: string; align?: 'right' }[] =
     { key: 'phone', label: 'Phone' },
     { key: 'address', label: 'Address' },
 ];
+
+function EditableCodeCell({ order }: { order: ClearanceOrder }) {
+    const [value, setValue] = React.useState(order.code ?? '');
+    const [saving, setSaving] = React.useState(false);
+    const skipBlurRef = React.useRef(false);
+
+    React.useEffect(() => {
+        setValue(order.code ?? '');
+    }, [order.code]);
+
+    const save = () => {
+        if (skipBlurRef.current) {
+            skipBlurRef.current = false;
+            return;
+        }
+
+        const nextValue = value.trim();
+        if (nextValue === (order.code ?? '')) {
+            return;
+        }
+
+        setSaving(true);
+        router.put(`/sheetorders/${order.id}`, { code: nextValue }, {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['orders'],
+            onSuccess: () => toast.success('Code updated'),
+            onError: () => {
+                toast.error('Failed to update code');
+                setValue(order.code ?? '');
+            },
+            onFinish: () => setSaving(false),
+        });
+    };
+
+    return (
+        <div className="flex items-center gap-1.5">
+            <Input
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                onBlur={save}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                        event.currentTarget.blur();
+                    } else if (event.key === 'Escape') {
+                        skipBlurRef.current = true;
+                        setValue(order.code ?? '');
+                        event.currentTarget.blur();
+                    }
+                }}
+                disabled={saving}
+                placeholder="Enter code"
+                aria-label={`Code for order ${order.order_no}`}
+                className="h-8 w-32 text-xs"
+            />
+            {saving && <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
+        </div>
+    );
+}
 
 export default function Index() {
     const isMobile = useIsMobile();
@@ -155,10 +246,279 @@ export default function Index() {
     const [historyOrderNo, setHistoryOrderNo] = React.useState<string | null>(null);
     const [historyLoading, setHistoryLoading] = React.useState(false);
     const [selectedHistories, setSelectedHistories] = React.useState<OrderHistoryItem[]>([]);
+    const [wizardOpen, setWizardOpen] = React.useState(false);
+    const [wizardStep, setWizardStep] = React.useState<1 | 2 | 3>(1);
+    const [wizardLoading, setWizardLoading] = React.useState(false);
+    const [isSubmittingBatch, setIsSubmittingBatch] = React.useState(false);
+    const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
+    const [scannedInIds, setScannedInIds] = React.useState<Set<number>>(new Set());
+    const [updatingStatusId, setUpdatingStatusId] = React.useState<number | null>(null);
+    const [scannerOpen, setScannerOpen] = React.useState(false);
+    const [scannerReady, setScannerReady] = React.useState(false);
+    const [scannerError, setScannerError] = React.useState(false);
+    const [lastScan, setLastScan] = React.useState<string | null>(null);
+    const [drafts, setDrafts] = React.useState<Record<number, ClearanceDraft>>({});
+
+    const scannerRef = React.useRef<{ stop: () => Promise<void> } | null>(null);
+    const scanInFlightRef = React.useRef(false);
+    const scannedOrderNosRef = React.useRef<Set<string>>(new Set());
+    const ordersRef = React.useRef(orders.data);
+    const agentsRef = React.useRef(agents);
+
+    React.useEffect(() => {
+        ordersRef.current = orders.data;
+    }, [orders.data]);
+
+    React.useEffect(() => {
+        agentsRef.current = agents;
+    }, [agents]);
 
     const formatDate = (date: Date) => format(date, "yyyy-MM-dd");
 
     const hasActiveFilters = Boolean(filters.agent || filters.from_date || filters.to_date);
+    const selectedOrders = orders.data.filter((order) => selectedIds.has(order.id));
+    const selectedAmount = selectedOrders.reduce((sum, order) => sum + Number(order.amount ?? 0), 0);
+    const isReturnedOrder = (order: ClearanceOrder) =>
+        scannedInIds.has(order.id) || order.status?.trim().toLowerCase() === 'returned';
+
+    const openWizard = () => {
+        setWizardStep(1);
+        setSelectedIds(new Set());
+        setScannedInIds(new Set());
+        setDrafts({});
+        setLastScan(null);
+        scannedOrderNosRef.current = new Set();
+        setWizardOpen(true);
+    };
+
+    const loadWizardOrders = () => {
+        setWizardLoading(true);
+        router.get('/clearance', {
+            agent: filters.agent ?? undefined,
+            from_date: dateRange?.from ? formatDate(dateRange.from) : undefined,
+            to_date: dateRange?.to ? formatDate(dateRange.to) : undefined,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const nextOrders = (page.props as unknown as { orders: { data: ClearanceOrder[] } }).orders.data;
+                setDrafts(Object.fromEntries(nextOrders.map((order) => [
+                    order.id,
+                    { code: order.code ?? '', clearance_note: order.clearance_note ?? '' },
+                ])));
+                setSelectedIds(new Set(
+                    nextOrders
+                        .filter((order) => order.clearance_status !== 'cleared')
+                        .map((order) => order.id),
+                ));
+                setScannedInIds(new Set());
+                setLastScan(null);
+                scannedOrderNosRef.current = new Set();
+                setWizardStep(2);
+            },
+            onError: () => toast.error('Failed to load clearance orders'),
+            onFinish: () => setWizardLoading(false),
+        });
+    };
+
+    const toggleSelected = (orderId: number) => {
+        setSelectedIds((current) => {
+            const next = new Set(current);
+            if (next.has(orderId)) next.delete(orderId);
+            else next.add(orderId);
+            return next;
+        });
+    };
+
+    const toggleAllSelected = () => {
+        if (selectedIds.size === orders.data.length) {
+            setSelectedIds(new Set());
+            return;
+        }
+
+        setSelectedIds(new Set(orders.data.map((order) => order.id)));
+    };
+
+    const updateDraft = (orderId: number, field: keyof ClearanceDraft, value: string) => {
+        setDrafts((current) => ({
+            ...current,
+            [orderId]: {
+                code: current[orderId]?.code ?? '',
+                clearance_note: current[orderId]?.clearance_note ?? '',
+                [field]: value,
+            },
+        }));
+    };
+
+    const updateOrderStatus = (order: ClearanceOrder, status: string) => {
+        if ((order.status?.trim() || 'New Orders') === status) {
+            return;
+        }
+
+        setUpdatingStatusId(order.id);
+        router.put(`/sheetorders/${order.id}`, { status }, {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['orders'],
+            onSuccess: () => toast.success(`${order.order_no} status updated to ${status}`),
+            onError: () => toast.error('Failed to update order status'),
+            onFinish: () => setUpdatingStatusId(null),
+        });
+    };
+
+    const markReturnedWithoutScan = (order: ClearanceOrder) => {
+        if (isReturnedOrder(order) || updatingStatusId === order.id) return;
+
+        setUpdatingStatusId(order.id);
+        router.post(`/clearance/${order.id}/return`, {}, {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['orders'],
+            onSuccess: () => {
+                setSelectedIds((current) => new Set(current).add(order.id));
+            },
+            onError: () => toast.error(`Failed to mark ${order.order_no} returned`),
+            onFinish: () => setUpdatingStatusId(null),
+        });
+    };
+
+    const handleDecodedScan = React.useCallback((decodedText: string) => {
+        if (scanInFlightRef.current) {
+            return;
+        }
+
+        const orderNo = decodedText.split('|')[0]?.trim() || decodedText.trim();
+        if (!orderNo) {
+            return;
+        }
+
+        const order = ordersRef.current.find((item) => item.order_no === orderNo);
+        if (!order) {
+            toast.warning(`${orderNo} is not in this batch.`);
+            return;
+        }
+
+        if (scannedOrderNosRef.current.has(orderNo) || order.status?.trim().toLowerCase() === 'returned') {
+            return;
+        }
+
+        const agentId = order.agent_id ?? agentsRef.current.find((agent) => agent.name === order.agent)?.id;
+        if (!agentId) {
+            toast.error(`${orderNo} has no assigned agent to scan it in.`);
+            return;
+        }
+
+        scanInFlightRef.current = true;
+        scannedOrderNosRef.current.add(orderNo);
+        router.post('/agent-order-scans', {
+            order_no: orderNo,
+            agent_id: agentId,
+            scan_type: 'in',
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['orders'],
+            onSuccess: () => {
+                setScannedInIds((current) => new Set(current).add(order.id));
+                setSelectedIds((current) => new Set(current).add(order.id));
+                setLastScan(orderNo);
+                toast.success(`${orderNo} marked returned`);
+                setTimeout(() => setLastScan(null), 2500);
+            },
+            onError: (errors) => {
+                scannedOrderNosRef.current.delete(orderNo);
+                const message = Object.values(errors).find((value) => typeof value === 'string');
+                toast.error(typeof message === 'string' ? message : 'Failed to scan in order');
+            },
+            onFinish: () => {
+                scanInFlightRef.current = false;
+            },
+        });
+    }, []);
+
+    const startScanner = React.useCallback(async () => {
+        if (scannerRef.current) {
+            try { await scannerRef.current.stop(); } catch { /* scanner may already be stopped */ }
+            scannerRef.current = null;
+        }
+
+        try {
+            const { Html5Qrcode } = await import('html5-qrcode');
+            const scanner = new Html5Qrcode('clearance-qr-scanner');
+            scannerRef.current = scanner;
+            await scanner.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 220, height: 220 } },
+                (decodedText: string) => handleDecodedScan(decodedText),
+                () => {},
+            );
+            setScannerReady(true);
+            setScannerError(false);
+        } catch {
+            setScannerError(true);
+            setScannerReady(false);
+            toast.error('Camera unavailable. Allow camera access and try again.');
+        }
+    }, [handleDecodedScan]);
+
+    const openScanner = React.useCallback(() => {
+        setScannerOpen(true);
+        setTimeout(() => { void startScanner(); }, 80);
+    }, [startScanner]);
+
+    const closeScanner = React.useCallback(() => {
+        if (scannerRef.current) {
+            try { void scannerRef.current.stop(); } catch { /* scanner may already be stopped */ }
+            scannerRef.current = null;
+        }
+        setScannerOpen(false);
+        setScannerReady(false);
+        setScannerError(false);
+    }, []);
+
+    React.useEffect(() => {
+        if (!wizardOpen || wizardStep !== 2) {
+            closeScanner();
+        }
+    }, [wizardOpen, wizardStep, closeScanner]);
+
+    React.useEffect(() => () => {
+        if (scannerRef.current) {
+            try { void scannerRef.current.stop(); } catch { /* scanner may already be stopped */ }
+            scannerRef.current = null;
+        }
+    }, []);
+
+    const submitBatch = () => {
+        if (selectedOrders.length === 0) {
+            toast.error('Select at least one order.');
+            return;
+        }
+
+        setIsSubmittingBatch(true);
+        router.post('/clearance/batch', {
+            orders: selectedOrders.map((order) => ({
+                id: order.id,
+                code: drafts[order.id]?.code ?? order.code ?? '',
+                clearance_note: drafts[order.id]?.clearance_note ?? order.clearance_note ?? '',
+                clearance_status: 'cleared',
+            })),
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast.success(`${selectedOrders.length} order${selectedOrders.length === 1 ? '' : 's'} processed`);
+                setWizardOpen(false);
+                setWizardStep(1);
+                setSelectedIds(new Set());
+                setScannedInIds(new Set());
+                setDrafts({});
+                setLastScan(null);
+                scannedOrderNosRef.current = new Set();
+            },
+            onError: () => toast.error('Failed to process the clearance batch'),
+            onFinish: () => setIsSubmittingBatch(false),
+        });
+    };
 
     const applyFilters = () => {
         setIsApplyingFilters(true);
@@ -218,7 +578,7 @@ export default function Index() {
             const res = await fetch(`/sheetorders/${order.id}/histories`);
             const data = await res.json();
             setSelectedHistories(data.histories || []);
-        } catch (error) {
+        } catch {
             toast.error('Failed to load edit history');
         } finally {
             setHistoryLoading(false);
@@ -265,6 +625,9 @@ export default function Index() {
     };
 
     const renderCellValue = (order: ClearanceOrder, col: { key: keyof ClearanceOrder; label: string; align?: 'right' }) => {
+        if (col.key === 'code') {
+            return <EditableCodeCell order={order} />;
+        }
         if (col.key === 'amount') {
             return Number(order.amount ?? 0) > 0 ? currency.format(Number(order.amount)) : '';
         }
@@ -310,81 +673,110 @@ export default function Index() {
             <Head title="Clearance" />
 
             <div className="flex flex-col gap-4 p-4 md:p-6">
-                <div className="rounded-xl border bg-card p-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Clearance</h1>
-                            <p className="text-sm text-muted-foreground">
-                                Orders assigned to agents, excluding remitted ones.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" className="h-9 gap-2" onClick={() => setFilterDialogOpen(true)}>
-                                <FilterIcon className="h-4 w-4" />
-                                Filters
-                            </Button>
-                            <Button variant="outline" className="h-9 gap-2" onClick={refreshOrders} disabled={isRefreshing}>
-                                {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
-                                Refresh
-                            </Button>
-                        </div>
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                    <DashboardHeader
+                        title="Clearance"
+                        summary="Orders assigned to agents, excluding remitted ones. Run the guided workflow to review, annotate, and clear orders in batches."
+                    />
+                    <div className="flex flex-wrap gap-2">
+                        <Button className="h-9 gap-2" onClick={openWizard}>
+                            <ListChecks className="h-4 w-4" />
+                            Start clearance
+                        </Button>
+                        <Button variant="outline" className="h-9 gap-2" onClick={() => setFilterDialogOpen(true)}>
+                            <FilterIcon className="h-4 w-4" />
+                            Filters
+                        </Button>
+                        <Button variant="outline" className="h-9 gap-2" onClick={refreshOrders} disabled={isRefreshing}>
+                            {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
+                            Refresh
+                        </Button>
                     </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                        <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-muted-foreground">Total Orders</p>
-                            <p className="text-lg font-semibold">{orders.data.length}</p>
-                        </div>
-                        <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-muted-foreground">Total Amount</p>
-                            <p className="text-lg font-semibold">{currency.format(totalAmount)}</p>
-                        </div>
-                        <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-muted-foreground">Cleared</p>
-                            <p className="text-lg font-semibold text-success">{clearedCount}</p>
-                        </div>
-                        <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-muted-foreground">Pending Clearance</p>
-                            <p className="text-lg font-semibold text-warning-foreground">{pendingClearanceCount}</p>
-                        </div>
-                        <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-muted-foreground">Agents</p>
-                            <p className="text-lg font-semibold">{agentCount}</p>
-                        </div>
-                        <div className="rounded-lg border bg-background p-3">
-                            <p className="text-xs text-muted-foreground">Merchants</p>
-                            <p className="text-lg font-semibold">{merchantCount}</p>
-                        </div>
-                    </div>
-
-                    {hasActiveFilters && (
-                        <div className="mt-4 flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground">Active filters:</span>
-                            {filters.agent && (
-                                <Badge variant="secondary" className="gap-1.5 pr-1">
-                                    Agent: {filters.agent}
-                                    <button onClick={removeAgentFilter} aria-label="Remove agent filter" className="rounded-sm p-0.5 hover:bg-muted">
-                                        <X className="h-3 w-3" />
-                                    </button>
-                                </Badge>
-                            )}
-                            {(filters.from_date || filters.to_date) && (
-                                <Badge variant="secondary" className="gap-1.5 pr-1">
-                                    {filters.from_date ?? '…'} – {filters.to_date ?? '…'}
-                                    <button onClick={removeDateFilter} aria-label="Remove date filter" className="rounded-sm p-0.5 hover:bg-muted">
-                                        <X className="h-3 w-3" />
-                                    </button>
-                                </Badge>
-                            )}
-                            <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs" onClick={clearAllFilters}>
-                                Clear all
-                            </Button>
-                        </div>
-                    )}
                 </div>
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    <Panel className="flex items-center gap-3 p-4">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ClipboardCheck className="size-4" /></span>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Total Orders</p>
+                            <p className="font-mono text-lg font-semibold"><NumberRoll value={orders.data.length} /></p>
+                        </div>
+                    </Panel>
+                    <Panel className="flex items-center gap-3 p-4">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Wallet className="size-4" /></span>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Total Amount</p>
+                            <p className="font-mono text-lg font-semibold"><NumberRoll value={totalAmount} format={{ style: 'currency', currency: currencyCode }} /></p>
+                        </div>
+                    </Panel>
+                    <Panel className="flex items-center gap-3 p-4">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-success/10 text-success"><Check className="size-4" /></span>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Cleared</p>
+                            <p className="font-mono text-lg font-semibold text-success"><NumberRoll value={clearedCount} /></p>
+                        </div>
+                    </Panel>
+                    <Panel className="flex items-center gap-3 p-4">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning-foreground"><Clock3 className="size-4" /></span>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Pending Clearance</p>
+                            <p className="font-mono text-lg font-semibold text-warning-foreground"><NumberRoll value={pendingClearanceCount} /></p>
+                        </div>
+                    </Panel>
+                    <Panel className="flex items-center gap-3 p-4">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Users className="size-4" /></span>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Agents</p>
+                            <p className="font-mono text-lg font-semibold"><NumberRoll value={agentCount} /></p>
+                        </div>
+                    </Panel>
+                    <Panel className="flex items-center gap-3 p-4">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Store className="size-4" /></span>
+                        <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Merchants</p>
+                            <p className="font-mono text-lg font-semibold"><NumberRoll value={merchantCount} /></p>
+                        </div>
+                    </Panel>
+                </div>
+
+                {hasActiveFilters && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">Active filters:</span>
+                        {filters.agent && (
+                            <Badge variant="secondary" className="gap-1.5 pr-1">
+                                Agent: {filters.agent}
+                                <button onClick={removeAgentFilter} aria-label="Remove agent filter" className="rounded-sm p-0.5 hover:bg-muted">
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        )}
+                        {(filters.from_date || filters.to_date) && (
+                            <Badge variant="secondary" className="gap-1.5 pr-1">
+                                {filters.from_date ?? '…'} – {filters.to_date ?? '…'}
+                                <button onClick={removeDateFilter} aria-label="Remove date filter" className="rounded-sm p-0.5 hover:bg-muted">
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        )}
+                        <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs" onClick={clearAllFilters}>
+                            Clear all
+                        </Button>
+                    </div>
+                )}
             </div>
 
-            <div className="rounded-xl border bg-card shadow-sm">
+            <Panel className="overflow-hidden">
+                <ControlStrip label="Clearance orders">
+                    <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                            {orders.data.length} order{orders.data.length === 1 ? '' : 's'}
+                        </span>
+                        <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={openWizard}>
+                            <ListChecks className="size-3.5" />
+                            Workflow
+                        </Button>
+                    </div>
+                </ControlStrip>
                 <div className="flex items-center justify-end border-b px-4 py-2">
                     <label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Pin className="h-3 w-3" />
@@ -468,7 +860,10 @@ export default function Index() {
                         </TableBody>
                     </Table>
                 </div>
-            </div>
+                <Footnote>
+                    Clearance updates are recorded in order history. Returned orders can be scanned in from the guided workflow before the batch is applied.
+                </Footnote>
+            </Panel>
 
             <div className="flex justify-center pb-2">
                 <Pagination>
@@ -695,6 +1090,357 @@ export default function Index() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            <Dialog open={scannerOpen} onOpenChange={(open) => { if (!open) closeScanner(); }}>
+                <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Scan returned orders</DialogTitle>
+                        <DialogDescription>
+                            Point the camera at each order's waybill QR code. Every scanned order is marked returned automatically.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="relative aspect-square overflow-hidden rounded-xl bg-foreground">
+                        <div id="clearance-qr-scanner" className="size-full" />
+                        {scannerError && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background p-5 text-center">
+                                <XCircle className="size-10 text-destructive" />
+                                <p className="text-sm">Camera unavailable. Check browser camera permission.</p>
+                                <Button variant="outline" onClick={() => void startScanner()}>Retry</Button>
+                            </div>
+                        )}
+                        {!scannerReady && !scannerError && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-foreground">
+                                <LoaderCircle className="size-8 animate-spin text-background" />
+                                <p className="text-sm text-background">Starting camera...</p>
+                            </div>
+                        )}
+                        {scannerReady && (
+                            <Badge className="absolute left-3 top-3 bg-success text-success-foreground">IN · RETURNED</Badge>
+                        )}
+                        {lastScan && (
+                            <div className="absolute inset-x-3 bottom-3 rounded-lg bg-background px-3 py-2 text-center text-sm font-semibold text-foreground">
+                                <Check className="mr-2 inline size-4 text-success" />
+                                {lastScan}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs text-muted-foreground">
+                            {scannedInIds.size} order{scannedInIds.size === 1 ? '' : 's'} scanned in this session
+                        </p>
+                        <Button variant="outline" onClick={closeScanner}>Done</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Sheet open={wizardOpen} onOpenChange={setWizardOpen}>
+                <SheetContent side="right" className="w-full gap-0 overflow-hidden p-0 sm:max-w-5xl">
+                    <SheetHeader className="border-b p-5 pr-14 text-left">
+                        <SheetTitle>Clearance workflow</SheetTitle>
+                        <SheetDescription>
+                            Work through the queue in steps. Pick the scope, review each order, type the notes you want, and apply the batch at the end.
+                        </SheetDescription>
+                    </SheetHeader>
+
+                    <div className="flex items-center gap-2 overflow-x-auto border-b px-5 py-3">
+                        {[
+                            { step: 1, label: 'Scope' },
+                            { step: 2, label: 'Review' },
+                            { step: 3, label: 'Apply' },
+                        ].map((item, index) => (
+                            <React.Fragment key={item.step}>
+                                {index > 0 && <span className="h-px min-w-6 flex-1 bg-border" aria-hidden="true" />}
+                                <div className={cn(
+                                    'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium',
+                                    wizardStep === item.step && 'border-foreground bg-foreground text-background',
+                                    wizardStep > item.step && 'border-success/30 bg-success/10 text-success',
+                                    wizardStep < item.step && 'border-border bg-background text-muted-foreground',
+                                )}>
+                                    <span className="grid size-5 place-items-center rounded-full border border-current text-[10px]">
+                                        {wizardStep > item.step ? <Check className="size-3" /> : item.step}
+                                    </span>
+                                    {item.label}
+                                </div>
+                            </React.Fragment>
+                        ))}
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                        {wizardStep === 1 && (
+                            <div className="space-y-4">
+                                <Panel className="p-5">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Agent</label>
+                                            <Select
+                                                value={filters.agent ?? '__all__'}
+                                                onValueChange={(value) => setFilters((prev) => ({ ...prev, agent: value === '__all__' ? undefined : value }))}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="All agents" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__all__">All agents</SelectItem>
+                                                    {agents.map((agent) => (
+                                                        <SelectItem key={agent.id} value={agent.name}>{agent.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <p className="text-xs text-muted-foreground">Leave on all agents to review the full queue.</p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Delivery date range</label>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        className={cn('w-full justify-start text-left font-normal', !dateRange?.from && 'text-muted-foreground')}
+                                                    >
+                                                        {dateRange?.from ? (
+                                                            dateRange.to ? (
+                                                                <>{format(dateRange.from, 'yyyy-MM-dd')} – {format(dateRange.to, 'yyyy-MM-dd')}</>
+                                                            ) : (
+                                                                format(dateRange.from, 'yyyy-MM-dd')
+                                                            )
+                                                        ) : (
+                                                            'Select date range'
+                                                        )}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-[calc(100vw-3rem)] border bg-popover p-0 shadow-lg sm:w-auto" side="bottom" align="start">
+                                                    <Calendar
+                                                        mode="range"
+                                                        numberOfMonths={isMobile ? 1 : 2}
+                                                        selected={dateRange}
+                                                        onSelect={setDateRange}
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
+                                            <p className="text-xs text-muted-foreground">Only orders with a delivery date inside this range are loaded.</p>
+                                        </div>
+                                    </div>
+                                </Panel>
+
+                                <Panel className="flex items-center justify-between gap-3 p-4">
+                                    <div>
+                                        <p className="text-sm font-medium">Current queue</p>
+                                        <p className="text-xs text-muted-foreground">The current page has {orders.data.length} order{orders.data.length === 1 ? '' : 's'} ready to review.</p>
+                                    </div>
+                                    <span className="font-mono text-xl font-semibold"><NumberRoll value={orders.data.length} /></span>
+                                </Panel>
+                            </div>
+                        )}
+
+                        {wizardStep === 2 && (
+                            <Panel className="overflow-hidden">
+                                <ControlStrip label="Review orders">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                                            {selectedOrders.length} of {orders.data.length} selected
+                                        </span>
+                                        <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={openScanner}>
+                                            <Camera className="size-3.5" />
+                                            Scan returned
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={toggleAllSelected}>
+                                            {selectedIds.size === orders.data.length ? 'Clear selection' : 'Select all'}
+                                        </Button>
+                                    </div>
+                                </ControlStrip>
+                                <div className="scrollbar-custom w-full overflow-x-auto">
+                                            <Table className="min-w-[1080px]">
+                                        <TableHeader className="bg-muted/60">
+                                            <TableRow className="hover:bg-muted/60">
+                                                <TableHead className="h-10 w-10 px-3">
+                                                    <Checkbox
+                                                        checked={selectedIds.size === 0 ? false : selectedIds.size === orders.data.length ? true : 'indeterminate'}
+                                                        onCheckedChange={toggleAllSelected}
+                                                        aria-label="Select all orders"
+                                                    />
+                                                </TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order</TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client</TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Agent</TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Return without QR</TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Code</TableHead>
+                                                <TableHead className="h-10 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Note / outcome</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {orders.data.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={8} className="h-40 text-center text-muted-foreground">
+                                                        No orders match this scope. Go back and change the filters.
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : orders.data.map((order) => (
+                                                <TableRow key={order.id} className={cn(!selectedIds.has(order.id) && 'opacity-60')}>
+                                                    <TableCell className="px-3 py-2">
+                                                        <Checkbox
+                                                            checked={selectedIds.has(order.id)}
+                                                            onCheckedChange={() => toggleSelected(order.id)}
+                                                            aria-label={`Select order ${order.order_no}`}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="px-3 py-2 text-sm font-medium">{order.order_no}</TableCell>
+                                                    <TableCell className="max-w-[150px] truncate px-3 py-2 text-sm">{order.client_name}</TableCell>
+                                                    <TableCell className="px-3 py-2 text-sm">{order.agent}</TableCell>
+                                                    <TableCell className="px-3 py-2">
+                                                        <Select
+                                                            value={order.status?.trim() || 'New Orders'}
+                                                            onValueChange={(value) => updateOrderStatus(order, value)}
+                                                            disabled={updatingStatusId === order.id}
+                                                        >
+                                                            <SelectTrigger className={cn('h-8 w-[140px] text-xs', getStatusPillClass(order.status))}>
+                                                                {updatingStatusId === order.id ? <LoaderCircle className="size-3.5 animate-spin" /> : <SelectValue />}
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {statusOptionsFor(order.status).map((status) => (
+                                                                    <SelectItem key={status} value={status} className="text-xs">
+                                                                        {status}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </TableCell>
+                                                    <TableCell className="px-3 py-2">
+                                                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                            <Switch
+                                                                checked={isReturnedOrder(order)}
+                                                                onCheckedChange={(checked) => checked && markReturnedWithoutScan(order)}
+                                                                disabled={isReturnedOrder(order) || updatingStatusId === order.id}
+                                                                aria-label={`Mark ${order.order_no} returned without QR scan`}
+                                                                className="scale-75"
+                                                            />
+                                                            {isReturnedOrder(order) ? 'Returned' : 'Mark returned'}
+                                                        </label>
+                                                    </TableCell>
+                                                    <TableCell className="px-3 py-2">
+                                                        <Input
+                                                            value={drafts[order.id]?.code ?? order.code ?? ''}
+                                                            onChange={(event) => updateDraft(order.id, 'code', event.target.value)}
+                                                            placeholder="Code"
+                                                            className="h-8 w-32 text-xs"
+                                                            aria-label={`Code for order ${order.order_no}`}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="px-3 py-2">
+                                                        <Input
+                                                            value={drafts[order.id]?.clearance_note ?? order.clearance_note ?? ''}
+                                                            onChange={(event) => updateDraft(order.id, 'clearance_note', event.target.value)}
+                                                            placeholder="Type what you want…"
+                                                            className="h-8 w-56 text-xs"
+                                                            aria-label={`Clearance note for order ${order.order_no}`}
+                                                        />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <Footnote>
+                                    Use Scan returned for QR codes or switch Return without QR on a row when a code cannot be scanned. Apply clearance will clear every selected order, including returned ones.
+                                </Footnote>
+                            </Panel>
+                        )}
+
+                        {wizardStep === 3 && (
+                            <div className="space-y-4">
+                                <div className="grid gap-3 sm:grid-cols-3">
+                                    <Panel className="flex items-center gap-3 p-4">
+                                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ClipboardCheck className="size-4" /></span>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Selected orders</p>
+                                            <p className="font-mono text-lg font-semibold"><NumberRoll value={selectedOrders.length} /></p>
+                                        </div>
+                                    </Panel>
+                                    <Panel className="flex items-center gap-3 p-4">
+                                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Wallet className="size-4" /></span>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Selected amount</p>
+                                            <p className="font-mono text-lg font-semibold"><NumberRoll value={selectedAmount} format={{ style: 'currency', currency: currencyCode }} /></p>
+                                        </div>
+                                    </Panel>
+                                    <Panel className="flex items-center gap-3 p-4">
+                                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-success/10 text-success"><ScanLine className="size-4" /></span>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Marked returned</p>
+                                            <p className="font-mono text-lg font-semibold"><NumberRoll value={selectedOrders.filter((order) => isReturnedOrder(order)).length} /></p>
+                                        </div>
+                                    </Panel>
+                                </div>
+
+                                <Panel className="overflow-hidden">
+                                    <ControlStrip label="Batch preview">
+                                        <span className="font-mono text-xs text-muted-foreground">{selectedOrders.length} orders</span>
+                                    </ControlStrip>
+                                    <div className="scrollbar-custom max-h-80 space-y-2 overflow-y-auto p-3">
+                                        {selectedOrders.map((order) => (
+                                            <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-xs">
+                                                <div className="min-w-0">
+                                                    <p className="font-medium">{order.order_no} · {order.client_name}</p>
+                                                    <p className="mt-0.5 text-muted-foreground">{order.agent} · {currency.format(Number(order.amount ?? 0))}</p>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {drafts[order.id]?.code ? <Badge variant="outline">Code: {drafts[order.id].code}</Badge> : null}
+                                                    {drafts[order.id]?.clearance_note ? <Badge variant="secondary" className="max-w-64 truncate">Note: {drafts[order.id].clearance_note}</Badge> : null}
+                                                    <Badge variant={isReturnedOrder(order) ? 'outline' : 'default'} className={cn(!isReturnedOrder(order) && 'bg-success text-success-foreground')}>
+                                                        {isReturnedOrder(order) ? 'Returned · will be cleared' : 'Will be cleared'}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <Footnote>
+                                        Every selected order will be marked cleared, including returned orders. Code and note changes are saved to order history.
+                                    </Footnote>
+                                </Panel>
+                            </div>
+                        )}
+                    </div>
+
+                    <SheetFooter className="border-t p-5 sm:flex-row sm:items-center sm:justify-between">
+                        {wizardStep === 1 && (
+                            <>
+                                <Button variant="outline" onClick={() => setWizardOpen(false)}>Cancel</Button>
+                                <Button onClick={loadWizardOrders} disabled={wizardLoading}>
+                                    {wizardLoading ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                                    Load orders
+                                    <ArrowRight className="size-4" />
+                                </Button>
+                            </>
+                        )}
+                        {wizardStep === 2 && (
+                            <>
+                                <Button variant="outline" onClick={() => setWizardStep(1)}>
+                                    <ArrowLeft className="size-4" />
+                                    Back
+                                </Button>
+                                <Button onClick={() => setWizardStep(3)} disabled={selectedOrders.length === 0}>
+                                    Review {selectedOrders.length}
+                                    <ArrowRight className="size-4" />
+                                </Button>
+                            </>
+                        )}
+                        {wizardStep === 3 && (
+                            <>
+                                <Button variant="outline" onClick={() => setWizardStep(2)}>
+                                    <ArrowLeft className="size-4" />
+                                    Back
+                                </Button>
+                                <Button onClick={submitBatch} disabled={isSubmittingBatch || selectedOrders.length === 0}>
+                                    {isSubmittingBatch ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}
+                                    Apply clearance
+                                </Button>
+                            </>
+                        )}
+                    </SheetFooter>
+                </SheetContent>
+            </Sheet>
         </AppLayout>
     );
 }

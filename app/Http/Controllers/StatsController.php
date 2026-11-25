@@ -15,6 +15,8 @@ class StatsController extends Controller
         $filters = $request->only([
             'date_range',
             'date_field',
+            'date_from',
+            'date_to',
             'cc_email',
             'merchant',
             'status',

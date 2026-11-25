@@ -1,13 +1,14 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, LoaderCircle, PackagePlus, ScanBarcode, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronsUpDown, LoaderCircle, PackagePlus, Trash2 } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@/lib/toast';
 
@@ -15,13 +16,6 @@ interface Warehouse {
     code: string;
     name: string;
     country: string;
-}
-
-interface ProductOption {
-    id: number;
-    name: string;
-    code: string | null;
-    quantity: number;
 }
 
 interface ShipmentForm {
@@ -33,7 +27,7 @@ interface ShipmentForm {
     cartons: string;
     warehouse_code: string;
     note: string;
-    items: Array<{ product_id: number; expected_quantity: number }>;
+    items: Array<{ product_name: string; product_code: string; expected_quantity: number }>;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -54,86 +48,33 @@ export default function CreateShipment({ warehouses, defaultWarehouseCode }: { w
         note: '',
         items: [],
     });
-    const [products, setProducts] = React.useState<ProductOption[]>([]);
-    const [chosenProducts, setChosenProducts] = React.useState<Record<number, ProductOption>>({});
-    const [productSearch, setProductSearch] = React.useState('');
-    const [selectedProductId, setSelectedProductId] = React.useState('');
-    const [sku, setSku] = React.useState('');
-    const [loadingProducts, setLoadingProducts] = React.useState(false);
+    const [productName, setProductName] = React.useState('');
+    const [productCode, setProductCode] = React.useState('');
+    const [productQuantity, setProductQuantity] = React.useState('1');
+    const [warehousePickerOpen, setWarehousePickerOpen] = React.useState(false);
 
     const warehouse = warehouses.find((option) => option.code === data.warehouse_code);
 
-    React.useEffect(() => {
-        if (!data.warehouse_code) {
-            setProducts([]);
-            return;
-        }
+    const addProduct = () => {
+        const name = productName.trim();
+        const code = productCode.trim();
+        const quantity = Number(productQuantity);
+        if (!name || !Number.isInteger(quantity) || quantity < 1) return;
 
-        const abortController = new AbortController();
-        const timeout = window.setTimeout(async () => {
-            setLoadingProducts(true);
-            try {
-                const query = new URLSearchParams({ warehouse_code: data.warehouse_code, search: productSearch });
-                const response = await fetch(`/shipments/products?${query.toString()}`, { signal: abortController.signal });
-                if (!response.ok) throw new Error('Could not load products for this warehouse.');
-                const result = await response.json();
-                setProducts(result.products ?? []);
-            } catch (error) {
-                if ((error as Error).name !== 'AbortError') toast.error((error as Error).message || 'Could not load products.');
-            } finally {
-                if (!abortController.signal.aborted) setLoadingProducts(false);
-            }
-        }, 180);
-
-        return () => {
-            window.clearTimeout(timeout);
-            abortController.abort();
-        };
-    }, [data.warehouse_code, productSearch]);
-
-    const addProduct = (product: ProductOption) => {
-        setChosenProducts((current) => ({ ...current, [product.id]: product }));
-        const existing = data.items.find((item) => item.product_id === product.id);
+        const existing = data.items.find((item) => item.product_code.trim().toLowerCase() === code.toLowerCase() && code !== '');
         setData('items', existing
-            ? data.items.map((item) => item.product_id === product.id ? { ...item, expected_quantity: item.expected_quantity + 1 } : item)
-            : [...data.items, { product_id: product.id, expected_quantity: 1 }]);
-        setSelectedProductId('');
-        setSku('');
-        setProductSearch('');
+            ? data.items.map((item) => item === existing ? { ...item, expected_quantity: item.expected_quantity + quantity } : item)
+            : [...data.items, { product_name: name, product_code: code, expected_quantity: quantity }]);
+        setProductName('');
+        setProductCode('');
+        setProductQuantity('1');
     };
 
-    const addSelectedProduct = () => {
-        const product = products.find((option) => String(option.id) === selectedProductId);
-        if (product) addProduct(product);
+    const updateItem = (index: number, quantity: number) => {
+        setData('items', data.items.map((item, itemIndex) => itemIndex === index ? { ...item, expected_quantity: quantity } : item));
     };
 
-    const scanSku = async (event: React.KeyboardEvent<HTMLInputElement>) => {
-        if (event.key !== 'Enter') return;
-        event.preventDefault();
-        const code = sku.trim();
-        if (!code || !data.warehouse_code) return;
-
-        try {
-            const query = new URLSearchParams({ warehouse_code: data.warehouse_code, search: code });
-            const response = await fetch(`/shipments/products?${query.toString()}`);
-            const result = await response.json();
-            const product = (result.products as ProductOption[] | undefined)?.find((option) => option.code?.toLowerCase() === code.toLowerCase());
-            if (!product) {
-                toast.error(`No product found for SKU ${code} in this warehouse country.`);
-                return;
-            }
-            addProduct(product);
-            toast.success(`${product.code} added to shipment.`);
-        } catch {
-            toast.error('Could not look up that product code.');
-        }
-    };
-
-    const updateItem = (productId: number, quantity: number) => {
-        setData('items', data.items.map((item) => item.product_id === productId ? { ...item, expected_quantity: quantity } : item));
-    };
-
-    const removeItem = (productId: number) => setData('items', data.items.filter((item) => item.product_id !== productId));
+    const removeItem = (index: number) => setData('items', data.items.filter((_, itemIndex) => itemIndex !== index));
     const totalUnits = data.items.reduce((sum, item) => sum + (Number(item.expected_quantity) || 0), 0);
 
     const submit = (event: React.FormEvent) => {
@@ -203,34 +144,24 @@ export default function CreateShipment({ warehouses, defaultWarehouseCode }: { w
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-base">What is inside</CardTitle>
-                            <CardDescription>Scan a SKU label or find products by name or code, then enter the expected quantity.</CardDescription>
+                            <CardDescription>Enter product details directly. New products are added to inventory when the shipment is created.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem_auto]">
                                 <div className="space-y-2">
-                                    <Label htmlFor="sku-scan">Scan SKU</Label>
-                                    <div className="relative">
-                                        <ScanBarcode className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                                        <Input id="sku-scan" className="pl-9" value={sku} onChange={(event) => setSku(event.target.value)} onKeyDown={scanSku} placeholder="Scan or enter product code, then press Enter" disabled={!warehouse} />
-                                    </div>
+                                    <Label htmlFor="shipment-product-name">Product name</Label>
+                                    <Input id="shipment-product-name" value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Enter product name" disabled={!warehouse} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Pick a product</Label>
-                                    <Input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Search name or SKU" disabled={!warehouse} />
-                                    <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={!warehouse || loadingProducts}>
-                                        <SelectTrigger><SelectValue placeholder={loadingProducts ? 'Loading products…' : 'Pick a product…'} /></SelectTrigger>
-                                        <SelectContent>
-                                            {products.map((product) => (
-                                                <SelectItem key={product.id} value={String(product.id)}>
-                                                    {product.code || 'No SKU'} — {product.name} ({Number(product.quantity).toLocaleString()} in stock)
-                                                </SelectItem>
-                                            ))}
-                                            {products.length === 0 && <div className="px-3 py-4 text-center text-sm text-muted-foreground">No products found for this warehouse country.</div>}
-                                        </SelectContent>
-                                    </Select>
+                                    <Label htmlFor="shipment-product-code">Product code / SKU <span className="font-normal text-muted-foreground">optional</span></Label>
+                                    <Input id="shipment-product-code" value={productCode} onChange={(event) => setProductCode(event.target.value)} placeholder="Enter SKU if available" disabled={!warehouse} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="shipment-product-quantity">Quantity</Label>
+                                    <Input id="shipment-product-quantity" type="number" min="1" value={productQuantity} onChange={(event) => setProductQuantity(event.target.value)} disabled={!warehouse} />
                                 </div>
                                 <div className="flex items-end">
-                                    <Button type="button" variant="outline" className="w-full" onClick={addSelectedProduct} disabled={!selectedProductId}><PackagePlus className="mr-2 size-4" />Add product</Button>
+                                    <Button type="button" variant="outline" className="w-full" onClick={addProduct} disabled={!warehouse || !productName.trim() || Number(productQuantity) < 1}><PackagePlus className="mr-2 size-4" />Add product</Button>
                                 </div>
                             </div>
                             {errors.items && <p className="text-sm text-destructive">{errors.items}</p>}
@@ -240,17 +171,16 @@ export default function CreateShipment({ warehouses, defaultWarehouseCode }: { w
                                     <span>Product</span><span>Quantity</span><span />
                                 </div>
                                 {data.items.length === 0 ? (
-                                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">Scan or choose a product to add it to this shipment.</div>
-                                ) : data.items.map((item) => {
-                                    const product = chosenProducts[item.product_id] ?? products.find((option) => option.id === item.product_id);
+                                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">Enter product details above and add them to this shipment.</div>
+                                ) : data.items.map((item, index) => {
                                     return (
-                                        <div key={item.product_id} className="grid grid-cols-[1fr_9rem_2.5rem] items-center gap-3 border-t px-3 py-2 sm:px-4">
+                                        <div key={`${item.product_code}-${index}`} className="grid grid-cols-[1fr_9rem_2.5rem] items-center gap-3 border-t px-3 py-2 sm:px-4">
                                             <div className="min-w-0">
-                                                <p className="truncate text-sm font-medium">{product?.name ?? `Product #${item.product_id}`}</p>
-                                                <p className="text-xs text-muted-foreground">{product?.code ?? ''}{product ? ` · ${Number(product.quantity).toLocaleString()} in stock` : ''}</p>
+                                                <p className="truncate text-sm font-medium">{item.product_name}</p>
+                                                <p className="text-xs text-muted-foreground">{item.product_code || 'SKU will be generated when created'}</p>
                                             </div>
-                                            <Input type="number" min="1" value={item.expected_quantity} onChange={(event) => updateItem(item.product_id, Number(event.target.value))} aria-label={`Expected quantity for ${product?.name ?? 'product'}`} />
-                                            <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${product?.name ?? 'product'}`} onClick={() => removeItem(item.product_id)}><Trash2 className="size-4 text-muted-foreground" /></Button>
+                                            <Input type="number" min="1" value={item.expected_quantity} onChange={(event) => updateItem(index, Number(event.target.value))} aria-label={`Expected quantity for ${item.product_name}`} />
+                                            <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${item.product_name}`} onClick={() => removeItem(index)}><Trash2 className="size-4 text-muted-foreground" /></Button>
                                         </div>
                                     );
                                 })}
@@ -267,12 +197,47 @@ export default function CreateShipment({ warehouses, defaultWarehouseCode }: { w
                         <CardContent className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="warehouse">Warehouse</Label>
-                            <Select value={data.warehouse_code} onValueChange={(value) => { setData('warehouse_code', value); setData('items', []); setChosenProducts({}); }}>
-                                    <SelectTrigger id="warehouse"><SelectValue placeholder="Choose a warehouse" /></SelectTrigger>
-                                    <SelectContent>
-                                        {warehouses.map((option) => <SelectItem key={option.code} value={option.code}>{option.name} ({option.code}) · {option.country}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                                <Popover open={warehousePickerOpen} onOpenChange={setWarehousePickerOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            id="warehouse"
+                                            type="button"
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={warehousePickerOpen}
+                                            className="w-full justify-between font-normal"
+                                        >
+                                            <span className={`truncate ${warehouse ? '' : 'text-muted-foreground'}`}>
+                                                {warehouse ? `${warehouse.name} (${warehouse.code}) · ${warehouse.country}` : 'Search and choose a warehouse'}
+                                            </span>
+                                            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Search warehouses or countries..." />
+                                            <CommandList className="max-h-72">
+                                                <CommandEmpty>No warehouse found.</CommandEmpty>
+                                                <CommandGroup heading="Available warehouses">
+                                                    {warehouses.map((option) => (
+                                                        <CommandItem
+                                                            key={option.code}
+                                                            value={`${option.name} ${option.code} ${option.country}`}
+                                                            onSelect={() => {
+                                                                setData('warehouse_code', option.code);
+                                                                setData('items', []);
+                                                                setWarehousePickerOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check className={`mr-2 size-4 ${data.warehouse_code === option.code ? 'opacity-100' : 'opacity-0'}`} />
+                                                            <span className="truncate">{option.name} ({option.code}) · {option.country}</span>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                                 {errors.warehouse_code && <p className="text-xs text-destructive">{errors.warehouse_code}</p>}
                             </div>
                             <div className="space-y-2">

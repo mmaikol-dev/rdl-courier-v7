@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, LoaderCircle, ScanBarcode, Truck } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@/lib/toast';
@@ -50,6 +50,8 @@ const statusLabel: Record<string, string> = {
 };
 
 export default function ShowShipment({ shipment }: { shipment: Shipment }) {
+    const { auth } = usePage<SharedData>().props;
+    const isMerchant = auth.user.roles?.trim().toLowerCase() === 'merchant';
     const [counts, setCounts] = React.useState<Record<number, string>>(() => Object.fromEntries(
         shipment.items.map((item) => [item.id, item.receipt_counted ? String(item.received_quantity) : '']),
     ));
@@ -112,7 +114,7 @@ export default function ShowShipment({ shipment }: { shipment: Shipment }) {
                             <p className="mt-1 text-sm text-muted-foreground">{shipment.warehouse_name} ({shipment.warehouse_code}) · {shipment.country}</p>
                         </div>
                     </div>
-                    {shipment.status === 'EXPECTED' && <Button onClick={markArrived}><Truck className="mr-2 size-4" />Mark as arrived</Button>}
+                    {!isMerchant && shipment.status === 'EXPECTED' && <Button onClick={markArrived}><Truck className="mr-2 size-4" />Mark as arrived</Button>}
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -142,10 +144,10 @@ export default function ShowShipment({ shipment }: { shipment: Shipment }) {
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base">Products and receipt</CardTitle>
-                        <CardDescription>{canReceive ? 'Count or scan each product. Save counts to keep units inbound, or complete receipt to add counted units to available stock.' : terminal ? 'Final receipt counts. Any difference from expected quantities is recorded as a discrepancy.' : 'Mark this shipment as arrived before counting products.'}</CardDescription>
+                        <CardDescription>{isMerchant ? 'View shipment quantities and receipt status.' : canReceive ? 'Count or scan each product. Save counts to keep units inbound, or complete receipt to add counted units to available stock.' : terminal ? 'Final receipt counts. Any difference from expected quantities is recorded as a discrepancy.' : 'Mark this shipment as arrived before counting products.'}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {canReceive && <div className="max-w-md space-y-2"><Label htmlFor="receipt-sku">Scan product SKU to count one unit</Label><div className="relative"><ScanBarcode className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="receipt-sku" className="pl-9" value={sku} onChange={(event) => setSku(event.target.value)} onKeyDown={addScannedSku} placeholder="Scan SKU and press Enter" /></div></div>}
+                        {!isMerchant && canReceive && <div className="max-w-md space-y-2"><Label htmlFor="receipt-sku">Scan product SKU to count one unit</Label><div className="relative"><ScanBarcode className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="receipt-sku" className="pl-9" value={sku} onChange={(event) => setSku(event.target.value)} onKeyDown={addScannedSku} placeholder="Scan SKU and press Enter" /></div></div>}
                         <div className="overflow-x-auto rounded-md border">
                             <Table>
                                 <TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Expected</TableHead><TableHead className="w-48 text-right">Received</TableHead><TableHead className="text-right">Difference</TableHead></TableRow></TableHeader>
@@ -156,14 +158,14 @@ export default function ShowShipment({ shipment }: { shipment: Shipment }) {
                                         return <TableRow key={item.id}>
                                             <TableCell><p className="font-medium">{item.product_name}</p><p className="text-xs text-muted-foreground">{item.product_code || 'No SKU'}</p></TableCell>
                                             <TableCell className="text-right tabular-nums">{Number(item.expected_quantity).toLocaleString()}</TableCell>
-                                            <TableCell className="text-right">{canReceive ? <Input className="ml-auto w-32 text-right tabular-nums" type="number" min="0" value={value} onChange={(event) => setCounts((previous) => ({ ...previous, [item.id]: event.target.value }))} aria-label={`Received quantity for ${item.product_name}`} /> : <span className="tabular-nums">{item.receipt_counted ? Number(item.received_quantity).toLocaleString() : '—'}</span>}</TableCell>
+                                            <TableCell className="text-right">{canReceive && !isMerchant ? <Input className="ml-auto w-32 text-right tabular-nums" type="number" min="0" value={value} onChange={(event) => setCounts((previous) => ({ ...previous, [item.id]: event.target.value }))} aria-label={`Received quantity for ${item.product_name}`} /> : <span className="tabular-nums">{item.receipt_counted ? Number(item.received_quantity).toLocaleString() : '—'}</span>}</TableCell>
                                             <TableCell className={`text-right tabular-nums ${difference !== null && difference !== 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{difference === null ? '—' : `${difference > 0 ? '+' : ''}${difference.toLocaleString()}`}</TableCell>
                                         </TableRow>;
                                     })}
                                 </TableBody>
                             </Table>
                         </div>
-                        {canReceive && <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        {!isMerchant && canReceive && <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                             <Button variant="outline" onClick={() => saveCounts(false)} disabled={processing || !allCounted}>{processing ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : null}Save counts</Button>
                             <Button onClick={() => saveCounts(true)} disabled={processing || !allCounted}>{processing ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Check className="mr-2 size-4" />}Complete receipt</Button>
                         </div>}

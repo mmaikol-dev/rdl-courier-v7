@@ -57,6 +57,7 @@ export type SidebarItemKey =
     | 'inventory-deductions'
     | 'deducted-orders'
     | 'order-scans'
+    | 'agent-order-scans'
     | 'transfer'
     | 'units'
     | 'categories'
@@ -103,6 +104,7 @@ export const sidebarGroups: SidebarGroupDefinition[] = [
             { key: 'updates', title: 'Updates', href: '/updates', icon: RefreshCcwIcon, group: 'Operations' },
             { key: 'assign', title: 'Re/Assign Orders', href: '/assign', icon: ReplaceAllIcon, group: 'Operations' },
             { key: 'dispatch', title: 'Dispatch', href: '/dispatch', icon: Waypoints, group: 'Operations' },
+            { key: 'agent-order-scans', title: 'QR Agent Assignment', href: '/agent-order-scans', icon: ScanLine, group: 'Operations' },
             { key: 'maps', title: 'Maps', href: '/maps', icon: MapIcon, group: 'Operations' },
             { key: 'sheets', title: 'Sheets', href: '/sheets', icon: FileSpreadsheetIcon, group: 'Operations' },
             { key: 'import', title: 'Import Orders', href: '/import', icon: PlusIcon, group: 'Operations' },

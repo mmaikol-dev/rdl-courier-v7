@@ -40,11 +40,12 @@ const revenueConfig = {
 } satisfies ChartConfig;
 
 const rangeLabels: Record<DashboardRange, string> = {
-    today: 'Today',
-    last7Days: 'Last 7 days',
-    last30Days: 'Last 30 days',
-    thisMonth: 'This month',
-    allTime: 'Last 30 days',
+    today: 'today',
+    last7Days: 'last 7 days',
+    last30Days: 'last 30 days',
+    thisMonth: 'this month',
+    allTime: 'the selected period',
+    custom: 'custom range',
 };
 
 export function DailyTrendCard({ data, range, formatCurrency }: DailyTrendCardProps) {

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "hairline-ui": {
+      "type": "remote",
+      "url": "https://hairlineui.com/api/mcp",
+      "enabled": true
+    }
+  },
+  "instructions": ["AGENTS.md"]
+}

@@ -34,7 +34,20 @@ class UpdateController extends Controller
 
         return Inertia::render('updates/index', [
             'updates' => Inertia::defer(fn () => $updatesQuery
-                ->select(['id', 'order_no', 'sheet_id', 'sheet_name', 'merchant', 'status', 'edited_at'])
+                ->select([
+                    'id',
+                    'order_no',
+                    'sheet_id',
+                    'sheet_name',
+                    'merchant',
+                    'status',
+                    'delivery_date',
+                    'instructions',
+                    'edited_at',
+                    'sheet_update_attempts',
+                    'sheet_update_last_error',
+                    'sheet_update_last_attempted_at',
+                ])
                 ->orderBy('edited_at')
                 ->limit(500)
                 ->get()),
@@ -51,6 +64,31 @@ class UpdateController extends Controller
             'success' => true,
             'message' => 'Sheet update command queued on the scheduled worker',
         ]);
+    }
+
+    public function clearEditedAt(Request $request, SheetOrder $sheetorder): JsonResponse
+    {
+        $user = $request->user()?->loadMissing('country');
+        abort_unless($sheetorder->sheet_id && $sheetorder->sheet_name, 404);
+
+        if ($user?->roles === 'merchant') {
+            abort_unless($sheetorder->merchant === $user->name, 404);
+        }
+
+        if (! CountryAccess::hasGlobalAccess($user)) {
+            abort_unless(CountryAccess::matchesCountryName($sheetorder->country, $user), 403);
+        }
+
+        SheetOrder::withoutEditTracking(function () use ($sheetorder): void {
+            $sheetorder->forceFill([
+                'edited_at' => null,
+                'sheet_update_attempts' => 0,
+                'sheet_update_last_error' => null,
+                'sheet_update_last_attempted_at' => null,
+            ])->saveQuietly();
+        });
+
+        return response()->json(['success' => true]);
     }
 
     /**

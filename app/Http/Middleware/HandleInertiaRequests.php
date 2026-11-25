@@ -54,7 +54,7 @@ class HandleInertiaRequests extends Middleware
 
         $countries = Country::query()
             ->orderBy('name')
-            ->get(['id', 'name', 'code', 'currency']);
+            ->get(['id', 'name', 'code', 'iso_code', 'currency']);
 
         $selectedCountry = $request->session()->get('selected_country');
         $canFilterCountry = $user && CountryAccess::hasGlobalAccess($user);
@@ -68,6 +68,11 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+                'warning' => fn () => $request->session()->get('warning'),
+            ],
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
                 'user' => $user,

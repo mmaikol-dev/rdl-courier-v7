@@ -93,10 +93,10 @@ class UserController extends Controller
 
     public function store(Request $request)
 {
-    $request->validate([
+    $validator = Validator::make($request->all(), [
         'name' => 'required|string|max:255',
         'email' => 'required|string|email|max:255|unique:users,email',
-        'username' => 'nullable|string|max:255|unique:users,username',
+        'username' => 'nullable|string|max:255',
         'password' => ['required', 'confirmed', Rules\Password::defaults()],
         'store_name' => 'nullable|string|max:255',
         'store_address' => 'nullable|string|max:255',
@@ -108,24 +108,65 @@ class UserController extends Controller
         'email_verified_at' => 'nullable|date',
     ]);
 
+    $validator->after(function ($validator) use ($request): void {
+        $role = strtolower(trim((string) ($request->input('roles') ?: 'admin')));
+        if ($role === 'merchant') {
+            return;
+        }
+
+        $normalizeName = static fn (string $name): string => preg_replace(
+            '/[^\pL\pN]+/u',
+            '',
+            mb_strtolower(trim($name))
+        ) ?? '';
+        $candidate = $normalizeName((string) $request->input('name'));
+        if ($candidate === '') {
+            return;
+        }
+
+        $hasNameConflict = User::query()
+            ->pluck('name')
+            ->contains(fn ($existingName): bool => $normalizeName((string) $existingName) === $candidate);
+
+        if ($hasNameConflict) {
+            $validator->errors()->add('name', 'The name has already been taken.');
+        }
+
+        $candidateUsername = $normalizeName((string) $request->input('username'));
+        if ($candidateUsername === '') {
+            return;
+        }
+
+        $hasUsernameConflict = User::query()
+            ->whereNotNull('username')
+            ->pluck('username')
+            ->contains(fn ($existingUsername): bool => $normalizeName((string) $existingUsername) === $candidateUsername);
+
+        if ($hasUsernameConflict) {
+            $validator->errors()->add('username', 'The username has already been taken.');
+        }
+    });
+
+    $validated = $validator->validate();
+
     $currentUser = $request->user();
     $countryId = CountryAccess::hasGlobalAccess($currentUser)
         ? $request->country_id
         : $currentUser?->country_id;
 
     User::create([
-        'name' => $request->name,
-        'email' => $request->email,
-        'username' => $request->username,
-        'password' => Hash::make($request->password),
-        'store_name' => $request->store_name,
-        'store_address' => $request->store_address,
-        'store_phone' => $request->store_phone,
-        'store_email' => $request->store_email,
-        'roles' => $request->roles ?? 'admin',
+        'name' => $validated['name'],
+        'email' => $validated['email'],
+        'username' => $validated['username'] ?? null,
+        'password' => Hash::make($validated['password']),
+        'store_name' => $validated['store_name'] ?? null,
+        'store_address' => $validated['store_address'] ?? null,
+        'store_phone' => $validated['store_phone'] ?? null,
+        'store_email' => $validated['store_email'] ?? null,
+        'roles' => $validated['roles'] ?? 'admin',
         'country_id' => $countryId,
-        'photo' => $request->photo,
-        'email_verified_at' => $request->email_verified_at,
+        'photo' => $validated['photo'] ?? null,
+        'email_verified_at' => $validated['email_verified_at'] ?? null,
     ]);
 
     // Send back the new user data for Inertia

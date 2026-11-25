@@ -3,18 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\MerchantApiIntegration;
+use App\Jobs\ProcessIncomingSheetOrder;
 use App\Models\Deduction;
 use App\Models\IncomingSheetOrder;
+use App\Models\InventoryLog;
+use App\Models\MerchantApiIntegration;
+use App\Models\OrderHistory;
 use App\Models\Product;
 use App\Models\SheetOrder;
+use App\Models\Shipment;
 use App\Models\Transfer;
-use App\Jobs\ProcessIncomingSheetOrder;
 use App\Support\MerchantApiFieldCatalog;
+use App\Support\WarehouseCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class MerchantDataController extends Controller
 {
@@ -66,7 +72,6 @@ class MerchantDataController extends Controller
             'country' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
             'alt_no' => ['nullable', 'string', 'max:30'],
-            'code' => ['nullable', 'string', 'max:255'],
             'instructions' => ['nullable', 'string', 'max:2000'],
         ]);
         $validated['external_order_id'] = trim($validated['external_order_id']);
@@ -94,7 +99,7 @@ class MerchantDataController extends Controller
             'country' => $validated['country'] ?? $merchant->country?->name,
             'phone' => $validated['phone'] ?? null,
             'alt_no' => $validated['alt_no'] ?? null,
-            'code' => $validated['code'] ?? null,
+            'code' => null,
             'instructions' => $validated['instructions'] ?? null,
             // Merchant ownership and lifecycle status are controlled by this API.
             'merchant' => $merchant->name,
@@ -177,6 +182,130 @@ class MerchantDataController extends Controller
         ]);
     }
 
+    public function updateOrder(Request $request, string $externalOrderId): JsonResponse
+    {
+        if ($denied = $this->authorizeScope($request, 'orders:write')) return $denied;
+
+        $validated = $request->validate([
+            'order_date' => ['sometimes', 'nullable', 'date'],
+            'amount' => ['sometimes', 'numeric', 'min:0'],
+            'quantity' => ['sometimes', 'integer', 'min:1'],
+            'product_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'delivery_date' => ['sometimes', 'nullable', 'date'],
+            'client_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'alt_no' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'instructions' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'status' => ['sometimes', 'string', 'in:New Orders,Scheduled,Cancelled'],
+        ]);
+        abort_if($validated === [], 422, 'Provide at least one editable order field.');
+
+        $integration = $this->integration($request);
+        $incoming = IncomingSheetOrder::query()
+            ->where('source_hash', $this->incomingOrderSourceHash($integration, $externalOrderId))
+            ->firstOrFail();
+        abort_unless($incoming->status === 'processed', 409, 'Wait for import to finish before editing this order.');
+
+        $order = DB::transaction(function () use ($incoming, $integration, $validated): SheetOrder {
+            $orderNo = IncomingSheetOrder::query()->whereKey($incoming->id)->lockForUpdate()->value('order_no');
+            $orderQuery = SheetOrder::query()->where('sheet_id', 'merchant-api:'.$integration->id)
+                ->where('order_no', $orderNo)->where('merchant', $integration->merchantUser->name);
+            abort_unless($orderQuery->count() === 1, 409, 'The external order ID does not resolve to one unique order.');
+            $order = $orderQuery->lockForUpdate()->firstOrFail();
+            $this->assertOrderCanChange($order);
+
+            $before = $order->only(array_keys($validated));
+            $order->update($validated);
+            foreach ($validated as $field => $value) {
+                if ((string) ($before[$field] ?? '') !== (string) ($order->getAttribute($field) ?? '')) {
+                    OrderHistory::create([
+                        'order_id' => $order->id,
+                        'user_id' => $integration->merchant_user_id,
+                        'attribute' => $field,
+                        'old_value' => $before[$field] ?? null,
+                        'new_value' => $order->getAttribute($field),
+                    ]);
+                }
+            }
+
+            return $order->fresh();
+        });
+
+        return response()->json(['message' => 'Order updated.', 'external_order_id' => $externalOrderId, 'order' => $order]);
+    }
+
+    private function assertOrderCanChange(SheetOrder $order): void
+    {
+        $status = mb_strtolower(trim((string) $order->status));
+        abort_if($order->inventory_deducted_at || in_array($status, [
+            'dispatched', 'shipped', 'out for delivery', 'outfordelivery', 'delivered', 'returned', 'cancelled', 'expired',
+        ], true), 409, 'Only orders before dispatch and inventory deduction can be changed or cancelled.');
+    }
+
+    public function storeProduct(Request $request): JsonResponse
+    {
+        if ($denied = $this->authorizeScope($request, 'products:write')) return $denied;
+
+        $request->merge(['sku' => trim((string) $request->input('sku'))]);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'sku' => ['required', 'string', 'max:255', 'unique:products,code'],
+            'country' => ['required', 'string', 'max:255', 'exists:countries,name'],
+            'quantity' => ['sometimes', 'integer', 'min:0'],
+            'quantity_alert' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'buying_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'selling_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'category_id' => ['sometimes', 'nullable', 'integer', 'exists:categories,id'],
+        ]);
+        $integration = $this->integration($request);
+        $merchant = $integration->merchantUser->loadMissing('country');
+        $country = trim($validated['country']);
+
+        $baseSlug = Str::slug($validated['name']) ?: 'product';
+        $slug = $baseSlug;
+        for ($suffix = 1; Product::query()->where('slug', $slug)->exists(); $suffix++) $slug = $baseSlug.'-'.$suffix;
+        $defaultCategoryId = DB::table('categories')->where('id', 10)->value('id') ?? DB::table('categories')->value('id');
+        $defaultUnitId = DB::table('units')->where('id', 10)->value('id') ?? DB::table('units')->value('id');
+
+        $product = DB::transaction(function () use ($validated, $integration, $merchant, $country, $slug, $defaultCategoryId, $defaultUnitId): Product {
+            $quantity = (int) ($validated['quantity'] ?? 0);
+            $product = Product::create([
+                'user_id' => $integration->merchant_user_id,
+                'uuid' => $merchant->uuid,
+                'name' => $validated['name'],
+                'code' => $validated['sku'],
+                'slug' => $slug,
+                'quantity' => $quantity,
+                'quantity_alert' => $validated['quantity_alert'] ?? 0,
+                'buying_price' => $validated['buying_price'] ?? 0,
+                'selling_price' => $validated['selling_price'] ?? 0,
+                'category_id' => $validated['category_id'] ?? $defaultCategoryId,
+                'unit_id' => $defaultUnitId,
+                'country' => $country,
+                'merchant' => $merchant->name,
+                'store_name' => $merchant->store_name ?: 'RDL1',
+            ]);
+            if ($quantity > 0) InventoryLog::create([
+                'product_name' => $product->name, 'product_code' => $product->code,
+                'quantity_added' => $quantity, 'remaining_qnty' => $quantity,
+                'added_by' => $merchant->name, 'product_unit_id' => $product->unit_id, 'date_added' => now(),
+            ]);
+
+            return $product;
+        });
+
+        return response()->json(['message' => 'Product created.', 'product' => [
+            'id' => $product->id, 'name' => $product->name, 'sku' => $product->code,
+            'slug' => $product->slug, 'quantity' => (int) $product->quantity, 'country' => $product->country,
+            'quantity_alert' => (int) $product->quantity_alert,
+            'buying_price' => $product->buying_price, 'selling_price' => $product->selling_price,
+            'category_id' => $product->category_id, 'unit_id' => $product->unit_id,
+        ]], 201);
+    }
+
     private function acceptedIncomingOrder(IncomingSheetOrder $incoming, bool $duplicate, int $statusCode): JsonResponse
     {
         $externalOrderId = data_get($incoming->payload, 'external_order_id');
@@ -206,6 +335,170 @@ class MerchantDataController extends Controller
         return hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 
+    public function storeShipment(Request $request): JsonResponse
+    {
+        if ($denied = $this->authorizeScope($request, 'shipments:write')) {
+            return $denied;
+        }
+
+        $validated = $request->validate([
+            'supplier' => ['required', 'string', 'max:255'],
+            'supplier_reference' => ['nullable', 'string', 'max:255'],
+            'carrier' => ['nullable', 'string', 'max:255'],
+            'tracking_number' => ['nullable', 'string', 'max:255'],
+            'expected_on' => ['nullable', 'date'],
+            'cartons' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'warehouse_code' => ['required', 'string', 'max:16'],
+            'note' => ['nullable', 'string', 'max:5000'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_name' => ['required', 'string', 'max:255'],
+            'items.*.product_code' => ['nullable', 'string', 'max:255'],
+            'items.*.expected_quantity' => ['required', 'integer', 'min:1', 'max:10000000'],
+        ]);
+
+        $warehouse = collect(WarehouseCatalog::all())
+            ->firstWhere('code', $validated['warehouse_code']);
+
+        if (! $warehouse) {
+            throw ValidationException::withMessages([
+                'warehouse_code' => 'Select a valid warehouse.',
+            ]);
+        }
+
+        $integration = $this->integration($request);
+        $merchant = $integration->merchantUser->loadMissing('country');
+        $needsProductCreation = collect($validated['items'])->contains(function (array $item): bool {
+            $code = trim((string) ($item['product_code'] ?? ''));
+
+            return $code === '' || ! Product::query()->whereRaw('LOWER(TRIM(code)) = ?', [mb_strtolower($code)])->exists();
+        });
+        if ($needsProductCreation && ($denied = $this->authorizeScope($request, 'products:write'))) {
+            return $denied;
+        }
+
+        $shipment = DB::transaction(function () use ($validated, $warehouse, $merchant): Shipment {
+            $shipmentAttributes = [
+                'supplier' => $validated['supplier'],
+                'supplier_reference' => $validated['supplier_reference'] ?? null,
+                'carrier' => $validated['carrier'] ?? null,
+                'tracking_number' => $validated['tracking_number'] ?? null,
+                'expected_on' => $validated['expected_on'] ?? null,
+                'cartons' => $validated['cartons'] ?? null,
+                'warehouse_code' => $warehouse['code'],
+                'warehouse_name' => $warehouse['name'],
+                'country' => $warehouse['country'],
+                'status' => Shipment::EXPECTED,
+                'note' => $validated['note'] ?? null,
+                'created_by' => $merchant->id,
+            ];
+            $shipment = Shipment::forInbound(
+                $shipmentAttributes,
+                (int) $merchant->id,
+                $warehouse['code'],
+                (int) collect($validated['items'])->sum('expected_quantity'),
+            );
+            $shipment->save();
+
+            $shipmentNumber = 'IN-'.$warehouse['code'].'-'.str_pad((string) $shipment->id, 5, '0', STR_PAD_LEFT);
+            $shipment->assignInboundNumber($shipmentNumber);
+
+            $shipmentItems = [];
+            foreach ($validated['items'] as $item) {
+                $productName = trim($item['product_name']);
+                $productCode = trim((string) ($item['product_code'] ?? ''));
+                $product = $productCode !== ''
+                    ? Product::query()->whereRaw('LOWER(TRIM(code)) = ?', [mb_strtolower($productCode)])->lockForUpdate()->first()
+                    : null;
+
+                if ($product && (
+                    ($product->merchant !== $merchant->name && (int) $product->user_id !== (int) $merchant->id)
+                    || mb_strtolower(trim((string) $product->country)) !== mb_strtolower($warehouse['country'])
+                )) {
+                    throw ValidationException::withMessages([
+                        'items' => "SKU {$productCode} is already registered outside your merchant account or the receiving country.",
+                    ]);
+                }
+
+                if (! $product) {
+                    if ($productCode === '') {
+                        do {
+                            $productCode = 'SHIP-'.Str::upper(Str::random(8));
+                        } while (Product::query()->where('code', $productCode)->exists());
+                    }
+
+                    $baseSlug = Str::slug($productName) ?: 'product';
+                    $slug = $baseSlug;
+                    for ($suffix = 1; Product::query()->where('slug', $slug)->exists(); $suffix++) {
+                        $slug = $baseSlug.'-'.$suffix;
+                    }
+                    $categoryId = DB::table('categories')->where('id', 10)->value('id') ?? DB::table('categories')->value('id');
+                    $unitId = DB::table('units')->where('id', 10)->value('id') ?? DB::table('units')->value('id');
+
+                    $product = Product::create([
+                        'user_id' => $merchant->id,
+                        'uuid' => $merchant->uuid,
+                        'name' => $productName,
+                        'code' => $productCode,
+                        'slug' => $slug,
+                        'quantity' => 0,
+                        'quantity_alert' => 0,
+                        'buying_price' => 0,
+                        'selling_price' => 0,
+                        'category_id' => $categoryId,
+                        'unit_id' => $unitId,
+                        'country' => $warehouse['country'],
+                        'merchant' => $merchant->name,
+                        'store_name' => $merchant->store_name ?: 'RDL1',
+                    ]);
+                }
+
+                if (isset($shipmentItems[$product->id])) {
+                    $shipmentItems[$product->id]['expected_quantity'] += (int) $item['expected_quantity'];
+                } else {
+                    $shipmentItems[$product->id] = [
+                        'product_id' => $product->id,
+                        'product_name' => $product->name,
+                        'product_code' => $product->code,
+                        'expected_quantity' => (int) $item['expected_quantity'],
+                    ];
+                }
+            }
+
+            foreach ($shipmentItems as $shipmentItem) {
+                $shipment->items()->create($shipmentItem);
+            }
+
+            return $shipment;
+        });
+
+        $shipment->load('items:id,shipment_id,product_id,product_name,product_code,expected_quantity,received_quantity');
+
+        return response()->json([
+            'message' => 'Shipment created.',
+            'shipment' => [
+                'id' => $shipment->id,
+                'shipment_number' => $shipment->shipment_number,
+                'supplier' => $shipment->supplier,
+                'supplier_reference' => $shipment->supplier_reference,
+                'carrier' => $shipment->carrier,
+                'tracking_number' => $shipment->tracking_number,
+                'expected_on' => $shipment->expected_on?->toDateString(),
+                'cartons' => $shipment->cartons,
+                'warehouse_code' => $shipment->warehouse_code,
+                'warehouse_name' => $shipment->warehouse_name,
+                'country' => $shipment->country,
+                'status' => $shipment->status,
+                'note' => $shipment->note,
+                'items' => $shipment->items->map(fn ($item) => [
+                    'product_name' => $item->product_name,
+                    'product_code' => $item->product_code,
+                    'expected_quantity' => $item->expected_quantity,
+                    'received_quantity' => $item->received_quantity,
+                ])->values(),
+            ],
+        ], 201);
+    }
+
     public function orders(Request $request): JsonResponse
     {
         if ($denied = $this->authorizeScope($request, 'orders:read')) return $denied;
@@ -215,7 +508,7 @@ class MerchantDataController extends Controller
         $orderColumns = array_values(array_intersect([
             'id', 'order_no', 'order_date', 'amount', 'quantity', 'product_name', 'delivery_date',
             'client_name', 'address', 'city', 'country', 'phone', 'alt_no', 'status',
-            'code', 'confirmed', 'created_at', 'updated_at', 'edited_at',
+            'code', 'confirmed', 'inventory_deducted_at', 'created_at', 'updated_at', 'edited_at',
         ], $availableColumns));
         $orderColumns[] = 'call_count';
 
@@ -225,6 +518,14 @@ class MerchantDataController extends Controller
         ])->where('merchant', $merchant)
             ->when($request->filled('updated_since'), fn ($query) => $query->whereRaw('COALESCE(edited_at, updated_at) >= ?', [$request->date('updated_since')]))
             ->orderBy('id')->paginate($this->pageSize($request), $orderColumns);
+
+        $orders->getCollection()->transform(function (SheetOrder $order): SheetOrder {
+            if (! filled($order->status)) {
+                $order->setAttribute('status', SheetOrder::NEW_ORDERS_STATUS);
+            }
+
+            return $order;
+        });
 
         return response()->json($orders);
     }
@@ -244,6 +545,8 @@ class MerchantDataController extends Controller
                 'id', 'name', 'code', 'slug', 'quantity', 'selling_price', 'tax', 'tax_type',
                 'category_id', 'store_name', 'country', 'unit_id', 'updated_at',
             ]);
+
+        $products->getCollection()->transform(fn (Product $product): Product => $product->setAttribute('sku', $product->code));
 
         return response()->json($products);
     }

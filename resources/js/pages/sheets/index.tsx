@@ -18,6 +18,8 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EAST_AFRICAN_COUNTRIES } from '@/lib/east-african-countries';
 import { csrfHeaders } from '@/lib/csrf';
+import { Blobatar } from '@blobatar/react';
+import 'blobatar/motion.css';
 import { ChevronLeft, ChevronRight, Download, Edit, EyeIcon, Loader2, Maximize2, Minimize2, Plus, Search, Trash2, X } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@/lib/toast';
@@ -954,19 +956,30 @@ export default function SheetsView() {
                                 >
                                     <CardHeader className="gap-1.5 px-0 pt-0">
                                         <div className="flex min-w-0 items-center gap-2">
-                                            <Badge variant="secondary" className="shrink-0 text-[11px]">
-                                                {sheet.country || '—'}
-                                            </Badge>
-                                            <span className="truncate text-[11px] text-muted-foreground" title={sheet.store_name}>
-                                                {sheet.store_name || '—'}
-                                            </span>
+                                            <Blobatar
+                                                name={sheet.sheet_id || sheet.sheet_name}
+                                                size={32}
+                                                animate="hover"
+                                                title={sheet.sheet_name}
+                                                className="size-8 shrink-0 rounded-lg"
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <Badge variant="secondary" className="shrink-0 text-[11px]">
+                                                        {sheet.country || '—'}
+                                                    </Badge>
+                                                    <span className="truncate text-[11px] text-muted-foreground" title={sheet.store_name}>
+                                                        {sheet.store_name || '—'}
+                                                    </span>
+                                                </div>
+                                                <CardTitle className="truncate text-sm" title={sheet.sheet_name}>
+                                                    {sheet.sheet_name}
+                                                </CardTitle>
+                                                <CardDescription className="truncate text-xs" title={sheet.shopify_name}>
+                                                    Shopify: {sheet.shopify_name || '-'}
+                                                </CardDescription>
+                                            </div>
                                         </div>
-                                        <CardTitle className="truncate text-sm" title={sheet.sheet_name}>
-                                            {sheet.sheet_name}
-                                        </CardTitle>
-                                        <CardDescription className="truncate text-xs" title={sheet.shopify_name}>
-                                            Shopify: {sheet.shopify_name || '-'}
-                                        </CardDescription>
                                     </CardHeader>
                                     <CardContent className="px-0 pb-0">
                                         <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px]">
@@ -1124,7 +1137,13 @@ export default function SheetsView() {
                                             {agents.length > 0 && (
                                                 <div className="mt-2 flex flex-wrap gap-2">
                                                     {agents.map((agent) => (
-                                                        <Badge key={agent} variant="secondary" className="pr-1 pl-2">
+                                                        <Badge key={agent} variant="secondary" className="gap-1.5 pr-1 pl-1.5">
+                                                            <Blobatar
+                                                                name={agent}
+                                                                size={16}
+                                                                animate="hover"
+                                                                className="size-4 shrink-0 rounded-full"
+                                                            />
                                                             {agent}
                                                             <button
                                                                 onClick={() => removeCreateCcAgent(key, agent)}
@@ -1157,6 +1176,7 @@ export default function SheetsView() {
                                                                     <CommandItem key={idx} value={cc} onSelect={() => toggleCreateCcAgent(key, cc)}>
                                                                         <div className="flex w-full items-center">
                                                                             <Checkbox checked={agents.includes(cc)} className="mr-2" />
+                                                                            <Blobatar name={cc} size={16} className="mr-2 size-4 shrink-0 rounded-full" />
                                                                             {cc}
                                                                         </div>
                                                                     </CommandItem>
@@ -1271,24 +1291,37 @@ export default function SheetsView() {
                                     Add a sheet tab name, then choose the call center agents for that tab.
                                 </p>
                             ) : (
-                                <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                                     {Object.entries(editCcAgents).map(([key, agents]) => (
-                                        <div key={key} className="rounded-md border p-3">
-                                            <div className="flex items-center justify-between">
-                                                <div className="font-medium">{key}</div>
-                                                <Button variant="ghost" size="sm" onClick={() => removeEditCcKey(key)}>
-                                                    Remove
+                                        <div key={key} className="min-w-0 rounded-md border p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0 truncate font-medium" title={key}>{key}</div>
+                                                <Button
+                                                    className="shrink-0 px-2 sm:px-3"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => removeEditCcKey(key)}
+                                                    aria-label={`Remove ${key}`}
+                                                >
+                                                    <X className="h-3.5 w-3.5 sm:hidden" />
+                                                    <span className="hidden sm:inline">Remove</span>
                                                 </Button>
                                             </div>
 
                                             {agents.length > 0 && (
                                                 <div className="mt-2 flex flex-wrap gap-2">
                                                     {agents.map((agent) => (
-                                                        <Badge key={agent} variant="secondary" className="pr-1 pl-2">
-                                                            {agent}
+                                                        <Badge key={agent} variant="secondary" className="max-w-full gap-1.5 overflow-hidden pr-1 pl-1.5">
+                                                            <Blobatar
+                                                                name={agent}
+                                                                size={16}
+                                                                animate="hover"
+                                                                className="size-4 shrink-0 rounded-full"
+                                                            />
+                                                            <span className="min-w-0 truncate">{agent}</span>
                                                             <button
                                                                 onClick={() => removeEditCcAgent(key, agent)}
-                                                                className="ml-1 rounded-full p-0.5 hover:bg-muted"
+                                                                className="ml-1 shrink-0 rounded-full p-0.5 hover:bg-muted"
                                                             >
                                                                 <X className="h-3 w-3" />
                                                             </button>
@@ -1299,12 +1332,14 @@ export default function SheetsView() {
 
                                             <Popover open={ccSelectOpen === key} onOpenChange={(open) => setCcSelectOpen(open ? key : null)}>
                                                 <PopoverTrigger asChild>
-                                                    <Button variant="outline" role="combobox" className="mt-3 w-full justify-between">
-                                                        {agents.length === 0 ? 'Select call center agents' : `${agents.length} agent(s) selected`}
+                                                    <Button variant="outline" role="combobox" className="mt-3 w-full min-w-0 justify-between overflow-hidden">
+                                                        <span className="truncate">
+                                                            {agents.length === 0 ? 'Select call center agents' : `${agents.length} agent(s) selected`}
+                                                        </span>
                                                         <ChevronRight className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                     </Button>
                                                 </PopoverTrigger>
-                                                <PopoverContent className="w-[360px] p-0">
+                                                <PopoverContent className="w-[min(360px,calc(100vw_-_2rem))] p-0">
                                                     <Command>
                                                         <CommandInput placeholder="Search agent..." />
                                                         <CommandList>
@@ -1314,6 +1349,7 @@ export default function SheetsView() {
                                                                     <CommandItem key={idx} value={cc} onSelect={() => toggleEditCcAgent(key, cc)}>
                                                                         <div className="flex w-full items-center">
                                                                             <Checkbox checked={agents.includes(cc)} className="mr-2" />
+                                                                            <Blobatar name={cc} size={16} className="mr-2 size-4 shrink-0 rounded-full" />
                                                                             {cc}
                                                                         </div>
                                                                     </CommandItem>

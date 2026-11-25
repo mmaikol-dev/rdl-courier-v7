@@ -1,10 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export type Appearance = 'light' | 'dark' | 'system';
-export type ThemeName = 'amber-minimal' | 'candyland' | 'nature' | 'tangerine' | 'doom-64' | 'valorant' | 'red' | 'neo-brutalism' | 'claude' | 'ghibli-studio' | 'spotify';
+export type ThemeName =
+    | 'amber-minimal'
+    | 'candyland'
+    | 'nature'
+    | 'tangerine'
+    | 'doom-64'
+    | 'valorant'
+    | 'red'
+    | 'neo-brutalism'
+    | 'claude'
+    | 'ghibli-studio'
+    | 'spotify';
 
 const DEFAULT_THEME: ThemeName = 'doom-64';
-const THEMES: ThemeName[] = ['amber-minimal', 'candyland', 'nature', 'tangerine', 'doom-64', 'valorant', 'red', 'neo-brutalism', 'claude', 'ghibli-studio', 'spotify'];
+const THEMES: ThemeName[] = [
+    'amber-minimal',
+    'candyland',
+    'nature',
+    'tangerine',
+    'doom-64',
+    'valorant',
+    'red',
+    'neo-brutalism',
+    'claude',
+    'ghibli-studio',
+    'spotify',
+];
+const APPEARANCE_CHANGE_EVENT = 'appearance-change';
 
 const prefersDark = () => {
     if (typeof window === 'undefined') return false;
@@ -30,7 +54,7 @@ const applyTheme = (appearance: Appearance, theme: ThemeName) => {
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
 };
 
-const mediaQuery = () => typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)');
+const mediaQuery = () => (typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)'));
 
 const handleSystemThemeChange = () => {
     const appearance = (localStorage.getItem('appearance') as Appearance) || 'system';
@@ -52,21 +76,42 @@ export function useAppearance() {
         localStorage.setItem('appearance', mode);
         setCookie('appearance', mode);
         applyTheme(mode, storedTheme());
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(APPEARANCE_CHANGE_EVENT, { detail: mode }));
+        }
     }, []);
 
-    const updateTheme = useCallback((nextTheme: ThemeName) => {
-        setTheme(nextTheme);
-        localStorage.setItem('ui-theme', nextTheme);
-        applyTheme(appearance, nextTheme);
-    }, [appearance]);
+    const updateTheme = useCallback(
+        (nextTheme: ThemeName) => {
+            setTheme(nextTheme);
+            localStorage.setItem('ui-theme', nextTheme);
+            applyTheme(appearance, nextTheme);
+        },
+        [appearance],
+    );
 
     useEffect(() => {
-        const savedAppearance = (localStorage.getItem('appearance') as Appearance) || 'system';
-        const savedTheme = storedTheme();
-        setAppearance(savedAppearance);
-        setTheme(savedTheme);
-        applyTheme(savedAppearance, savedTheme);
+        const syncAppearance = () => {
+            const savedAppearance = (localStorage.getItem('appearance') as Appearance) || 'system';
+            const savedTheme = storedTheme();
+            setAppearance(savedAppearance);
+            setTheme(savedTheme);
+            applyTheme(savedAppearance, savedTheme);
+        };
 
+        syncAppearance();
+
+        const media = mediaQuery();
+        window.addEventListener(APPEARANCE_CHANGE_EVENT, syncAppearance);
+        window.addEventListener('storage', syncAppearance);
+        media?.addEventListener('change', syncAppearance);
+
+        return () => {
+            window.removeEventListener(APPEARANCE_CHANGE_EVENT, syncAppearance);
+            window.removeEventListener('storage', syncAppearance);
+            media?.removeEventListener('change', syncAppearance);
+        };
     }, []);
 
     return { appearance, updateAppearance, theme, updateTheme } as const;

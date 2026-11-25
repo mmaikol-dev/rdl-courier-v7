@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem } from '@/types';
-import { Deferred, Head, Link } from '@inertiajs/react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Deferred, Head, Link, usePage } from '@inertiajs/react';
 import { ArrowDownToLine, ArrowRight, CalendarClock, CircleAlert, PackageCheck, Plus, Warehouse } from 'lucide-react';
 
 interface ShipmentItemSummary {
@@ -101,6 +101,9 @@ function ShipmentsLoadingSkeleton() {
 }
 
 export default function ShipmentsIndex({ shipments, stats, stage }: { shipments: PaginatedShipments; stats: Stats; stage: string }) {
+    const { auth } = usePage<SharedData>().props;
+    const isMerchant = auth.user.roles?.trim().toLowerCase() === 'merchant';
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Shipments" />
@@ -111,7 +114,7 @@ export default function ShipmentsIndex({ shipments, stats, stage }: { shipments:
                         <h1 className="text-2xl font-semibold tracking-tight">Shipments</h1>
                         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Track stock coming into your warehouses. Count the delivery to add received units to available stock.</p>
                     </div>
-                    <Button asChild><Link href="/shipments/create"><Plus className="mr-2 size-4" />New shipment</Link></Button>
+                    {!isMerchant && <Button asChild><Link href="/shipments/create"><Plus className="mr-2 size-4" />New shipment</Link></Button>}
                 </div>
 
                 <Deferred data={['shipments', 'stats']} fallback={<ShipmentsLoadingSkeleton />}>

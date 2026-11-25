@@ -47,44 +47,121 @@ class OrderProductMatchingController extends Controller
 
     public function index(Request $request): Response
     {
-        $productName = trim((string) $request->query('product_name', ''));
-        $perPage = (int) $request->integer('per_page', 25);
-        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
+        $productNamesInput = $request->query('product_names', $request->query('product_name', []));
+        if (is_string($productNamesInput)) {
+            $productNamesInput = explode(',', $productNamesInput);
+        }
+
+        $productNames = collect(is_array($productNamesInput) ? $productNamesInput : [])
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $merchant = trim((string) $request->query('merchant', ''));
+        $status = trim((string) $request->query('status', ''));
+        $perPage = (int) $request->integer('per_page', 500);
+        $perPage = in_array($perPage, [10, 25, 50, 100, 500], true) ? $perPage : 500;
         $agentId = (int) $request->integer('agent_id');
         $agentId = $agentId > 0 ? $agentId : null;
 
+        $baseOrders = $this->ordersForUser($request);
+        $merchantOrders = clone $baseOrders;
+        if ($merchant !== '') {
+            $merchantOrders->where('merchant', $merchant);
+        }
+
         $products = $this->productsForUser($request)
+            ->when($merchant !== '', fn (Builder $query) => $query->where('merchant', $merchant))
             ->orderBy('name')
             ->get(['id', 'name', 'code', 'merchant', 'country']);
 
-        $agents = CountryAccess::scopeUsers(
-            User::query()
-                ->whereRaw('LOWER(TRIM(roles)) = ?', ['agent'])
-                ->select('id', 'name'),
-            $request->user()?->loadMissing('country')
-        )
+        $agentQuery = User::query()
+            ->whereRaw('LOWER(TRIM(roles)) = ?', ['agent'])
+            ->select('id', 'name');
+        if ($merchant !== '') {
+            $agentIds = (clone $merchantOrders)
+                ->whereNotNull('agent_id')
+                ->distinct()
+                ->pluck('agent_id');
+            $agentQuery->whereIn('id', $agentIds);
+        }
+
+        $agents = CountryAccess::scopeUsers($agentQuery, $request->user()?->loadMissing('country'))
             ->orderBy('name')
             ->get();
 
+        $merchants = (clone $baseOrders)
+            ->whereNotNull('merchant')
+            ->where('merchant', '<>', '')
+            ->distinct()
+            ->orderBy('merchant')
+            ->pluck('merchant')
+            ->values();
+
+        $orderProductNames = (clone $merchantOrders)
+            ->whereNotNull('product_name')
+            ->where('product_name', '<>', '')
+            ->distinct()
+            ->orderBy('product_name')
+            ->pluck('product_name')
+            ->values();
+
+        $statuses = (clone $merchantOrders)
+            ->whereNotNull('status')
+            ->where('status', '<>', '')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
+
+        $hasNewOrders = $merchant === '' || (clone $merchantOrders)
+            ->where(function (Builder $query): void {
+                $query->whereNull('status')->orWhereRaw("TRIM(status) = ''");
+            })
+            ->exists();
+        $statuses = collect($hasNewOrders ? ['New Orders'] : [])->merge($statuses)->unique()->values();
+
         return Inertia::render('orders/product-matching', [
-            'orders' => Inertia::defer(fn () => $this->ordersForUser($request)
+            'orders' => Inertia::defer(fn () => (clone $baseOrders)
                 ->with([
                     'linkedProduct:id,name,code',
                     'assignedAgent:id,name',
                 ])
                 ->when(
-                    $productName !== '',
-                    fn (Builder $query) => $query->where('product_name', 'like', '%'.$productName.'%')
+                    $productNames !== [],
+                    fn (Builder $query) => $query->whereIn('product_name', $productNames)
+                )
+                ->when(
+                    $merchant !== '',
+                    fn (Builder $query) => $query->where('merchant', $merchant)
                 )
                 ->when(
                     $agentId !== null,
                     fn (Builder $query) => $query->where('agent_id', $agentId)
                 )
+                ->when(
+                    $status !== '',
+                    function (Builder $query) use ($status) {
+                        if ($status === 'New Orders') {
+                            $query->where(function (Builder $query) {
+                                $query->whereNull('status')->orWhereRaw("TRIM(status) = ''");
+                            });
+                        } else {
+                            $query->whereRaw('TRIM(status) = ?', [$status]);
+                        }
+                    }
+                )
                 ->orderByDesc('id')
                 ->paginate($perPage, [
                     'id',
                     'order_no',
-                    'order_date',
+                    'delivery_date',
                     'client_name',
                     'phone',
                     'address',
@@ -101,7 +178,10 @@ class OrderProductMatchingController extends Controller
                 ->withQueryString()),
             'products' => $products,
             'agents' => $agents,
-            'filters' => ['product_name' => $productName, 'agent_id' => $agentId, 'per_page' => $perPage],
+            'merchants' => $merchants,
+            'orderProductNames' => $orderProductNames,
+            'statuses' => $statuses,
+            'filters' => ['product_names' => $productNames, 'merchant' => $merchant, 'status' => $status, 'agent_id' => $agentId, 'per_page' => $perPage],
         ]);
     }
 
@@ -160,13 +240,13 @@ class OrderProductMatchingController extends Controller
             'inventory_product_id' => ['required', 'integer'],
         ]);
 
-        $orders = DB::transaction(function () use ($request, $validated) {
-            $orders = $this->ordersForUser($request)
+        [$orders, $skipped] = DB::transaction(function () use ($request, $validated): array {
+            $selected = $this->ordersForUser($request)
                 ->whereIn('id', $validated['order_ids'])
                 ->lockForUpdate()
                 ->get();
 
-            if ($orders->count() !== count($validated['order_ids'])) {
+            if ($selected->count() !== count($validated['order_ids'])) {
                 throw ValidationException::withMessages([
                     'order_ids' => 'One or more selected orders are unavailable.',
                 ]);
@@ -179,9 +259,11 @@ class OrderProductMatchingController extends Controller
                 ]);
             }
 
-            foreach ($orders as $order) {
-                $this->ensureOrderCanBeMatched($order);
-            }
+            $shouldSkip = fn (SheetOrder $order): bool => $order->inventory_product_id !== null
+                || $order->inventory_deducted_at !== null;
+
+            $skipped = $selected->filter($shouldSkip)->values();
+            $orders = $selected->reject($shouldSkip)->values();
 
             SheetOrder::withoutEditTracking(function () use ($orders, $product): void {
                 foreach ($orders as $order) {
@@ -189,7 +271,7 @@ class OrderProductMatchingController extends Controller
                 }
             });
 
-            return $orders;
+            return [$orders, $skipped];
         });
 
         $deductions = [];
@@ -201,22 +283,34 @@ class OrderProductMatchingController extends Controller
             ];
         }
 
+        $skippedPayload = $skipped->map(fn (SheetOrder $order) => [
+            'id' => $order->id,
+            'order_no' => $order->order_no,
+            'reason' => $order->inventory_deducted_at ? 'already_deducted' : 'already_matched',
+        ])->values();
+
         if ($request->expectsJson()) {
             return response()->json([
                 'orders' => $orders->map(fn (SheetOrder $order) => $this->matchPayload($order))->values(),
                 'deductions' => $deductions,
+                'skipped' => $skippedPayload,
             ]);
         }
 
+        $matchedCount = $orders->count();
+        $skippedCount = $skipped->count();
         $failed = collect($deductions)->where('status', 'failed');
         if ($failed->isNotEmpty()) {
-            return back()->with('warning', count($validated['order_ids']).' orders matched; inventory deduction failed for '.$failed->pluck('order_no')->filter()->implode(', ').'.');
+            return back()->with('warning', "{$matchedCount} orders matched; inventory deduction failed for ".$failed->pluck('order_no')->filter()->implode(', ').'.');
         }
 
         $deductedCount = collect($deductions)->where('status', 'deducted')->count();
-        $message = count($validated['order_ids']).' orders matched to the selected inventory product.';
+        $message = "{$matchedCount} orders matched to the selected inventory product.";
         if ($deductedCount > 0) {
             $message .= " {$deductedCount} delivered order(s) were deducted from warehouse stock and their agent transfer balances; WhatsApp notifications were attempted.";
+        }
+        if ($skippedCount > 0) {
+            $message .= " {$skippedCount} already matched order(s) were skipped.";
         }
 
         return back()->with('success', $message);

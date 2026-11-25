@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MerchantApiIntegration;
 use App\Models\Sheet;
 use App\Models\SheetOrder;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +63,10 @@ class SheetOrderImportService
         // current date at the time the order is processed.
         $validatedData['order_date'] = $validatedData['order_date'] ?? now()->toDateString();
 
-        if (! empty($validatedData['sheet_id']) && ! empty($validatedData['sheet_name'])) {
+        if ($this->isMerchantApiSource($validatedData)) {
+            $validatedData['code'] = null;
+            $validatedData['cc_email'] = $this->resolveMerchantApiCcEmail($validatedData);
+        } elseif (! empty($validatedData['sheet_id']) && ! empty($validatedData['sheet_name'])) {
             $validatedData['cc_email'] = $this->resolveCcEmail($sheet, $validatedData);
         }
 
@@ -157,8 +161,59 @@ class SheetOrderImportService
             return null;
         }
 
-        $agents = $agentsConfig[$validatedData['sheet_name']] ?? null;
+        return $this->resolveNextAgent(
+            $agentsConfig[$validatedData['sheet_name']] ?? null,
+            (string) ($validatedData['sheet_id'] ?? $sheet->sheet_id),
+            (string) $validatedData['sheet_name'],
+        );
+    }
 
+    private function isMerchantApiSource(array $validatedData): bool
+    {
+        return str_starts_with((string) ($validatedData['sheet_id'] ?? ''), 'merchant-api:');
+    }
+
+    private function resolveMerchantApiCcEmail(array $validatedData): ?string
+    {
+        $sheetId = (string) $validatedData['sheet_id'];
+        $integrationId = (int) substr($sheetId, strlen('merchant-api:'));
+
+        if ($integrationId <= 0) {
+            return null;
+        }
+
+        $integration = MerchantApiIntegration::query()->find($integrationId);
+        if (! $integration) {
+            return null;
+        }
+
+        $country = trim((string) ($validatedData['country'] ?? ''));
+        $agents = $this->resolveMerchantApiCountryAgents($integration, $country);
+
+        return $this->resolveNextAgent($agents, $sheetId, (string) $validatedData['sheet_name']);
+    }
+
+    private function resolveMerchantApiCountryAgents(MerchantApiIntegration $integration, string $country): mixed
+    {
+        $assignments = $integration->cc_country_assignments;
+        if (is_array($assignments) && $country !== '') {
+            $needle = strtolower($country);
+            foreach ($assignments as $assignment) {
+                $name = trim((string) ($assignment['country'] ?? ''));
+                if ($name !== '' && strtolower($name) === $needle) {
+                    $ccEmails = $assignment['cc_emails'] ?? null;
+                    if (is_array($ccEmails) && $ccEmails !== []) {
+                        return $ccEmails;
+                    }
+                }
+            }
+        }
+
+        return $integration->cc_emails;
+    }
+
+    private function resolveNextAgent(mixed $agents, string $sheetId, string $sheetName): ?string
+    {
         if (empty($agents) || ! is_array($agents)) {
             return null;
         }
@@ -171,8 +226,8 @@ class SheetOrderImportService
 
         $lastAssigned = SheetOrder::whereNotNull('cc_email')
             ->whereIn('cc_email', $agents)
-            ->where('sheet_id', $validatedData['sheet_id'] ?? $sheet->sheet_id)
-            ->where('sheet_name', $validatedData['sheet_name'])
+            ->where('sheet_id', $sheetId)
+            ->where('sheet_name', $sheetName)
             ->latest('id')
             ->value('cc_email');
 

@@ -79,8 +79,11 @@ Route::post('/update-order-timestamp', [AppScriptController::class, 'updateTimes
 
 Route::prefix('merchant/v1')->middleware([AuthenticateMerchantApi::class, 'throttle:60,1'])->group(function (): void {
     Route::post('/orders', [MerchantDataController::class, 'storeOrder']);
+    Route::patch('/orders/{externalOrderId}', [MerchantDataController::class, 'updateOrder'])->where('externalOrderId', '[^/]+');
+    Route::post('/shipments', [MerchantDataController::class, 'storeShipment']);
     Route::get('/orders/import-status/{externalOrderId}', [MerchantDataController::class, 'incomingOrderStatus']);
     Route::get('/orders', [MerchantDataController::class, 'orders']);
     Route::get('/products', [MerchantDataController::class, 'products']);
+    Route::post('/products', [MerchantDataController::class, 'storeProduct']);
     Route::get('/transfers', [MerchantDataController::class, 'transfers']);
 });

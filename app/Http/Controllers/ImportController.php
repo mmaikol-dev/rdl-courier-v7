@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Sheet;
 use App\Models\SheetOrder;
 use App\Services\ProductAutoMatchService;
+use App\Services\SheetOrderImportService;
 use App\Support\CountryAccess;
 use App\Support\SpreadsheetValue;
 use DateTimeInterface;
@@ -20,6 +21,7 @@ class ImportController extends Controller
 {
     public function __construct(
         private readonly ProductAutoMatchService $autoMatch = new ProductAutoMatchService,
+        private readonly SheetOrderImportService $sheetOrderImport = new SheetOrderImportService,
     ) {}
 
     public function index(Request $request)
@@ -27,7 +29,7 @@ class ImportController extends Controller
         $user = $request->user()?->loadMissing('country');
 
         $sheetsQuery = CountryAccess::scopeByCountryName(
-            Sheet::select('id', 'sheet_id', 'sheet_name', 'store_name', 'country'),
+            Sheet::select('id', 'sheet_id', 'sheet_name', 'store_name', 'country', 'auto_pickup_tabs'),
             $user
         );
 
@@ -61,6 +63,7 @@ class ImportController extends Controller
             'store_name' => 'required|string',
             'country' => 'required|string',
             'merchant' => 'required|string',
+            'generated_order_numbers' => 'nullable|string',
         ]);
 
         // Merchants may only import against their own sheet, regardless of what the
@@ -100,6 +103,8 @@ class ImportController extends Controller
             return response()->json(['message' => 'No country assigned to the current user.'], 422);
         }
 
+        $sourceSheet = Sheet::query()->where('sheet_id', $request->sheet_id)->first();
+
         $file = $request->file('file');
 
         $created = 0;
@@ -128,6 +133,12 @@ class ImportController extends Controller
         };
 
         $isHeaderRow = true;
+        $generatedOrderNumbers = json_decode((string) $request->input('generated_order_numbers', '[]'), true);
+        $generatedOrderNumbers = is_array($generatedOrderNumbers)
+            ? array_values(array_filter($generatedOrderNumbers, static fn ($item): bool => is_array($item) && isset($item['target'])))
+            : [];
+        $reservedGeneratedOrderNumbers = [];
+        $importedRowIndex = 0;
 
         // Header first, then one row per record — identical for CSV and Excel.
         foreach ($this->rowsFromUpload($file) as $row) {
@@ -148,12 +159,37 @@ class ImportController extends Controller
                 continue;
             }
 
-            // Find existing order by order_no + merchant + sheet_id
-            $existingOrder = SheetOrder::where('order_no', $col('order_no', 1))
+            $orderNo = (string) $col('order_no', 1);
+            $orderChange = $generatedOrderNumbers[$importedRowIndex++] ?? null;
+            $isGeneratedOrderNumber = is_array($orderChange) && (string) ($orderChange['target'] ?? '') === $orderNo;
+            $sourceOrderNo = $isGeneratedOrderNumber ? trim((string) ($orderChange['source'] ?? '')) : '';
+            $findScopedOrder = fn (string $number) => SheetOrder::where('order_no', $number)
                 ->where('merchant', $request->merchant)
                 ->where('sheet_id', $request->sheet_id)
-                ->where('country', $countryName)
-                ->first();
+                ->where('country', $countryName)->first();
+            $existingOrder = null;
+
+            if ($isGeneratedOrderNumber) {
+                $existingSourceOrder = $sourceOrderNo !== '' && strcasecmp($sourceOrderNo, $orderNo) !== 0
+                    ? $findScopedOrder($sourceOrderNo)
+                    : null;
+                $existingTargetOrder = $findScopedOrder($orderNo);
+
+                if ($existingSourceOrder) {
+                    $existingOrder = $existingSourceOrder;
+                    $orderNo = $this->nextAvailableGeneratedOrderNumber($orderNo, $reservedGeneratedOrderNumbers);
+                } elseif ($existingTargetOrder && isset($reservedGeneratedOrderNumbers[strtolower($orderNo)])) {
+                    $orderNo = $this->nextAvailableGeneratedOrderNumber($orderNo, $reservedGeneratedOrderNumbers);
+                    $existingOrder = $findScopedOrder($orderNo);
+                } elseif ($existingTargetOrder) {
+                    $existingOrder = $existingTargetOrder;
+                } else {
+                    $orderNo = $this->nextAvailableGeneratedOrderNumber($orderNo, $reservedGeneratedOrderNumbers);
+                    $existingOrder = $findScopedOrder($orderNo);
+                }
+            } else {
+                $existingOrder = $findScopedOrder($orderNo);
+            }
 
             $quantity = $this->parseDecimal($col('quantity', 10));
             $importedOrderDate = $cleanDate($col('order_date', 0));
@@ -161,7 +197,7 @@ class ImportController extends Controller
             $data = [
                 // Fall back to the upload date when the file leaves it blank.
                 'order_date' => $importedOrderDate ?? now()->toDateString(),
-                'order_no' => $col('order_no', 1, 'error'),
+                'order_no' => $orderNo,
                 'amount' => $this->parseDecimal($col('amount', 2)),
                 'client_name' => $col('client_name', 3),
                 'address' => $col('address', 4),
@@ -175,7 +211,10 @@ class ImportController extends Controller
                 'delivery_date' => $cleanDate($col('delivery_date', 12)),
                 'agent' => $col('agent', 13),
                 'instructions' => $col('instructions', 14),
-                'cc_email' => $col('cc_email', 15),
+                'cc_email' => $this->sheetOrderImport->resolveCcEmail($sourceSheet, [
+                    'sheet_id' => $request->sheet_id,
+                    'sheet_name' => $request->sheet_name,
+                ]),
                 'merchant' => $request->merchant,
                 'code' => $col('code', 17),
                 'order_type' => 'imported',
@@ -200,7 +239,6 @@ class ImportController extends Controller
                         'delivery_date',
                         'agent',
                         'instructions',
-                        'cc_email',
                         'code',
                     ] as $field) {
                         if (! array_key_exists($field, $headerMap)) {
@@ -245,6 +283,36 @@ class ImportController extends Controller
             'created' => $created,
             'updated' => $updated,
         ]);
+    }
+
+    /**
+     * Keep auto-generated import numbers unique. If a candidate is already in
+     * use, advance its numeric suffix until a free value is found.
+     *
+     * @param  array<string, bool>  $reserved
+     */
+    private function nextAvailableGeneratedOrderNumber(string $candidate, array &$reserved): string
+    {
+        if (! preg_match('/^([A-Z0-9]+?)(\d+)$/i', $candidate, $matches)) {
+            return $candidate;
+        }
+
+        $prefix = $matches[1];
+        $number = (int) $matches[2];
+
+        $candidate = $prefix.$number;
+        do {
+            $candidate = $prefix.$number;
+            $normalized = strtolower($candidate);
+            $exists = isset($reserved[$normalized]) || SheetOrder::query()
+                ->whereRaw('LOWER(order_no) = ?', [$normalized])
+                ->exists();
+            $number++;
+        } while ($exists);
+
+        $reserved[$normalized] = true;
+
+        return $candidate;
     }
 
     /**

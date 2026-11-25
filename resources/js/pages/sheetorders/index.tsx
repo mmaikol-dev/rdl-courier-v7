@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import {
     Calendar1Icon,
     Check,
+    ChevronDown,
     ChevronsUpDown,
     CopyIcon,
     EyeIcon,
@@ -106,6 +107,7 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 // ✅ Memoize filtered columns to prevent recreation
 const FILTERED_COLUMNS = COLUMNS.filter((col) => !['quantity', 'amount', 'instructions'].includes(col));
 const FILTER_FIELDS = [...FILTERED_COLUMNS, 'country'] as const;
+const FILTER_FIELD_SET = new Set<string>(FILTER_FIELDS);
 
 const normalizeMultiSelectFilter = (value: string | string[] | undefined): string[] => {
     if (Array.isArray(value)) {
@@ -185,6 +187,7 @@ const attributeLabels: Record<string, string> = {
     instructions: 'Instructions',
     code: 'Code',
     merchant: 'Merchant',
+    country: 'Country',
 };
 
 interface PaginationLinkData {
@@ -206,7 +209,7 @@ const EMPTY_ORDERS: PaginatedOrders = { data: [], links: [], current_page: 1, pe
 function OrdersTableSkeleton() {
     return (
         <div className="mx-4 mt-4 overflow-hidden rounded-xl border bg-card shadow-sm" role="status" aria-label="Loading orders" aria-live="polite">
-            <div className="scrollbar-custom overflow-x-auto">
+            <div className="scrollbar-custom hidden overflow-x-auto sm:block">
                 <Table className="min-w-full border-separate border-spacing-0">
                     <TableHeader>
                         <TableRow className="h-10">
@@ -230,6 +233,28 @@ function OrdersTableSkeleton() {
                     </TableBody>
                 </Table>
             </div>
+            <div className="sm:hidden">
+                <Table className="w-full table-fixed">
+                    <TableHeader>
+                        <TableRow className="h-9">
+                            <TableHead className="w-[38%] px-2"><Skeleton className="h-3 w-16" /></TableHead>
+                            <TableHead className="px-2"><Skeleton className="h-3 w-16" /></TableHead>
+                            <TableHead className="px-2"><Skeleton className="h-3 w-14" /></TableHead>
+                            <TableHead className="w-10" />
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {Array.from({ length: 8 }).map((_, row) => (
+                            <TableRow key={row} className="h-12">
+                                <TableCell className="px-2 py-2"><Skeleton className="h-4 w-24" /></TableCell>
+                                <TableCell className="px-2 py-2"><Skeleton className="h-4 w-20" /></TableCell>
+                                <TableCell className="px-2 py-2"><Skeleton className="h-5 w-16" /></TableCell>
+                                <TableCell className="px-1 py-2"><Skeleton className="ml-auto h-6 w-6" /></TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
             <div className="mx-2 mb-2 mt-1 flex items-center justify-between rounded-lg border px-2 py-2">
                 <Skeleton className="h-4 w-20" />
                 <Skeleton className="h-8 w-44" />
@@ -245,6 +270,8 @@ const TableRowMemo = React.memo(
         highlighted,
         onEdit,
         onUpdateOrderType,
+        onUpdateCcEmail,
+        ccUsers,
         onHistory,
         onWhatsapp,
         canDelete,
@@ -255,6 +282,8 @@ const TableRowMemo = React.memo(
         highlighted: Record<string, boolean>;
         onEdit: (order: SheetOrder, field: keyof SheetOrder) => void;
         onUpdateOrderType: (order: SheetOrder, value: string) => void;
+        onUpdateCcEmail: (order: SheetOrder, value: string) => void;
+        ccUsers: string[];
         onHistory: (orderId: number, orderNo: string) => void;
         onWhatsapp: (orderId: number) => void;
         canDelete: boolean;
@@ -265,6 +294,9 @@ const TableRowMemo = React.memo(
         const isHistoryLoading = loadingCells[`history-${order.id}`];
         const isWhatsappLoading = loadingCells[`whatsapp-${order.id}`];
         const isDeleteLoading = loadingCells[`delete-${order.id}`];
+        const ccOptions = (order.cc_email && !ccUsers.includes(order.cc_email) ? [order.cc_email, ...ccUsers] : ccUsers).filter(
+            (cc) => typeof cc === 'string' && cc.trim() !== '',
+        );
 
         return (
             <TableRow className="transition-colors hover:bg-muted/50">
@@ -282,7 +314,9 @@ const TableRowMemo = React.memo(
                               ? format(new Date(order.delivery_date), 'yyyy-MM-dd')
                               : col === 'city'
                                 ? order.city?.trim() || 'N/A'
-                                : String(order[col as keyof SheetOrder] || '');
+                                : col === 'cc_email'
+                                  ? order.cc_email?.trim() || 'NOT ASSIGNED'
+                                  : String(order[col as keyof SheetOrder] || '');
                     const canCopyFromColumn = (col === 'phone' || col === 'alt_no') && value.trim() !== '';
 
                     // ✅ Apply green color to all columns if the row has a code value
@@ -304,6 +338,25 @@ const TableRowMemo = React.memo(
                         )}>
                             {value}
                         </span>
+                    ) : col === 'cc_email' ? (
+                        <div onClick={(event) => event.stopPropagation()}>
+                            <Select
+                                value={order.cc_email || ''}
+                                onValueChange={(nextValue) => onUpdateCcEmail(order, nextValue)}
+                                disabled={isSavingCell}
+                            >
+                                <SelectTrigger className="h-7 min-w-28 border-0 bg-transparent px-2 py-0 text-xs shadow-none hover:bg-muted/60">
+                                    <SelectValue placeholder="NOT ASSIGNED" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {ccOptions.map((cc) => (
+                                        <SelectItem key={cc} value={cc}>
+                                            {cc}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     ) : col === 'instructions' ? (
                         <div className="relative -my-2 min-h-8 py-2 pr-7">
                             <span className="block truncate">{value || '—'}</span>
@@ -337,7 +390,7 @@ const TableRowMemo = React.memo(
                         <TableCell
                             key={col}
                             className={baseCellClass}
-                            onClick={() => col !== 'order_type' && onEdit(order, col)}
+                            onClick={() => !['order_type', 'cc_email'].includes(col) && onEdit(order, col)}
                             title={value}
                         >
                             {isSavingCell ? (
@@ -452,9 +505,260 @@ const TableRowMemo = React.memo(
             prevOrder.updated_at === nextOrder.updated_at &&
             JSON.stringify(prevProps.highlighted) === JSON.stringify(nextProps.highlighted) &&
             prevProps.canDelete === nextProps.canDelete &&
+            prevProps.ccUsers === nextProps.ccUsers &&
             JSON.stringify(prevProps.loadingCells) === JSON.stringify(nextProps.loadingCells)
         );
     },
+);
+
+const MobileOrderRow = React.memo(
+    ({
+        order,
+        expanded,
+        onToggle,
+        highlighted,
+        onEdit,
+        onUpdateOrderType,
+        onUpdateCcEmail,
+        ccUsers,
+        onHistory,
+        onWhatsapp,
+        canDelete,
+        onDelete,
+        loadingCells,
+    }: {
+        order: SheetOrder;
+        expanded: boolean;
+        onToggle: (orderId: number) => void;
+        highlighted: Record<string, boolean>;
+        onEdit: (order: SheetOrder, field: keyof SheetOrder) => void;
+        onUpdateOrderType: (order: SheetOrder, value: string) => void;
+        onUpdateCcEmail: (order: SheetOrder, value: string) => void;
+        ccUsers: string[];
+        onHistory: (orderId: number, orderNo: string) => void;
+        onWhatsapp: (orderId: number) => void;
+        canDelete: boolean;
+        onDelete: (order: SheetOrder) => void;
+        loadingCells: Record<string, boolean>;
+    }) => {
+        const isCopyLoading = loadingCells[`copy-${order.id}`];
+        const isHistoryLoading = loadingCells[`history-${order.id}`];
+        const isWhatsappLoading = loadingCells[`whatsapp-${order.id}`];
+        const isDeleteLoading = loadingCells[`delete-${order.id}`];
+        const statusValue = order.status && order.status.trim() !== '' ? order.status : 'New Orders';
+        const hasCode = order.code && order.code.trim() !== '';
+        const ccOptions = (order.cc_email && !ccUsers.includes(order.cc_email) ? [order.cc_email, ...ccUsers] : ccUsers).filter(
+            (cc) => typeof cc === 'string' && cc.trim() !== '',
+        );
+
+        return (
+            <>
+                <TableRow
+                    className="cursor-pointer transition-colors hover:bg-muted/50"
+                    onClick={() => onToggle(order.id)}
+                    aria-expanded={expanded}
+                >
+                    <TableCell className="w-[38%] px-2 py-2">
+                        <div className="truncate text-sm font-semibold">{order.order_no || '—'}</div>
+                        <div className="truncate text-xs text-muted-foreground">{order.product_name || '—'}</div>
+                    </TableCell>
+                    <TableCell className="truncate px-2 py-2 text-sm">{order.client_name || '—'}</TableCell>
+                    <TableCell className="px-2 py-2">
+                        <span
+                            className={cn(
+                                'inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                                statusColors[statusValue] || 'bg-muted text-foreground border-border',
+                            )}
+                        >
+                            {statusValue}
+                        </span>
+                    </TableCell>
+                    <TableCell className="w-10 px-1 py-2 text-right">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label={`${expanded ? 'Hide' : 'Show'} details for order ${order.order_no}`}
+                            aria-expanded={expanded}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onToggle(order.id);
+                            }}
+                        >
+                            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+                        </Button>
+                    </TableCell>
+                </TableRow>
+
+                {expanded ? (
+                    <TableRow>
+                        <TableCell colSpan={4} className="bg-muted/20 px-3 py-3">
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                            {COLUMNS.filter((col) => col !== 'order_no').map((col) => {
+                                const key = `${order.id}-${col}`;
+                                const isSavingCell = loadingCells[`save-${key}`];
+                                const value =
+                                    col === 'status'
+                                        ? statusValue
+                                        : col === 'delivery_date' && order.delivery_date
+                                          ? format(new Date(order.delivery_date), 'yyyy-MM-dd')
+                                          : col === 'city'
+                                            ? order.city?.trim() || 'N/A'
+                                            : col === 'cc_email'
+                                              ? order.cc_email?.trim() || 'NOT ASSIGNED'
+                                              : String(order[col as keyof SheetOrder] || '');
+
+                                return (
+                                    <div
+                                        key={col}
+                                        className={cn(
+                                            'min-w-0 rounded-md px-2 py-1.5',
+                                            highlighted[key] && 'bg-success/20',
+                                        )}
+                                    >
+                                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                            {attributeLabels[col] ?? col}
+                                        </div>
+                                        {isSavingCell ? (
+                                            <div className="flex h-6 items-center">
+                                                <Spinner className="text-muted-foreground" />
+                                            </div>
+                                        ) : col === 'order_type' ? (
+                                            <Select
+                                                value={value === 'inbound' || value === 'outbound' ? value : ''}
+                                                onValueChange={(nextValue) => onUpdateOrderType(order, nextValue)}
+                                            >
+                                                <SelectTrigger className="mt-0.5 h-8 w-full border bg-background px-2 py-0 text-xs">
+                                                    <SelectValue placeholder={value || 'Select type'} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="inbound">Inbound</SelectItem>
+                                                    <SelectItem value="outbound">Outbound</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        ) : col === 'cc_email' ? (
+                                            <Select
+                                                value={order.cc_email || ''}
+                                                onValueChange={(nextValue) => onUpdateCcEmail(order, nextValue)}
+                                            >
+                                                <SelectTrigger className="mt-0.5 h-8 w-full border bg-background px-2 py-0 text-xs">
+                                                    <SelectValue placeholder="NOT ASSIGNED" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {ccOptions.map((cc) => (
+                                                        <SelectItem key={cc} value={cc}>
+                                                            {cc}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                className="mt-0.5 flex w-full items-center justify-between gap-2 text-left text-sm"
+                                                onClick={() => onEdit(order, col)}
+                                            >
+                                                {col === 'status' ? (
+                                                    <span
+                                                        className={cn(
+                                                            'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
+                                                            statusColors[value] || 'bg-muted text-foreground border-border',
+                                                        )}
+                                                    >
+                                                        {value}
+                                                    </span>
+                                                ) : (
+                                                    <span className={cn('truncate', hasCode && 'font-semibold text-success')}>
+                                                        {value || '—'}
+                                                    </span>
+                                                )}
+                                                {col === 'instructions' ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="h-4 min-w-4 shrink-0 justify-center rounded-full border-primary/50 bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground"
+                                                        title={`${order.instructions_edits_count} instruction edits`}
+                                                    >
+                                                        {order.instructions_edits_count}
+                                                    </Badge>
+                                                ) : null}
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center justify-end gap-1 border-t pt-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 px-2 text-xs"
+                                disabled={isCopyLoading}
+                                onClick={() => {
+                                    const rowData = COLUMNS.map((col) => order[col] ?? '').join('\t');
+                                    navigator.clipboard
+                                        .writeText(rowData)
+                                        .then(() => toast.success('Row copied'))
+                                        .catch((err) => {
+                                            console.error('Failed to copy row', err);
+                                            toast.error('Failed to copy row');
+                                        });
+                                }}
+                            >
+                                {isCopyLoading ? <Spinner /> : <CopyIcon className="h-3.5 w-3.5" />}
+                                Copy
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 px-2 text-xs"
+                                disabled={isHistoryLoading}
+                                onClick={() => onHistory(order.id, order.order_no)}
+                            >
+                                {isHistoryLoading ? <Spinner /> : <EyeIcon className="h-3.5 w-3.5" />}
+                                History
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 px-2 text-xs"
+                                disabled={isWhatsappLoading}
+                                onClick={() => onWhatsapp(order.id)}
+                            >
+                                {isWhatsappLoading ? <Spinner /> : <MessageCircleMoreIcon className="h-3.5 w-3.5" />}
+                                WhatsApp
+                            </Button>
+                            {canDelete ? (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 gap-1.5 px-2 text-xs text-destructive hover:text-destructive"
+                                    disabled={isDeleteLoading}
+                                    onClick={() => onDelete(order)}
+                                >
+                                    {isDeleteLoading ? <Spinner /> : <Trash2Icon className="h-3.5 w-3.5" />}
+                                    Delete
+                                </Button>
+                            ) : null}
+                        </div>
+                        </TableCell>
+                    </TableRow>
+                ) : null}
+            </>
+        );
+    },
+    (prevProps, nextProps) =>
+        prevProps.order === nextProps.order &&
+        prevProps.expanded === nextProps.expanded &&
+        prevProps.canDelete === nextProps.canDelete &&
+        prevProps.highlighted === nextProps.highlighted &&
+        prevProps.ccUsers === nextProps.ccUsers &&
+        prevProps.loadingCells === nextProps.loadingCells,
 );
 
 // Helper function to get current date and time in the desired format
@@ -511,6 +815,7 @@ export default function Index() {
     const [editing, setEditing] = React.useState<{ order: SheetOrder; field: keyof SheetOrder } | null>(null);
     const [editValue, setEditValue] = React.useState('');
     const [localOrders, setLocalOrders] = React.useState<SheetOrder[]>(orders.data);
+    const [expandedOrderIds, setExpandedOrderIds] = React.useState<number[]>([]);
     const [highlighted, setHighlighted] = React.useState<Record<string, boolean>>({});
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
     const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
@@ -553,6 +858,37 @@ export default function Index() {
 
     React.useEffect(() => {
         setLocalOrders(orders.data);
+    }, [orders.data]);
+
+    // Keep the inner table scroll position across partial reloads (delete, WhatsApp, etc.)
+    const tableScrollRef = React.useRef<HTMLDivElement | null>(null);
+    const tableScrollTopRef = React.useRef(0);
+    const restoreTableScrollRef = React.useRef(false);
+
+    const captureTableScroll = React.useCallback(() => {
+        tableScrollTopRef.current = tableScrollRef.current?.scrollTop ?? 0;
+        restoreTableScrollRef.current = true;
+    }, []);
+
+    React.useEffect(() => {
+        if (!restoreTableScrollRef.current) return;
+
+        const restore = () => {
+            if (tableScrollRef.current) {
+                tableScrollRef.current.scrollTop = tableScrollTopRef.current;
+            }
+        };
+
+        const frame = requestAnimationFrame(restore);
+        const timeout = window.setTimeout(() => {
+            restore();
+            restoreTableScrollRef.current = false;
+        }, 150);
+
+        return () => {
+            cancelAnimationFrame(frame);
+            window.clearTimeout(timeout);
+        };
     }, [orders.data]);
 
     // Initialize speech recognition
@@ -660,10 +996,9 @@ export default function Index() {
         setEditValue(String(order[field] || ''));
     }, []);
 
-    const handleUpdateOrderType = React.useCallback((order: SheetOrder, value: string) => {
-        if (value === order.order_type) return;
+    const handleUpdateOrderField = React.useCallback((order: SheetOrder, field: 'order_type' | 'cc_email', value: string) => {
+        if (value === String(order[field] ?? '')) return;
 
-        const field = 'order_type';
         const key = `${order.id}-${field}`;
         setLoadingCell(`save-${key}`, true);
         router.put(`/sheetorders/${order.id}`, { [field]: value }, {
@@ -671,7 +1006,7 @@ export default function Index() {
             preserveScroll: true,
             only: ['orderResults'],
             onSuccess: () => {
-                setLocalOrders((current) => current.map((item) => item.id === order.id ? { ...item, order_type: value } : item));
+                setLocalOrders((current) => current.map((item) => item.id === order.id ? { ...item, [field]: value } : item));
                 setHighlighted((previous) => ({ ...previous, [key]: true }));
                 setTimeout(() => setHighlighted((previous) => {
                     const next = { ...previous };
@@ -681,11 +1016,19 @@ export default function Index() {
             },
             onError: (errors) => {
                 const firstError = Object.values(errors ?? {}).flat()[0];
-                toast.error(typeof firstError === 'string' ? firstError : 'Failed to save the order type.');
+                toast.error(typeof firstError === 'string' ? firstError : `Failed to save ${attributeLabels[field] ?? field}.`);
             },
             onFinish: () => setLoadingCell(`save-${key}`, false),
         });
     }, [setLoadingCell]);
+
+    const handleUpdateOrderType = React.useCallback((order: SheetOrder, value: string) => {
+        handleUpdateOrderField(order, 'order_type', value);
+    }, [handleUpdateOrderField]);
+
+    const handleUpdateCcEmail = React.useCallback((order: SheetOrder, value: string) => {
+        handleUpdateOrderField(order, 'cc_email', value);
+    }, [handleUpdateOrderField]);
 
     const handleHistory = React.useCallback(
         async (orderId: number, orderNo: string) => {
@@ -710,11 +1053,15 @@ export default function Index() {
 
     const handleWhatsapp = React.useCallback(
         (orderId: number) => {
+            captureTableScroll();
             setLoadingCell(`whatsapp-${orderId}`, true);
             router.post(
                 `/whatsapp/${orderId}/send`,
                 {},
                 {
+                    preserveState: true,
+                    preserveScroll: true,
+                    only: ['orderResults'],
                     onSuccess: () => {
                         toast.success('WhatsApp message sent successfully');
                         setLoadingCell(`whatsapp-${orderId}`, false);
@@ -726,11 +1073,15 @@ export default function Index() {
                 },
             );
         },
-        [setLoadingCell],
+        [captureTableScroll, setLoadingCell],
     );
 
     const handleDeleteOrder = React.useCallback((order: SheetOrder) => {
         setDeletingOrder(order);
+    }, []);
+
+    const toggleExpandedOrder = React.useCallback((orderId: number) => {
+        setExpandedOrderIds((ids) => (ids.includes(orderId) ? ids.filter((id) => id !== orderId) : [...ids, orderId]));
     }, []);
 
     // ✅ Optimized filter update with useCallback
@@ -887,7 +1238,11 @@ export default function Index() {
         const queryString = params.toString();
         const url = `/sheetorders/${deletingOrder.id}${queryString ? `?${queryString}` : ''}`;
 
+        captureTableScroll();
         router.delete(url, {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['orderResults'],
             onSuccess: () => {
                 setDeletingOrder(null);
                 setIsDeleting(false);
@@ -897,7 +1252,7 @@ export default function Index() {
                 setIsDeleting(false);
             },
         });
-    }, [deletingOrder, filters, dateRange, formatDate]);
+    }, [deletingOrder, filters, dateRange, formatDate, captureTableScroll]);
 
     const applyFilters = React.useCallback(() => {
         setIsFiltering(true);
@@ -970,6 +1325,24 @@ export default function Index() {
         [filters.merchant],
     );
     const selectedCcUsers = React.useMemo(() => normalizeMultiSelectFilter(filters.cc_email as string | string[] | undefined), [filters.cc_email]);
+    const activeFilters = React.useMemo(() => {
+        const entries: { key: string; label: string; value: string }[] = [];
+        const source = initialFilters ?? {};
+
+        Object.entries(source).forEach(([key, raw]) => {
+            if (!FILTER_FIELD_SET.has(key) || key === 'delivery_date' || raw === undefined || raw === null || raw === '') return;
+            const values = (Array.isArray(raw) ? raw : String(raw).split(',')).map((value) => value.trim()).filter(Boolean);
+            values.forEach((value) => entries.push({ key, label: attributeLabels[key] ?? key, value }));
+        });
+
+        if (source.from_date) {
+            const from = String(source.from_date);
+            const to = source.to_date ? String(source.to_date) : from;
+            entries.push({ key: 'delivery_date', label: attributeLabels.delivery_date, value: from === to ? from : `${from} – ${to}` });
+        }
+
+        return entries;
+    }, [initialFilters]);
 
     React.useEffect(() => {
         setFilters(initialFilters || {});
@@ -996,17 +1369,31 @@ export default function Index() {
                         </p>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg" disabled={isFiltering} onClick={() => setFilterDialogOpen(true)}>
+                <div className="grid grid-cols-4 gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-full justify-center gap-2 rounded-lg px-0 sm:w-auto sm:px-3"
+                        disabled={isFiltering}
+                        onClick={() => setFilterDialogOpen(true)}
+                        aria-label="Filters"
+                        title="Filters"
+                    >
                         {isFiltering ? <Spinner /> : <FilterIcon className="h-4 w-4" />}
-                        <span>Filters</span>
+                        <span className="hidden sm:inline">Filters</span>
                     </Button>
 
                     <Sheet open={isCallSheetOpen} onOpenChange={setIsCallSheetOpen}>
                         <SheetTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-full justify-center gap-2 rounded-lg px-0 sm:w-auto sm:px-3"
+                                aria-label="Call center"
+                                title="Call center"
+                            >
                                 <PhoneIcon className="h-4 w-4" />
-                                <span>Call center</span>
+                                <span className="hidden sm:inline">Call center</span>
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="right" className="w-[320px] overflow-y-auto sm:w-[400px]">
@@ -1020,22 +1407,103 @@ export default function Index() {
                     </Sheet>
 
                     {/* Refresh Button */}
-                    <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg" disabled={isRefreshing} onClick={refreshOrders}>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-full justify-center gap-2 rounded-lg px-0 sm:w-auto sm:px-3"
+                        disabled={isRefreshing}
+                        onClick={refreshOrders}
+                        aria-label="Refresh"
+                        title="Refresh"
+                    >
                         {isRefreshing ? <Spinner /> : <RefreshCwIcon className="h-4 w-4" />}
-                        <span>Refresh</span>
+                        <span className="hidden sm:inline">Refresh</span>
                     </Button>
 
-                    <Button size="sm" className="h-9 gap-2 rounded-lg shadow-sm" onClick={openCreateOrder}>
+                    <Button
+                        size="sm"
+                        className="h-9 w-full justify-center gap-2 rounded-lg px-0 shadow-sm sm:w-auto sm:px-3"
+                        onClick={openCreateOrder}
+                        aria-label="New order"
+                        title="New order"
+                    >
                         <PlusIcon className="h-4 w-4" />
-                        <span>New order</span>
+                        <span className="hidden sm:inline">New order</span>
                     </Button>
                 </div>
             </div>
 
+            {activeFilters.length > 0 && (
+                <div className="mx-4 mt-3 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Active filters:</span>
+                    {activeFilters.map((filter) => (
+                        <Badge key={`${filter.key}-${filter.value}`} variant="secondary" className="max-w-full gap-1 py-1">
+                            <span className="shrink-0 text-muted-foreground">{filter.label}:</span>
+                            <span className="truncate font-medium">{filter.value}</span>
+                        </Badge>
+                    ))}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-muted-foreground"
+                        disabled={isFiltering}
+                        onClick={clearFilters}
+                    >
+                        Clear all
+                    </Button>
+                </div>
+            )}
+
             <Deferred data="orderResults" fallback={<OrdersTableSkeleton />}>
             {() => <>
-            <div className="mx-4 mt-4 overflow-hidden border bg-card shadow-sm">
-                            <Table containerClassName="scrollbar-custom max-h-[min(68vh,720px)] overflow-auto" className="min-w-full border-separate border-spacing-0">
+            <div className="mx-4 mt-4 overflow-hidden border bg-card shadow-sm sm:hidden">
+                <Table className="w-full table-fixed">
+                    <TableHeader className="bg-muted">
+                        <TableRow className="h-9 hover:bg-transparent">
+                            <TableHead className="w-[38%] px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Order</TableHead>
+                            <TableHead className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Client</TableHead>
+                            <TableHead className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
+                            <TableHead className="w-10" />
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody className="[&_tr:last-child>td]:border-b-0">
+                        {localOrders.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={4} className="h-40 text-center text-muted-foreground">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+                                            <PackageSearch className="h-6 w-6 text-muted-foreground/60" />
+                                        </div>
+                                        <span className="font-medium">No sheet orders found</span>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            localOrders.map((order) => (
+                                <MobileOrderRow
+                                    key={order.id}
+                                    order={order}
+                                    expanded={expandedOrderIds.includes(order.id)}
+                                    onToggle={toggleExpandedOrder}
+                                    highlighted={highlighted}
+                                    onEdit={handleEdit}
+                                    onUpdateOrderType={handleUpdateOrderType}
+                                    onUpdateCcEmail={handleUpdateCcEmail}
+                                    ccUsers={ccUsers}
+                                    onHistory={handleHistory}
+                                    onWhatsapp={handleWhatsapp}
+                                    canDelete={userPermissions.canDelete}
+                                    onDelete={handleDeleteOrder}
+                                    loadingCells={loadingCells}
+                                />
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+
+            <div className="mx-4 mt-4 hidden overflow-hidden border bg-card shadow-sm sm:block">
+                            <Table containerRef={tableScrollRef} containerClassName="scrollbar-custom max-h-[min(68vh,720px)] overflow-auto" className="min-w-full border-separate border-spacing-0">
                                 <TableHeader className="bg-muted">
                                     <TableRow className="h-10 hover:bg-transparent">
                                         {COLUMNS.map((col) => (
@@ -1074,6 +1542,8 @@ export default function Index() {
                                                 highlighted={highlighted}
                                                 onEdit={handleEdit}
                                                 onUpdateOrderType={handleUpdateOrderType}
+                                                onUpdateCcEmail={handleUpdateCcEmail}
+                                                ccUsers={ccUsers}
                                                 onHistory={handleHistory}
                                                 onWhatsapp={handleWhatsapp}
                                                 canDelete={userPermissions.canDelete}
@@ -1159,7 +1629,7 @@ export default function Index() {
                             <DialogTitle className="text-lg">Filter Orders</DialogTitle>
                             <DialogDescription className="text-xs">Choose fields to narrow down your orders.</DialogDescription>
                         </DialogHeader>
-                        <div className="grid max-h-[65vh] grid-cols-1 gap-x-3 gap-y-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid max-h-[65vh] grid-cols-2 gap-x-2 gap-y-2 overflow-y-auto pr-1 sm:gap-x-3 lg:grid-cols-3">
                             {FILTER_FIELDS.filter((col) => !isMerchant || !['merchant', 'country'].includes(col)).map((col) =>
                                 col === 'delivery_date' ? (
                                     // ✅ Date Range Filter

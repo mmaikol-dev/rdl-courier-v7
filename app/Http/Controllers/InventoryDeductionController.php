@@ -14,6 +14,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,10 +26,16 @@ class InventoryDeductionController extends Controller
 
     private function deliveredOrdersQuery(Request $request)
     {
+        $user = $request->user()?->loadMissing('country');
+
         return CountryAccess::scopeByCountryName(
             SheetOrder::query(),
-            $request->user()?->loadMissing('country')
+            $user
         )
+            ->when(
+                strtolower(trim((string) $user?->roles)) === 'merchant',
+                fn ($query) => $query->where('merchant', $user->name)
+            )
             ->whereNotNull('merchant')
             ->where('merchant', '!=', '')
             ->where(function ($query): void {
@@ -62,6 +69,7 @@ class InventoryDeductionController extends Controller
     {
         $user = $request->user()?->loadMissing('country');
         $selectedMerchant = trim((string) $request->string('merchant'));
+        $search = trim((string) $request->string('search'));
 
         $merchantOptions = (clone $this->deliveredOrdersQuery($request))
             ->select('merchant')
@@ -78,6 +86,16 @@ class InventoryDeductionController extends Controller
         if ($selectedMerchant !== '') {
             $orders = (clone $this->deliveredOrdersQuery($request))
                 ->where('merchant', $selectedMerchant)
+                ->when($search !== '', function ($query) use ($search): void {
+                    $query->where(function ($matches) use ($search): void {
+                        $matches->where('order_no', 'like', '%'.$search.'%')
+                            ->orWhere('client_name', 'like', '%'.$search.'%')
+                            ->orWhere('product_name', 'like', '%'.$search.'%')
+                            ->orWhere('city', 'like', '%'.$search.'%')
+                            ->orWhere('code', 'like', '%'.$search.'%')
+                            ->orWhere('status', 'like', '%'.$search.'%');
+                    });
+                })
                 ->orderByDesc('delivery_date')
                 ->orderByDesc('id')
                 ->paginate($this->perPage($request), ['id', 'order_no', 'client_name', 'product_name', 'code', 'city', 'quantity', 'amount', 'status', 'merchant', 'delivery_date', 'inventory_product_id'])
@@ -104,6 +122,10 @@ class InventoryDeductionController extends Controller
                 $user
             )
                 ->where('merchant', $selectedMerchant)
+                ->when(
+                    strtolower(trim((string) $user?->roles)) === 'merchant',
+                    fn ($query) => $query->where('merchant', $user->name)
+                )
                 ->orderBy('name')
                 ->get([
                     'id',
@@ -127,9 +149,58 @@ class InventoryDeductionController extends Controller
         return Inertia::render('inventory-deductions/index', [
             'merchantOptions' => $merchantOptions,
             'selectedMerchant' => $selectedMerchant !== '' ? $selectedMerchant : null,
+            'search' => $search,
             'orders' => $orders,
             'products' => $products,
         ]);
+    }
+
+    public function assignProduct(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'merchant' => ['required', 'string', 'max:255'],
+            'order_ids' => ['required', 'array', 'min:1'],
+            'order_ids.*' => ['required', 'integer', 'distinct'],
+            'product_id' => ['required', 'integer'],
+        ]);
+
+        $user = $request->user()?->loadMissing('country');
+
+        DB::transaction(function () use ($request, $validated, $user): void {
+            $orders = $this->deliveredOrdersQuery($request)
+                ->where('merchant', $validated['merchant'])
+                ->whereIn('id', $validated['order_ids'])
+                ->lockForUpdate()
+                ->get();
+
+            if ($orders->count() !== count($validated['order_ids'])) {
+                throw ValidationException::withMessages([
+                    'order_ids' => 'One or more selected orders are unavailable or already deducted.',
+                ]);
+            }
+
+            $product = CountryAccess::scopeProducts(Product::query()->lockForUpdate(), $user)
+                ->where('merchant', $validated['merchant'])
+                ->when(
+                    strtolower(trim((string) $user?->roles)) === 'merchant',
+                    fn ($query) => $query->where('merchant', $user->name)
+                )
+                ->find($validated['product_id']);
+
+            if (! $product) {
+                throw ValidationException::withMessages([
+                    'product_id' => 'Choose a product linked to this merchant and country.',
+                ]);
+            }
+
+            SheetOrder::withoutEditTracking(function () use ($orders, $product): void {
+                foreach ($orders as $order) {
+                    $order->forceFill(['inventory_product_id' => $product->id])->saveQuietly();
+                }
+            });
+        });
+
+        return back()->with('success', count($validated['order_ids']).' order(s) assigned to the selected product. Stock has not been deducted; click Deduct Selected to deduct it.');
     }
 
     /**
@@ -188,26 +259,61 @@ class InventoryDeductionController extends Controller
         
         $countriesInvolved = [];
 
+        $skipped = [];
+        $processedCount = 0;
+
         try {
-            DB::transaction(function () use ($deductions, $merchant, $user, &$deductionSummary, &$countriesInvolved): void {
+            DB::transaction(function () use ($deductions, $merchant, $user, &$deductionSummary, &$countriesInvolved, &$skipped, &$processedCount): void {
+                $selectedOrders = CountryAccess::scopeByCountryName(SheetOrder::query()->lockForUpdate(), $user)
+                    ->whereIn('id', $deductions->pluck('order_id')->all())
+                    ->where('merchant', $merchant)
+                    ->get()
+                    ->keyBy('id');
+
+                $orders = $selectedOrders->filter(function (SheetOrder $order): bool {
+                    return $order->inventory_deducted_at === null
+                        && ($order->delivered_at !== null || strcasecmp(trim((string) $order->status), 'delivered') === 0);
+                });
+
                 $productTotals = [];
 
                 foreach ($deductions as $item) {
-                    $order = CountryAccess::scopeByCountryName(SheetOrder::query()->lockForUpdate(), $user)
-                        ->where('id', $item['order_id'])
-                        ->where('merchant', $merchant)
-                        ->whereNull('inventory_deducted_at')
-                        ->where(function ($query): void {
-                            $query->whereNotNull('delivered_at')
-                                ->orWhere('status', 'Delivered')
-                                ->orWhereRaw('LOWER(status) = ?', ['delivered']);
-                        })
-                        ->firstOrFail();
+                    $selectedOrder = $selectedOrders->get($item['order_id']);
+
+                    if (! $selectedOrder) {
+                        $skipped[] = [
+                            'reason' => 'unavailable',
+                            'message' => "Order #{$item['order_id']} is no longer available for deduction.",
+                        ];
+                        continue;
+                    }
+
+                    if ($selectedOrder->inventory_deducted_at !== null) {
+                        $skipped[] = [
+                            'reason' => 'already_deducted',
+                            'message' => "Order {$selectedOrder->order_no} already had stock deducted.",
+                        ];
+                        continue;
+                    }
+
+                    $order = $orders->get($item['order_id']);
+
+                    if (! $order) {
+                        $skipped[] = [
+                            'reason' => 'not_delivered',
+                            'message' => "Order {$selectedOrder->order_no} is not delivered.",
+                        ];
+                        continue;
+                    }
 
                     $quantityToDeduct = max(0, (int) $order->quantity);
 
                     if ($quantityToDeduct <= 0) {
-                        throw new \RuntimeException("Order {$order->order_no} has no deductible quantity.");
+                        $skipped[] = [
+                            'reason' => 'no_quantity',
+                            'message' => "Order {$order->order_no} has no deductible quantity.",
+                        ];
+                        continue;
                     }
 
                     $productId = (int) $item['product_id'];
@@ -216,12 +322,14 @@ class InventoryDeductionController extends Controller
                         $product = CountryAccess::scopeProducts(Product::query()->lockForUpdate(), $user)
                             ->where('id', $productId)
                             ->where('merchant', $merchant)
-                            ->firstOrFail();
-                        
-                        // Get country from product or user
-                        $productCountry = $product->country ?? $user->country->name ?? 'Kenya';
-                        if (!in_array($productCountry, $countriesInvolved)) {
-                            $countriesInvolved[] = $productCountry;
+                            ->first();
+
+                        if (! $product) {
+                            $skipped[] = [
+                                'reason' => 'invalid_product',
+                                'message' => "Product #{$productId} is not available for this merchant.",
+                            ];
+                            continue;
                         }
 
                         $productTotals[$productId] = [
@@ -235,17 +343,23 @@ class InventoryDeductionController extends Controller
                     $productTotals[$productId]['orders'][] = $order;
                 }
 
-                $deductionSummary['total_products'] = count($productTotals);
-
-                foreach ($productTotals as $entry) {
+                foreach ($productTotals as $productId => $entry) {
                     /** @var Product $product */
                     $product = $entry['product'];
                     $totalQuantityToDeduct = (int) $entry['total_quantity'];
-                    
-                    $deductionSummary['total_quantity'] += $totalQuantityToDeduct;
 
                     if ((int) $product->quantity < $totalQuantityToDeduct) {
-                        throw new \RuntimeException("Insufficient stock for {$product->name}. Tried to deduct {$totalQuantityToDeduct}.");
+                        $skipped[] = [
+                            'reason' => 'insufficient_stock',
+                            'message' => "Insufficient stock for {$product->name}. Tried to deduct {$totalQuantityToDeduct}.",
+                        ];
+                        unset($productTotals[$productId]);
+                        continue;
+                    }
+
+                    $productCountry = $product->country ?? $user?->country?->name ?? 'Kenya';
+                    if (! in_array($productCountry, $countriesInvolved, true)) {
+                        $countriesInvolved[] = $productCountry;
                     }
 
                     $previousQuantity = (int) $product->quantity;
@@ -255,6 +369,7 @@ class InventoryDeductionController extends Controller
                         'quantity' => $newQuantity,
                     ]);
 
+                    $deductionSummary['total_quantity'] += $totalQuantityToDeduct;
                     $deductionSummary['products'][] = [
                         'name' => $product->name,
                         'code' => $product->code,
@@ -281,8 +396,12 @@ class InventoryDeductionController extends Controller
                             'inventory_deduction_actor' => $user?->name ?? 'system',
                             'inventory_product_id' => $product->id,
                         ])->save();
+                        $processedCount++;
                     }
                 }
+
+                $deductionSummary['total_orders'] = $processedCount;
+                $deductionSummary['total_products'] = count($productTotals);
             });
 
             // Send WhatsApp notification to the country group
@@ -329,6 +448,22 @@ class InventoryDeductionController extends Controller
             ]);
         }
 
-        return back()->with('success', $deductions->count() . ' order(s) deducted successfully.');
+        $deductedUnits = (int) $deductionSummary['total_quantity'];
+        $message = "Stock has been deducted: {$deductedUnits} unit(s) across {$processedCount} order(s).";
+
+        $skippedCollection = collect($skipped);
+        $alreadyDeductedCount = $skippedCollection->where('reason', 'already_deducted')->count();
+        $otherSkipped = $skippedCollection->where('reason', '!=', 'already_deducted');
+
+        if ($alreadyDeductedCount > 0) {
+            $message .= " {$alreadyDeductedCount} selected order(s) already had stock deducted and were skipped.";
+        }
+
+        if ($otherSkipped->isNotEmpty()) {
+            $preview = $otherSkipped->pluck('message')->take(3)->implode('; ');
+            $message .= ' '.$otherSkipped->count().' other selected item(s) were skipped: '.$preview.($otherSkipped->count() > 3 ? ' ...' : '');
+        }
+
+        return back()->with('success', $message);
     }
 }

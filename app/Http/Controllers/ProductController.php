@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use App\Models\InventoryLog;
 use App\Models\Barcode;
@@ -113,6 +114,19 @@ class ProductController extends Controller
         ],
     ]);
 }
+
+    private function redirectToProductsIndex(Request $request): RedirectResponse
+    {
+        $indexUrl = route('products.index');
+        $previousUrl = $request->session()->previousUrl();
+
+        if ($previousUrl && parse_url($previousUrl, PHP_URL_PATH) === parse_url($indexUrl, PHP_URL_PATH)) {
+            return redirect()->to($previousUrl);
+        }
+
+        return redirect()->to($indexUrl);
+    }
+
     public function inventoryLogs($productCode)
     {
         $logs = InventoryLog::where('product_code', $productCode)
@@ -223,8 +237,11 @@ class ProductController extends Controller
         $previousQuantity = (int) $product->quantity;
         $newQuantity = $previousQuantity + $change;
 
-        if ($newQuantity < 0) {
-            return redirect()->route('products.index')
+        // A positive adjustment should be allowed to recover stock that is
+        // already negative. Only reject an adjustment that further deducts
+        // stock below zero.
+        if ($change < 0 && $newQuantity < 0) {
+            return $this->redirectToProductsIndex($request)
                 ->with('errorMessage', 'Quantity cannot be negative.');
         }
 
@@ -248,7 +265,7 @@ class ProductController extends Controller
             'date_added'      => now(),
         ]);
 
-        return redirect()->route('products.index')
+        return $this->redirectToProductsIndex($request)
             ->with('successMessage', 'Quantity updated successfully!');
     }
 
@@ -351,7 +368,7 @@ class ProductController extends Controller
             }
         });
 
-        return redirect()->route('products.index')
+        return $this->redirectToProductsIndex($request)
             ->with('successMessage', 'Product created successfully!');
     }
 
@@ -400,13 +417,13 @@ class ProductController extends Controller
 
         $product->update($data);
 
-        return redirect()->route('products.index')
+        return $this->redirectToProductsIndex($request)
             ->with('successMessage', 'Product updated successfully!');
     }
 
-    public function destroy(Product $product)
+    public function destroy(Request $request, Product $product)
     {
-        $user = request()->user()?->loadMissing('country');
+        $user = $request->user()?->loadMissing('country');
         abort_unless(
             CountryAccess::hasGlobalAccess($user) || CountryAccess::matchesCountryName($product->country, $user),
             403
@@ -418,7 +435,7 @@ class ProductController extends Controller
 
         $product->delete();
 
-        return redirect()->route('products.index')
+        return $this->redirectToProductsIndex($request)
             ->with('successMessage', 'Product deleted successfully!');
     }
 

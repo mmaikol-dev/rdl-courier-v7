@@ -99,6 +99,44 @@ class OrderProductMatchingTest extends TestCase
         ]);
     }
 
+    public function test_bulk_matching_skips_orders_that_already_have_a_product(): void
+    {
+        $operator = $this->user('Matching Skip Operator');
+        $agent = $this->user('Matching Skip Agent', 'agent');
+        $existingProduct = $this->product($operator, 'Existing Shoes');
+        $newProduct = $this->product($operator, 'Replacement Shoes');
+        $matchedOrder = $this->order('MATCH-SKIP-1', $agent, ['inventory_product_id' => $existingProduct->id]);
+        $deductedOrder = $this->order('MATCH-SKIP-2', $agent, [
+            'inventory_product_id' => $existingProduct->id,
+            'inventory_deducted_at' => now(),
+        ]);
+        $unmatchedOrder = $this->order('MATCH-SKIP-3', $agent);
+
+        $response = $this->actingAs($operator)->postJson('/order-product-matching/bulk', [
+            'order_ids' => [$matchedOrder->id, $deductedOrder->id, $unmatchedOrder->id],
+            'inventory_product_id' => $newProduct->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('orders.0.id', $unmatchedOrder->id)
+            ->assertJsonCount(1, 'skipped')
+            ->assertJsonFragment(['id' => $matchedOrder->id, 'reason' => 'already_matched'])
+            ->assertJsonFragment(['id' => $deductedOrder->id, 'reason' => 'already_deducted']);
+
+        $this->assertDatabaseHas('sheet_orders', [
+            'id' => $matchedOrder->id,
+            'inventory_product_id' => $existingProduct->id,
+        ]);
+        $this->assertDatabaseHas('sheet_orders', [
+            'id' => $deductedOrder->id,
+            'inventory_product_id' => $existingProduct->id,
+        ]);
+        $this->assertDatabaseHas('sheet_orders', [
+            'id' => $unmatchedOrder->id,
+            'inventory_product_id' => $newProduct->id,
+        ]);
+    }
+
     public function test_bulk_matching_rejects_products_outside_the_users_country_scope(): void
     {
         $operator = $this->user('Matching Security Operator', 'warehouse');

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Chat;
 use App\Models\Whatsapp;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -159,6 +160,34 @@ class ChatController extends Controller
                 'last_page' => (int) ceil($total / $perPage),
                 'has_more_pages' => $currentPage < ceil($total / $perPage),
             ],
+        ]);
+    }
+
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $query = Chat::query()
+            ->where('type', '1')
+            ->where('created_at', '>=', now()->subDays(90));
+
+        $this->countryFilter($query);
+
+        $country = $request->query('country');
+        if (is_string($country) && $country !== '' && $country !== '__all__') {
+            $query->whereRaw('LOWER(store_name) = ?', [strtolower(trim($country))]);
+        }
+
+        $count = (clone $query)->count();
+        $conversationCount = (clone $query)
+            ->select('to')
+            ->distinct()
+            ->get()
+            ->map(fn ($chat) => $this->normalizePhoneNumber($chat->to))
+            ->unique()
+            ->count();
+
+        return response()->json([
+            'count' => $count,
+            'conversations' => $conversationCount,
         ]);
     }
 

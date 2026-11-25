@@ -1,4 +1,4 @@
-export type DashboardRange = 'today' | 'last7Days' | 'last30Days' | 'thisMonth' | 'allTime';
+export type DashboardRange = 'today' | 'last7Days' | 'last30Days' | 'thisMonth' | 'allTime' | 'custom';
 
 export interface DashboardNeedsYouCounts {
     toConfirm: number;
@@ -14,6 +14,8 @@ export interface DashboardPageProps {
 
     range?: DashboardRange;
     period?: Exclude<DashboardRange, 'allTime'> | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
     country?: string | null;
     countryLabel: string;
     product?: string | null;

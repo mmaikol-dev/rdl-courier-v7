@@ -42,6 +42,7 @@ use App\Http\Controllers\WaredashController;
 use App\Http\Controllers\WaybillController;
 use App\Http\Controllers\WhatsappController;
 use App\Http\Controllers\OrderScanController;
+use App\Http\Controllers\AgentOrderScanController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -115,6 +116,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/shipments/{shipment}/arrive', [ShipmentController::class, 'markArrived'])->name('shipments.arrive');
     Route::put('/shipments/{shipment}/receipt', [ShipmentController::class, 'saveReceipt'])->name('shipments.receipt');
     Route::get('/inventory-deductions', [InventoryDeductionController::class, 'index'])->name('inventory-deductions.index');
+    Route::post('/inventory-deductions/assign-product', [InventoryDeductionController::class, 'assignProduct'])->name('inventory-deductions.assign-product');
     Route::post('/inventory-deductions', [InventoryDeductionController::class, 'store'])->name('inventory-deductions.store');
 
     // Deducted Orders — view orders already deducted with linked products
@@ -123,6 +125,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // QR order scanning (warehouse outbound/inbound)
     Route::get('/order-scans', [OrderScanController::class, 'index'])->name('order-scans.index');
     Route::post('/order-scans', [OrderScanController::class, 'store'])->name('order-scans.store');
+    Route::get('/agent-order-scans', [AgentOrderScanController::class, 'index'])->name('agent-order-scans.index');
+    Route::post('/agent-order-scans', [AgentOrderScanController::class, 'store'])->name('agent-order-scans.store');
 
     Route::get('/transfer', [TransferController::class, 'index'])->name('transfers.index');
 
@@ -214,6 +218,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/finance-workflow/mark-remitted', [FinanceWorkflowController::class, 'markRemitted'])->name('finance-workflow.mark-remitted');
 
     Route::get('/clearance', [ClearanceController::class, 'index'])->name('clearance.index');
+    Route::post('/clearance/batch', [ClearanceController::class, 'batch'])->name('clearance.batch');
+    Route::post('/clearance/{order}/return', [ClearanceController::class, 'markReturned'])->name('clearance.return');
 
     // undelivered
     Route::resource('/undelivered', UndeliveredController::class);
@@ -233,6 +239,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/chats/{phone}', [ChatController::class, 'updateStatus']);
     Route::get('/chats/{phone}', [ChatController::class, 'show'])->name('chats.show');
     Route::get('/api/whatsapp/conversations', [ChatController::class, 'getConversations']);
+    Route::get('/api/whatsapp/unread-count', [ChatController::class, 'unreadCount'])->name('whatsapp.unreadCount');
 
     // import
     Route::resource('import', ImportController::class);
@@ -280,6 +287,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // updates
     Route::post('/sheet-updates/run', [UpdateController::class, 'run'])
         ->middleware('throttle:2,1');
+    Route::patch('/updates/{sheetorder}/clear-edited-at', [UpdateController::class, 'clearEditedAt'])
+        ->name('updates.clear-edited-at');
     Route::resource('updates', UpdateController::class);
 
     Route::get('/reqcategories', [RequisitionCategoryController::class, 'index'])

@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
@@ -49,10 +50,10 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dispatch', href: '/dispatch' },
 ];
 
-const DISPATCH_COLUMN_ORDER = ['cc_email', 'order_no', 'client_name', 'product_name', 'quantity', 'amount', 'phone', 'delivery_date', 'address', 'agent', 'confirmed', 'status', 'actions'];
+const DISPATCH_COLUMN_ORDER = ['cc_email', 'order_no', 'client_name', 'product_name', 'quantity', 'amount', 'phone', 'delivery_date', 'address', 'agent', 'active', 'confirmed', 'status', 'actions'];
 const DISPATCH_COLUMN_WIDTHS: Record<string, number> = {
     cc_email: 150, order_no: 130, client_name: 160, product_name: 180, quantity: 70, amount: 110, phone: 130,
-    delivery_date: 120, address: 220, agent: 170, confirmed: 110, status: 130, actions: 130,
+    delivery_date: 120, address: 220, agent: 170, active: 70, confirmed: 110, status: 130, actions: 130,
 };
 
 function dispatchStatusClass(status: string | null | undefined): string {
@@ -498,7 +499,7 @@ const OrdersTable = React.memo(function OrdersTable({
                         </div>
                     ) : (
                         <div className="max-h-[70vh] overflow-auto rounded-lg border">
-                            <Table className="min-w-[1850px] table-fixed">
+                            <Table className="min-w-[1920px] table-fixed">
                                 <TableHeader className="sticky top-0 z-30 bg-muted/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-muted/90">
                                     <TableRow className="bg-muted/60 hover:bg-muted/60">
                                         {columnHeader('cc_email', 'CC Email', 'w-[150px]')}
@@ -511,6 +512,7 @@ const OrdersTable = React.memo(function OrdersTable({
                                         {columnHeader('delivery_date', 'Delivery Date', 'w-[120px]')}
                                         {columnHeader('address', 'Address / City', 'w-[220px]')}
                                         {columnHeader('agent', 'Agent', 'w-[170px]')}
+                                        {columnHeader('active', 'Active', 'w-[70px] text-center')}
                                         {columnHeader('confirmed', 'Confirmed', 'w-[110px] text-center')}
                                         {columnHeader('status', 'Status', 'w-[130px]')}
                                         {columnHeader('actions', 'Actions', 'w-[130px] text-right')}
@@ -579,6 +581,25 @@ const OrdersTable = React.memo(function OrdersTable({
                                                         </div>
                                                     )}
                                                 </div>
+                                            </TableCell>
+                                            <TableCell {...lockedCellProps('active')} className={cn('text-center', lockedCellProps('active').className)}>
+                                                {order.agent_id || order.agent ? (
+                                                    updatingAgentId === order.id ? (
+                                                        <Loader2 className="mx-auto h-4 w-4 animate-spin text-primary" aria-label="Updating active assignment" />
+                                                    ) : (
+                                                        <Switch
+                                                            checked
+                                                            onCheckedChange={(checked) => {
+                                                                if (!checked) onAgentChange(order.id, null);
+                                                            }}
+                                                            disabled={readOnly}
+                                                            aria-label={`Unassign agent from order ${order.order_no}`}
+                                                            className="data-[state=checked]:bg-success"
+                                                        />
+                                                    )
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground">—</span>
+                                                )}
                                             </TableCell>
                                             <TableCell {...lockedCellProps('confirmed')} className={cn('text-center', lockedCellProps('confirmed').className)}>
                                                 <div className="flex items-center justify-center gap-1">

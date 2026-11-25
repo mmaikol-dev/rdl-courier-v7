@@ -5,7 +5,9 @@ namespace App\Observers;
 use App\Models\SheetOrder;
 use App\Services\DeliveredOrderInventoryDeductionService;
 use App\Services\MerchantWebhookService;
+use DateTimeInterface;
 use Illuminate\Contracts\Events\ShouldHandleEventsAfterCommit;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class SheetOrderObserver implements ShouldHandleEventsAfterCommit
@@ -37,6 +39,7 @@ class SheetOrderObserver implements ShouldHandleEventsAfterCommit
                 'order_id' => $order->id,
                 'order_no' => $order->order_no,
             ]);
+
             return;
         }
 
@@ -84,8 +87,30 @@ class SheetOrderObserver implements ShouldHandleEventsAfterCommit
             'edited_at',
         ]);
         $data['call_count'] = $order->histories()->where('attribute', 'instructions')->count();
-        $data['updated_at'] = ($order->edited_at ?? $order->updated_at ?? $order->created_at)?->toIso8601String();
+        $data['updated_at'] = $this->toIso8601($order->edited_at ?? $order->updated_at ?? $order->created_at);
 
         app(MerchantWebhookService::class)->send((string) $order->merchant, $event, $data);
+    }
+
+    private function toIso8601(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            if ($value instanceof DateTimeInterface) {
+                return Carbon::instance($value)->toIso8601String();
+            }
+
+            return Carbon::parse((string) $value)->toIso8601String();
+        } catch (\Throwable $exception) {
+            Log::warning('Could not format the merchant webhook order timestamp.', [
+                'value' => is_scalar($value) ? $value : get_debug_type($value),
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 }

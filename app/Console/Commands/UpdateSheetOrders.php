@@ -198,20 +198,30 @@ class UpdateSheetOrders extends Command
                         $hasDeliveryDate = !empty($order->delivery_date);
                         $hasInstructions = !empty($order->instructions);
 
+                        $attemptedAt = now();
                         if ($hasStatus && $hasDeliveryDate && $hasInstructions) {
-                            // All required fields present - mark as fully synced
                             DB::table('sheet_orders')->where('id', $order->id)->update([
                                 'edited_at' => null,
                                 'processed' => 2,
+                                'sheet_update_attempts' => DB::raw('COALESCE(sheet_update_attempts, 0) + 1'),
+                                'sheet_update_last_error' => null,
+                                'sheet_update_last_attempted_at' => $attemptedAt,
                             ]);
                             $fullyProcessedCount++;
 
                             Log::debug("Order #{$order->order_no} marked as fully synced (all required fields present)");
                         } else {
-                            // Some required fields missing - update the timestamp to delay retry
-                            // This prevents it from being picked up immediately in the next run
+                            $missing = collect([
+                                ! $hasStatus ? 'status' : null,
+                                ! $hasDeliveryDate ? 'delivery_date' : null,
+                                ! $hasInstructions ? 'instructions' : null,
+                            ])->filter()->implode(', ');
+
                             DB::table('sheet_orders')->where('id', $order->id)->update([
                                 'edited_at' => now()->addMinutes(30),
+                                'sheet_update_attempts' => DB::raw('COALESCE(sheet_update_attempts, 0) + 1'),
+                                'sheet_update_last_error' => "Missing required fields: {$missing}",
+                                'sheet_update_last_attempted_at' => $attemptedAt,
                             ]);
                             $partiallyProcessedCount++;
 
@@ -258,6 +268,9 @@ class UpdateSheetOrders extends Command
                     DB::table('sheet_orders')->whereIn('id', collect($allProcessedOrders)->pluck('id'))
                         ->update([
                             'edited_at' => now()->addMinutes(15),
+                            'sheet_update_attempts' => DB::raw('COALESCE(sheet_update_attempts, 0) + 1'),
+                            'sheet_update_last_error' => 'Google Sheets quota/rate limit: '.mb_substr($msg, 0, 500),
+                            'sheet_update_last_attempted_at' => now(),
                         ]);
 
                     // Don't hold a PHP process asleep; delay the affected rows instead.
@@ -265,6 +278,13 @@ class UpdateSheetOrders extends Command
                 }
 
                 // Other errors: log and do not mark orders
+                DB::table('sheet_orders')->whereIn('id', collect($allProcessedOrders)->pluck('id'))
+                    ->update([
+                        'sheet_update_attempts' => DB::raw('COALESCE(sheet_update_attempts, 0) + 1'),
+                        'sheet_update_last_error' => 'Batch update failed: '.mb_substr($msg, 0, 500),
+                        'sheet_update_last_attempted_at' => now(),
+                    ]);
+
                 Log::error("✗ Error updating spreadsheet {$spreadsheetId}. Orders will retry later.", [
                     'message' => $msg,
                     'error_code' => $errorCode,
@@ -276,13 +296,18 @@ class UpdateSheetOrders extends Command
             }
 
         } catch (Exception $e) {
-            // General spreadsheet-level exceptions (e.g., spreadsheet not accessible)
             Log::error("✗ Error processing spreadsheet {$spreadsheetId}", [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            // Orders are not marked and will be retried later
+            DB::table('sheet_orders')->whereIn('id', $orders->pluck('id'))
+                ->update([
+                    'sheet_update_attempts' => DB::raw('COALESCE(sheet_update_attempts, 0) + 1'),
+                    'sheet_update_last_error' => 'Spreadsheet processing failed: '.mb_substr($e->getMessage(), 0, 500),
+                    'sheet_update_last_attempted_at' => now(),
+                ]);
+
             return 0;
         }
     }

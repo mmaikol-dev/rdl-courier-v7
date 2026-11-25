@@ -67,7 +67,7 @@ type Phase = "closed" | "opening" | "open" | "closing";
 const EASE = "cubic-bezier(0.16,1,0.3,1)";
 const DURATION = 420;
 const MAX_LIST = 280;
-const PILL_SIZE = { sm: "h-7 px-2.5 text-xs", md: "h-9 pl-4 pr-3.5 text-sm" };
+const PILL_SIZE = { sm: "h-7 px-2.5 text-[12px]", md: "h-9 pl-4 pr-3.5 text-[13.5px]" };
 // The theme travels with the list, so it matches the pill wherever the pill's colours were set.
 const TOKENS = ["--background", "--foreground", "--popover", "--popover-foreground", "--border", "--accent", "--accent-foreground", "--primary", "--primary-foreground", "--muted", "--muted-foreground", "--ring"];
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
@@ -282,7 +282,7 @@ export function PillSelect({
   const listId = `${id}-list`;
   const pillText = renderValue ? null : (
     <>
-      <span className={`min-w-0 flex-1 truncate text-left ${mono ? "font-mono text-xs" : ""} ${muted || !selected ? "text-muted-foreground" : "text-foreground"}`}>
+      <span className={`min-w-0 flex-1 truncate text-left ${mono ? "font-mono text-[11.5px]" : ""} ${muted || !selected ? "text-muted-foreground" : "text-foreground"}`}>
         {block ? text : <TextMorph>{text}</TextMorph>}
       </span>
       <Chevron up={expanded} reduced={reduced} />
@@ -331,6 +331,7 @@ export function PillSelect({
         createPortal(
         <div
           ref={surfaceRef}
+          data-hairline-floating=""
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();
@@ -339,6 +340,7 @@ export function PillSelect({
             }
           }}
           onPointerDown={(e) => {
+            e.stopPropagation();
             if (!(e.target as HTMLElement).closest("[data-scroll]")) e.preventDefault();
             setQuiet(true);
           }}
@@ -349,7 +351,7 @@ export function PillSelect({
             [align === "start" ? "left" : "right"]: fit.x + (expanded ? (align === "start" ? fit.shift : -fit.shift) : 0),
             width: w,
             height: h,
-            borderRadius: expanded ? "var(--radius-lg)" : pill.height / 2,
+            borderRadius: expanded ? 16 : pill.height / 2,
             // The pill's own hairline, the whole way: it is the same surface.
             boxShadow: "inset 0 0 0 1px var(--border)",
             transition: reduced ? "none" : `width ${DURATION}ms ${EASE}, height ${DURATION}ms ${EASE}, left ${DURATION}ms ${EASE}, right ${DURATION}ms ${EASE}, border-radius ${DURATION}ms ${EASE}`,
@@ -381,7 +383,7 @@ export function PillSelect({
               >
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-0 rounded-lg bg-accent"
+                  className="pointer-events-none absolute inset-x-0 top-0 rounded-[12px] bg-accent"
                   style={{
                     height: highlight.height,
                     transform: `translateY(${highlight.top}px)`,
@@ -402,11 +404,11 @@ export function PillSelect({
                       aria-selected={on}
                       onPointerMove={() => setActive(i)}
                       onClick={() => choose(o)}
-                      className="relative flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-1.5"
+                      className="relative flex cursor-pointer items-start gap-2 rounded-[12px] px-2.5 py-1.5"
                     >
                       <span className="min-w-0 flex-1">
-                        <span className={`block truncate ${mono ? "font-mono text-xs" : "text-sm font-medium"}`}>{o.label}</span>
-                        {o.description && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{o.description}</span>}
+                        <span className={`block truncate ${mono ? "font-mono text-[12px]" : "text-[12.5px] font-medium"}`}>{o.label}</span>
+                        {o.description && <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{o.description}</span>}
                       </span>
                       <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="mt-0.5 size-3.5 shrink-0">
                         <path

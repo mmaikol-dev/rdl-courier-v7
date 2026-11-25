@@ -57,6 +57,10 @@ class SheetOrder extends Model
         'sheet_id',
         'sheet_name',
         'clearance_status',
+        'clearance_note',
+        'sheet_update_attempts',
+        'sheet_update_last_error',
+        'sheet_update_last_attempted_at',
         'created_at',
         'updated_at',
         'edited_at',
@@ -74,6 +78,8 @@ class SheetOrder extends Model
         'delivery_date' => 'datetime', // Cast to datetime to preserve time
         'inventory_deducted_at' => 'datetime',
         'edited_at' => 'datetime',
+        'sheet_update_last_attempted_at' => 'datetime',
+        'sheet_update_attempts' => 'integer',
         'assigned_at' => 'datetime',
     ];
 
@@ -105,7 +111,14 @@ class SheetOrder extends Model
                 return;
             }
 
-            $changed = array_diff(array_keys($order->getDirty()), ['edited_at', 'updated_at', 'processed']);
+            $changed = array_diff(array_keys($order->getDirty()), [
+                'edited_at',
+                'updated_at',
+                'processed',
+                'sheet_update_attempts',
+                'sheet_update_last_error',
+                'sheet_update_last_attempted_at',
+            ]);
             if ($changed === []) {
                 return;
             }

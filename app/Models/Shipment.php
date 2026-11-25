@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class Shipment extends Model
 {
@@ -38,6 +40,40 @@ class Shipment extends Model
         'arrived_at' => 'datetime',
         'received_at' => 'datetime',
     ];
+
+    public static function forInbound(array $attributes, int $userId, string $warehouseCode, int $quantity): self
+    {
+        $shipment = new self($attributes);
+
+        if (Schema::hasColumn('shipments', 'date')) {
+            $shipment->setAttribute('date', today()->toDateString());
+        }
+        if (Schema::hasColumn('shipments', 'shipment_no')) {
+            $shipment->setAttribute('shipment_no', 'IN-'.$warehouseCode.'-'.Str::upper(Str::random(10)));
+        }
+        if (Schema::hasColumn('shipments', 'quantity')) {
+            $shipment->setAttribute('quantity', $quantity);
+        }
+        if (Schema::hasColumn('shipments', 'type')) {
+            $shipment->setAttribute('type', 'Received');
+        }
+        if (Schema::hasColumn('shipments', 'user_id')) {
+            $shipment->setAttribute('user_id', $userId);
+        }
+
+        return $shipment;
+    }
+
+    public function assignInboundNumber(string $number): void
+    {
+        $attributes = ['shipment_number' => $number];
+
+        if (Schema::hasColumn('shipments', 'shipment_no')) {
+            $attributes['shipment_no'] = $number;
+        }
+
+        $this->forceFill($attributes)->save();
+    }
 
     public function items(): HasMany
     {

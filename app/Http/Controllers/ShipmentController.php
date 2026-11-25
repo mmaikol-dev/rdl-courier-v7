@@ -7,9 +7,11 @@ use App\Models\Product;
 use App\Models\Shipment;
 use App\Models\ShipmentItem;
 use App\Support\CountryAccess;
+use App\Support\WarehouseCatalog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -24,18 +26,9 @@ class ShipmentController extends Controller
     private function availableWarehouses(Request $request): array
     {
         $user = $request->user()->loadMissing('country');
-        $warehouses = config('warehouses', []);
+        $warehouses = WarehouseCatalog::all();
 
         if (CountryAccess::hasGlobalAccess($user)) {
-            $selectedCountry = trim((string) $request->session()->get('selected_country'));
-
-            if ($selectedCountry !== '') {
-                $warehouses = array_values(array_filter(
-                    $warehouses,
-                    fn (array $warehouse): bool => mb_strtolower($warehouse['country']) === mb_strtolower($selectedCountry),
-                ));
-            }
-
             return $warehouses;
         }
 
@@ -49,8 +42,11 @@ class ShipmentController extends Controller
 
     private function shipmentsForUser(Request $request): Builder
     {
-        $this->ensureInventoryUser($request);
         $user = $request->user()->loadMissing('country');
+
+        if (strtolower(trim((string) $user->roles)) === 'g.o.d') {
+            return Shipment::query();
+        }
 
         return CountryAccess::scopeByCountryName(Shipment::query(), $user, 'country');
     }
@@ -155,7 +151,8 @@ class ShipmentController extends Controller
             'warehouse_code' => 'required|string|max:16',
             'note' => 'nullable|string|max:5000',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|integer|distinct|exists:products,id',
+            'items.*.product_name' => 'required|string|max:255',
+            'items.*.product_code' => 'nullable|string|max:255',
             'items.*.expected_quantity' => 'required|integer|min:1|max:10000000',
         ]);
 
@@ -168,21 +165,8 @@ class ShipmentController extends Controller
             ]);
         }
 
-        $productIds = collect($validated['items'])->pluck('product_id')->map(fn ($id): int => (int) $id);
-        $products = Product::query()
-            ->whereIn('id', $productIds)
-            ->whereRaw('LOWER(TRIM(country)) = ?', [mb_strtolower($warehouse['country'])])
-            ->get()
-            ->keyBy('id');
-
-        if ($products->count() !== $productIds->count()) {
-            throw ValidationException::withMessages([
-                'items' => 'Every shipment product must belong to the receiving warehouse country.',
-            ]);
-        }
-
-        $shipment = DB::transaction(function () use ($validated, $warehouse, $products, $request): Shipment {
-            $shipment = Shipment::create([
+        $shipment = DB::transaction(function () use ($validated, $warehouse, $request): Shipment {
+            $shipmentAttributes = [
                 'supplier' => $validated['supplier'],
                 'supplier_reference' => $validated['supplier_reference'] ?? null,
                 'carrier' => $validated['carrier'] ?? null,
@@ -195,27 +179,89 @@ class ShipmentController extends Controller
                 'status' => Shipment::EXPECTED,
                 'note' => $validated['note'] ?? null,
                 'created_by' => $request->user()->id,
-            ]);
+            ];
+            $shipment = Shipment::forInbound(
+                $shipmentAttributes,
+                (int) $request->user()->id,
+                $warehouse['code'],
+                (int) collect($validated['items'])->sum('expected_quantity'),
+            );
+            $shipment->save();
 
-            $shipment->update([
-                'shipment_number' => 'IN-'.$warehouse['code'].'-'.str_pad((string) $shipment->id, 5, '0', STR_PAD_LEFT),
-            ]);
+            $shipmentNumber = 'IN-'.$warehouse['code'].'-'.str_pad((string) $shipment->id, 5, '0', STR_PAD_LEFT);
+            $shipment->assignInboundNumber($shipmentNumber);
 
+            $shipmentItems = [];
             foreach ($validated['items'] as $item) {
-                $product = $products->get((int) $item['product_id']);
+                $productCode = trim((string) ($item['product_code'] ?? ''));
+                $product = $productCode !== ''
+                    ? Product::query()->where('code', $productCode)->lockForUpdate()->first()
+                    : null;
 
-                $shipment->items()->create([
-                    'product_id' => $product->id,
-                    'product_name' => $product->name,
-                    'product_code' => $product->code,
-                    'expected_quantity' => $item['expected_quantity'],
-                ]);
+                if ($product && mb_strtolower(trim((string) $product->country)) !== mb_strtolower($warehouse['country'])) {
+                    throw ValidationException::withMessages([
+                        'items' => "SKU {$productCode} already exists for a different country.",
+                    ]);
+                }
+
+                if (! $product) {
+                    $productCode = $productCode !== '' ? $productCode : $this->generateShipmentProductCode();
+                    $user = $request->user()->loadMissing('country');
+                    $baseSlug = Str::slug($item['product_name']) ?: 'product';
+                    $slug = $baseSlug;
+                    for ($suffix = 1; Product::query()->where('slug', $slug)->exists(); $suffix++) {
+                        $slug = $baseSlug.'-'.$suffix;
+                    }
+                    $categoryId = DB::table('categories')->where('id', 10)->value('id') ?? DB::table('categories')->value('id');
+                    $unitId = DB::table('units')->where('id', 10)->value('id') ?? DB::table('units')->value('id');
+
+                    $product = Product::create([
+                        'user_id' => $user->id,
+                        'uuid' => $user->uuid,
+                        'name' => $item['product_name'],
+                        'code' => $productCode,
+                        'slug' => $slug,
+                        'quantity' => 0,
+                        'quantity_alert' => 0,
+                        'buying_price' => 0,
+                        'selling_price' => 0,
+                        'category_id' => $categoryId,
+                        'unit_id' => $unitId,
+                        'country' => $warehouse['country'],
+                        'merchant' => $user->name,
+                        'store_name' => $user->name.' Store',
+                    ]);
+                }
+
+                if (isset($shipmentItems[$product->id])) {
+                    $shipmentItems[$product->id]['expected_quantity'] += (int) $item['expected_quantity'];
+                } else {
+                    $shipmentItems[$product->id] = [
+                        'product_id' => $product->id,
+                        'product_name' => $product->name,
+                        'product_code' => $product->code,
+                        'expected_quantity' => (int) $item['expected_quantity'],
+                    ];
+                }
+            }
+
+            foreach ($shipmentItems as $shipmentItem) {
+                $shipment->items()->create($shipmentItem);
             }
 
             return $shipment;
         });
 
         return redirect()->route('shipments.show', $shipment)->with('success', 'Shipment created and added to inbound stock.');
+    }
+
+    private function generateShipmentProductCode(): string
+    {
+        do {
+            $code = 'SHIP-'.Str::upper(Str::random(8));
+        } while (Product::query()->where('code', $code)->exists());
+
+        return $code;
     }
 
     public function show(Request $request, int $shipment)
@@ -229,6 +275,7 @@ class ShipmentController extends Controller
 
     public function markArrived(Request $request, int $shipment)
     {
+        $this->ensureInventoryUser($request);
         $shipment = $this->shipmentsForUser($request)->findOrFail($shipment);
 
         if ($shipment->status !== Shipment::EXPECTED) {

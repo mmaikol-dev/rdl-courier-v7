@@ -42,7 +42,8 @@ import {
   ChevronUp,
   PhoneCall,
   GripVertical,
-  MessageSquare
+  MessageSquare,
+  Zap,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -196,6 +197,16 @@ export default function Index() {
   const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
   const [phoneNumbers, setPhoneNumbers] = React.useState<Record<number, string>>({});
   const [expandedRows, setExpandedRows] = React.useState<Set<number>>(new Set());
+  const expressStorageKey = `${storageKey}-express-orders`;
+  const [expressRows, setExpressRows] = React.useState<Set<number>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const saved = JSON.parse(localStorage.getItem(expressStorageKey) || '[]');
+      return new Set(Array.isArray(saved) ? saved.filter((id): id is number => Number.isInteger(id)) : []);
+    } catch {
+      return new Set();
+    }
+  });
   const [searchModalOpen, setSearchModalOpen] = React.useState(false);
   const [orderedItems, setOrderedItems] = React.useState<SheetOrder[]>([]);
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null);
@@ -207,6 +218,23 @@ export default function Index() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [payingOrders, setPayingOrders] = React.useState<Set<number>>(new Set());
   const [savingConfirmations, setSavingConfirmations] = React.useState<Set<number>>(new Set());
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(expressStorageKey, JSON.stringify([...expressRows]));
+    } catch {
+      // Keep the visual express marker usable even when browser storage is unavailable.
+    }
+  }, [expressRows, expressStorageKey]);
+
+  const toggleExpress = (orderId: number) => {
+    setExpressRows(current => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
 
   const filteredOrders = orderedItems.filter(order => confirmationFilter === 'all'
     || (confirmationFilter === 'confirmed' ? Number(order.confirmed) === 1 : Number(order.confirmed) !== 1));
@@ -733,6 +761,7 @@ export default function Index() {
                   <TableBody>
                     {filteredOrders.map((order, index) => {
                       const isPaying = payingOrders.has(order.id);
+                      const isExpress = expressRows.has(order.id);
                       const confirmationBadge = getConfirmationBadge(order.confirmed);
                       return (
                         <TableRow
@@ -743,6 +772,7 @@ export default function Index() {
                           onDragEnd={handleDragEnd}
                           className={cn(
                             'cursor-move',
+                            isExpress && 'border-primary/30 bg-primary/15 hover:bg-primary/20',
                             draggedIndex === index && 'opacity-50',
                           )}
                         >
@@ -768,6 +798,26 @@ export default function Index() {
                             <div className="flex flex-col">
                               <span className="font-medium">{order.client_name}</span>
                               {order.address && <span className="text-xs text-muted-foreground truncate max-w-[200px]">{order.address}</span>}
+                              {order.comments?.trim() && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="mt-1 h-6 w-fit gap-1 px-1.5 text-xs text-primary"
+                                      aria-label={`View riders comment for ${order.order_no}`}
+                                    >
+                                      <MessageSquare className="size-3" />
+                                      Riders comment
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent align="start" className="max-w-sm">
+                                    <p className="mb-1 text-xs font-semibold text-primary">Riders comment</p>
+                                    <p className="whitespace-pre-wrap break-words text-sm">{order.comments}</p>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -795,6 +845,18 @@ export default function Index() {
                           <TableCell>
                             <div className="flex flex-col gap-1">
                               <div className="flex gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={isExpress ? 'default' : 'outline'}
+                                  onClick={() => toggleExpress(order.id)}
+                                  className="h-8 w-8 p-0"
+                                  title={isExpress ? 'Remove express highlight' : 'Mark as express'}
+                                  aria-label={isExpress ? `Remove express highlight from ${order.order_no}` : `Mark ${order.order_no} as express`}
+                                  aria-pressed={isExpress}
+                                >
+                                  <Zap className={cn('h-3.5 w-3.5', isExpress && 'fill-current')} />
+                                </Button>
                                 <Button
                                   size="sm"
                                   onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
@@ -844,6 +906,7 @@ export default function Index() {
                     {filteredOrders.map((order, index) => {
                       const isPaying = payingOrders.has(order.id);
                       const isSavingConfirmation = savingConfirmations.has(order.id);
+                      const isExpress = expressRows.has(order.id);
                       const confirmationBadge = getConfirmationBadge(order.confirmed);
                       return (
                         <React.Fragment key={order.id}>
@@ -853,6 +916,7 @@ export default function Index() {
                             onDragOver={(e) => handleDragOver(e, index)}
                             onDragEnd={handleDragEnd}
                             className={cn(
+                              isExpress && 'border-primary/30 bg-primary/15 hover:bg-primary/20',
                               draggedIndex === index && 'opacity-50',
                             )}
                           >
@@ -867,8 +931,20 @@ export default function Index() {
                             </TableCell>
                             <TableCell onClick={() => toggleRowExpansion(order.id)} className="min-w-0 cursor-pointer px-1">
                               <div className="flex min-w-0 flex-col gap-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
                                   <span className="block truncate font-medium text-sm">{order.order_no}</span>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant={isExpress ? 'default' : 'ghost'}
+                                    className="size-6 shrink-0"
+                                    title={isExpress ? 'Remove express highlight' : 'Mark as express'}
+                                    aria-label={isExpress ? `Remove express highlight from ${order.order_no}` : `Mark ${order.order_no} as express`}
+                                    aria-pressed={isExpress}
+                                    onClick={event => { event.stopPropagation(); toggleExpress(order.id); }}
+                                  >
+                                    <Zap className={cn('size-3.5', isExpress && 'fill-current')} />
+                                  </Button>
                                 </div>
                                 {confirmationBadge && (
                                   <Badge className={`w-fit ${confirmationBadge.className} text-[10px] px-1.5 py-0`}>
@@ -892,7 +968,7 @@ export default function Index() {
                           </TableRow>
                           {expandedRows.has(order.id) && (
                             <TableRow>
-                              <TableCell colSpan={5} className="bg-muted/50 p-4">
+                              <TableCell colSpan={5} className={cn('p-4', isExpress ? 'bg-primary/10' : 'bg-muted/50')}>
                                 <div className="space-y-3">
                                   <div className="flex items-center justify-between gap-3 border-b pb-3">
                                     <div className="min-w-0">
@@ -942,6 +1018,15 @@ export default function Index() {
                                       <div className="col-span-2">
                                         <span className="text-muted-foreground text-xs">CC Email:</span>
                                         <p className="font-medium break-all">{order.cc_email}</p>
+                                      </div>
+                                    )}
+                                    {order.comments?.trim() && (
+                                      <div className="col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                                        <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-primary">
+                                          <MessageSquare className="size-3.5" />
+                                          Riders comment
+                                        </div>
+                                        <p className="whitespace-pre-wrap break-words text-sm">{order.comments}</p>
                                       </div>
                                     )}
                                   </div>

@@ -179,6 +179,8 @@ export default function Dashboard() {
     const page = usePage<DashboardPageProps & { selectedCurrency?: string }>()
     const {
         range = 'last30Days',
+        dateFrom = null,
+        dateTo = null,
         country = null,
         countryLabel,
         product,
@@ -292,6 +294,8 @@ export default function Dashboard() {
                 <PageHeader
                     userName={userName}
                     range={range}
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
                     country={country}
                     countryLabel={countryLabel}
                     product={product ?? null}
@@ -302,7 +306,7 @@ export default function Dashboard() {
                     isLoading={!dashboardReport}
                 />
                 <Deferred
-                    key={`${range}:${country ?? ''}:${product ?? ''}`}
+                    key={`${range}:${dateFrom ?? ''}:${dateTo ?? ''}:${country ?? ''}:${product ?? ''}`}
                     data="dashboardReport"
                     fallback={<DashboardLoadingSkeleton isAgent={isAgent} />}
                 >

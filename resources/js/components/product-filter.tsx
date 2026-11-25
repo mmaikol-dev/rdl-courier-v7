@@ -23,9 +23,10 @@ interface ProductFilterProps {
   param?: string;
   preserveState?: boolean;
   preserveScroll?: boolean;
+  onChange?: (value: string | undefined) => void;
 }
 
-export function ProductFilter({ options, value, param = 'product', preserveState = false, preserveScroll = false }: ProductFilterProps) {
+export function ProductFilter({ options, value, param = 'product', preserveState = false, preserveScroll = false, onChange }: ProductFilterProps) {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -35,6 +36,10 @@ export function ProductFilter({ options, value, param = 'product', preserveState
 
   function handleSelect(product: string) {
     setOpen(false);
+    if (onChange) {
+      onChange(product === '__all__' ? undefined : product);
+      return;
+    }
     setLoading(true);
     const url = new URL(window.location.href);
     if (product === '__all__') {

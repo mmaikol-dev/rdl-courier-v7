@@ -20,6 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Cloudflared connects to the loopback origin and forwards the public
+        // request scheme/host in X-Forwarded-* headers. Trust only the local
+        // tunnel process so generated links and form actions stay HTTPS.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
         $middleware->validateCsrfTokens(except: [

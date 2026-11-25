@@ -168,7 +168,17 @@ class SheetOrderController extends Controller
 
         if ($user->roles === 'merchant') {
             $merchantUsers = collect([$user->name]);
-            $ccUsers = (clone $query)->reorder()->whereNotNull('cc_email')->distinct()->pluck('cc_email');
+            // Blank cc_email cells are stored as empty strings by the CSV importer,
+            // so exclude them here: a Radix SelectItem cannot have an empty value.
+            $ccUsers = (clone $query)->reorder()
+                ->whereNotNull('cc_email')
+                ->whereRaw("TRIM(cc_email) <> ''")
+                ->distinct()
+                ->pluck('cc_email')
+                ->map(fn ($email) => trim((string) $email))
+                ->filter()
+                ->unique()
+                ->values();
         } else {
             $merchantUsers = CountryAccess::scopeByCountryName(
                 Sheet::query(),
@@ -350,6 +360,7 @@ class SheetOrderController extends Controller
             'status' => 'string|max:50',
             'instructions' => 'nullable|string',
             'clearance_status' => 'string|in:cleared,not_cleared',
+            'clearance_note' => 'nullable|string|max:1000',
         ];
 
         $validated = $request->validate([

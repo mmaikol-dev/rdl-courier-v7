@@ -338,6 +338,8 @@ class StatsReportService
             'filters' => [
                 'date_range' => $dateRange,
                 'date_field' => $dateColumn,
+                'date_from' => $filters['date_from'],
+                'date_to' => $filters['date_to'],
                 'cc_email' => $ccEmail,
                 'merchant' => $merchant,
                 'status' => $status,
@@ -351,7 +353,12 @@ class StatsReportService
     {
         $query = $this->scopeVisibleOrders($user);
 
-        if ($filters['date_range'] !== 'all_time') {
+        if ($filters['date_range'] === 'custom' && $filters['date_from'] && $filters['date_to']) {
+            $query->whereBetween($filters['date_field'], [
+                Carbon::parse($filters['date_from'])->startOfDay(),
+                Carbon::parse($filters['date_to'])->endOfDay(),
+            ]);
+        } elseif ($filters['date_range'] !== 'all_time') {
             $dates = $this->getDateRange($filters['date_range']);
             $query->whereBetween($filters['date_field'], [$dates['start'], $dates['end']]);
         }
@@ -382,10 +389,22 @@ class StatsReportService
     private function normalizeFilters(array $filters): array
     {
         $dateField = $filters['date_field'] ?? 'order_date';
+        $dateFrom = $filters['date_from'] ?? null;
+        $dateTo = $filters['date_to'] ?? null;
+        $dateFrom = is_string($dateFrom) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom) ? $dateFrom : null;
+        $dateTo = is_string($dateTo) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo) ? $dateTo : null;
+        $dateRange = $filters['date_range'] ?? 'all_time';
+        if ($dateRange === 'custom' && (! $dateFrom || ! $dateTo)) {
+            $dateRange = 'all_time';
+            $dateFrom = null;
+            $dateTo = null;
+        }
 
         return [
-            'date_range' => $filters['date_range'] ?? 'all_time',
+            'date_range' => $dateRange,
             'date_field' => in_array($dateField, ['order_date', 'delivery_date'], true) ? $dateField : 'order_date',
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
             'cc_email' => $filters['cc_email'] ?? null,
             'merchant' => $filters['merchant'] ?? null,
             'status' => $filters['status'] ?? null,

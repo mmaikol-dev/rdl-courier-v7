@@ -72,12 +72,14 @@ interface PaginatedOrders {
   links: PaginationLinkData[];
 }
 
-interface PageProps {
+interface PageProps extends Record<string, unknown> {
   merchantOptions: string[];
   selectedMerchant: string | null;
+  search: string;
   orders: PaginatedOrders;
   products: MerchantProduct[];
   errors?: Record<string, string>;
+  flash?: { success?: string | null; error?: string | null; warning?: string | null };
 }
 
 function SearchableSelect({
@@ -152,7 +154,8 @@ function SearchableSelect({
 }
 
 export default function InventoryDeductionsPage() {
-  const { merchantOptions, selectedMerchant, orders, products, errors } = usePage<PageProps>().props;
+  const page = usePage<PageProps>();
+  const { merchantOptions, selectedMerchant, search, orders, products, errors } = page.props;
   // Defensive: the server always sends a paginator, but a stale/partial prop must not
   // white-screen the page.
   const orderRows = React.useMemo(() => orders?.data ?? [], [orders]);
@@ -161,18 +164,22 @@ export default function InventoryDeductionsPage() {
   const [productSelections, setProductSelections] = React.useState<Record<number, string>>({});
   const [dismissedOrderIds, setDismissedOrderIds] = React.useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isSearchLoading, setIsSearchLoading] = React.useState(false);
+  const [isBulkAssigning, setIsBulkAssigning] = React.useState(false);
+  const [bulkProductId, setBulkProductId] = React.useState('');
   const [isMerchantLoading, setIsMerchantLoading] = React.useState(false);
-  const [orderFilter, setOrderFilter] = React.useState('');
+  const [orderFilter, setOrderFilter] = React.useState(search ?? '');
   const [isProductsOpen, setIsProductsOpen] = React.useState(false);
+  const searchTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     setProductSelections((current) => {
       const next = { ...current };
 
       orderRows.forEach((order) => {
-        const matched = products.find((product) => (
-          order.inventory_product_id === product.id
-          || product.code.trim().toLowerCase() === (order.code ?? '').trim().toLowerCase()
+        const linkedProduct = products.find((product) => product.id === order.inventory_product_id);
+        const matched = linkedProduct ?? products.find((product) => (
+          product.code.trim().toLowerCase() === (order.code ?? '').trim().toLowerCase()
           || product.name.trim().toLowerCase() === (order.product_name ?? '').trim().toLowerCase()
         ));
 
@@ -191,8 +198,14 @@ export default function InventoryDeductionsPage() {
     setSelectedOrderIds([]);
     setDismissedOrderIds([]);
     setProductSelections({});
+    setBulkProductId('');
     setOrderFilter('');
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
   }, [selectedMerchant]);
+
+  React.useEffect(() => () => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+  }, []);
 
   React.useEffect(() => {
     if (errors?.deductions) {
@@ -213,18 +226,10 @@ export default function InventoryDeductionsPage() {
     [products],
   );
 
-  const filteredOrders = React.useMemo(() => {
-    const keyword = orderFilter.trim().toLowerCase();
-
-    const visibleOrders = orderRows.filter((order) => !dismissedOrderIds.includes(order.id));
-
-    if (keyword === '') return visibleOrders;
-
-    return visibleOrders.filter((order) =>
-      [order.order_no, order.client_name, order.product_name, order.city, order.code, order.status]
-        .some((value) => (value ?? '').toLowerCase().includes(keyword)),
-    );
-  }, [dismissedOrderIds, orderFilter, orderRows]);
+  const filteredOrders = React.useMemo(
+    () => orderRows.filter((order) => !dismissedOrderIds.includes(order.id)),
+    [dismissedOrderIds, orderRows],
+  );
 
   const productById = React.useMemo(
     () => Object.fromEntries(products.map((product) => [String(product.id), product])),
@@ -236,6 +241,8 @@ export default function InventoryDeductionsPage() {
   const reloadMerchant = React.useCallback((nextMerchant: string) => {
     setMerchant(nextMerchant);
     setSelectedOrderIds([]);
+    setOrderFilter('');
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
     setIsMerchantLoading(true);
 
     router.get('/inventory-deductions', nextMerchant ? { merchant: nextMerchant } : {}, {
@@ -246,20 +253,42 @@ export default function InventoryDeductionsPage() {
     });
   }, []);
 
+  const updateOrderFilter = React.useCallback((value: string) => {
+    setOrderFilter(value);
+    if (!merchant) return;
+
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      setIsSearchLoading(true);
+      router.get('/inventory-deductions', {
+        merchant,
+        search: value.trim() || undefined,
+        page: 1,
+      }, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        onFinish: () => setIsSearchLoading(false),
+      });
+    }, 350);
+  }, [merchant]);
+
   const goToPage = React.useCallback((page: number) => {
     if (page < 1 || page > (orders?.last_page ?? 1) || page === orders?.current_page) {
       return;
     }
 
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
     setIsMerchantLoading(true);
 
-    router.get('/inventory-deductions', { merchant, page }, {
+    router.get('/inventory-deductions', { merchant, search: orderFilter.trim() || undefined, page }, {
       preserveState: true,
       preserveScroll: true,
       replace: true,
       onFinish: () => setIsMerchantLoading(false),
     });
-  }, [merchant, orders?.current_page, orders?.last_page]);
+  }, [merchant, orderFilter, orders?.current_page, orders?.last_page]);
 
   const toggleOrder = React.useCallback((orderId: number, checked: boolean) => {
     setSelectedOrderIds((current) => (
@@ -321,9 +350,11 @@ export default function InventoryDeductionsPage() {
       deductions,
     }, {
       preserveScroll: true,
-      onSuccess: () => {
+      preserveState: true,
+      onSuccess: (responsePage) => {
+        const successMessage = (responsePage.props as unknown as PageProps).flash?.success;
         setDismissedOrderIds((current) => [...new Set([...current, ...selectedOrderIds])]);
-        toast.success(`${deductions.length} order(s) deducted successfully.`);
+        toast.success(typeof successMessage === 'string' && successMessage ? successMessage : `${deductions.length} order(s) processed.`);
         setSelectedOrderIds([]);
         setProductSelections({});
         router.reload({ only: ['orders', 'products'] });
@@ -331,10 +362,49 @@ export default function InventoryDeductionsPage() {
       onError: (formErrors) => {
         const firstError = Object.values(formErrors)[0];
         toast.error(typeof firstError === 'string' ? firstError : 'Failed to deduct inventory.');
+        setSelectedOrderIds([]);
+        setProductSelections({});
+        router.reload({ only: ['orders', 'products'] });
       },
       onFinish: () => setIsSubmitting(false),
     });
   }, [merchant, productSelections, selectedOrderIds]);
+
+  const assignProductToSelected = React.useCallback(() => {
+    if (!merchant || selectedOrderIds.length === 0 || !bulkProductId || isBulkAssigning) return;
+
+    const orderIds = [...selectedOrderIds];
+    const productId = Number(bulkProductId);
+    setIsBulkAssigning(true);
+
+    router.post('/inventory-deductions/assign-product', {
+      merchant,
+      order_ids: orderIds,
+      product_id: productId,
+    }, {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: (responsePage) => {
+        setProductSelections((current) => {
+          const next = { ...current };
+          orderIds.forEach((orderId) => { next[orderId] = String(productId); });
+          return next;
+        });
+        setBulkProductId('');
+        const successMessage = (responsePage.props as unknown as PageProps).flash?.success;
+        toast.success(typeof successMessage === 'string' && successMessage ? successMessage : `${orderIds.length} order(s) assigned to the selected product. Stock has not been deducted; click Deduct Selected to deduct it.`);
+        router.reload({ only: ['orders', 'products'] });
+      },
+      onError: (formErrors) => {
+        const firstError = Object.values(formErrors)[0];
+        toast.error(typeof firstError === 'string' ? firstError : 'Could not assign the product to these orders.');
+        setSelectedOrderIds([]);
+        setProductSelections({});
+        router.reload({ only: ['orders', 'products'] });
+      },
+      onFinish: () => setIsBulkAssigning(false),
+    });
+  }, [bulkProductId, isBulkAssigning, merchant, selectedOrderIds]);
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -471,17 +541,38 @@ export default function InventoryDeductionsPage() {
                 </Dialog>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <Input
-                    value={orderFilter}
-                    onChange={(event) => setOrderFilter(event.target.value)}
-                    placeholder="Filter this page by order no, client, product, city, code, or status"
-                    className="sm:max-w-sm"
-                  />
-                  <Button onClick={submitDeductions} disabled={isSubmitting || selectedOrderIds.length === 0} className="gap-2">
-                    {isSubmitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                    Deduct Selected
-                  </Button>
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="relative xl:max-w-sm">
+                    <Input
+                      value={orderFilter}
+                      onChange={(event) => updateOrderFilter(event.target.value)}
+                      placeholder="Search all pages by order, client, product, city, code, or status"
+                      className="pr-9"
+                    />
+                    {isSearchLoading ? <LoaderCircle className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" /> : null}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
+                    <SearchableSelect
+                      value={bulkProductId}
+                      placeholder="Product for selected orders"
+                      emptyMessage="No product found."
+                      options={productOptions}
+                      onChange={setBulkProductId}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={assignProductToSelected}
+                      disabled={isBulkAssigning || selectedOrderIds.length === 0 || !bulkProductId}
+                      className="gap-2"
+                    >
+                      {isBulkAssigning ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                      Assign Product
+                    </Button>
+                    <Button onClick={submitDeductions} disabled={isSubmitting || selectedOrderIds.length === 0} className="gap-2">
+                      {isSubmitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                      Deduct Selected
+                    </Button>
+                  </div>
                 </div>
 
                 {filteredOrders.length === 0 ? (

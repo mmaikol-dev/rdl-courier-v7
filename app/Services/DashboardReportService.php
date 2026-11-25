@@ -19,19 +19,21 @@ class DashboardReportService
         User $user,
         ?string $period = null,
         ?string $product = null,
-        ?string $country = null
+        ?string $country = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null
     ): array
     {
         $user->loadMissing('country');
 
         if (strtolower(trim((string) $user->roles)) === 'agent') {
-            return $this->buildPayload($user, $period, $product, $country);
+            return $this->buildPayload($user, $period, $product, $country, $dateFrom, $dateTo);
         }
 
         return Cache::remember(
-            $this->cacheKey($user, $period, $product, $country),
+            $this->cacheKey($user, $period, $product, $country, $dateFrom, $dateTo),
             now()->addSeconds(60),
-            fn (): array => $this->buildPayload($user, $period, $product, $country)
+            fn (): array => $this->buildPayload($user, $period, $product, $country, $dateFrom, $dateTo)
         );
     }
 
@@ -39,7 +41,9 @@ class DashboardReportService
         User $user,
         ?string $period = null,
         ?string $product = null,
-        ?string $country = null
+        ?string $country = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null
     ): array
     {
         $filterOptionsQuery = $this->baseQuery($user);
@@ -60,7 +64,7 @@ class DashboardReportService
 
         $baseQuery = $this->applyProductFilter(
             $this->applyCountryFilter(
-                $this->applyPeriodFilter($this->baseQuery($user), $period),
+                $this->applyPeriodFilter($this->baseQuery($user), $period, $dateFrom, $dateTo),
                 $country
             ),
             $product
@@ -82,7 +86,7 @@ class DashboardReportService
             ->reverse()
             ->values();
 
-        $dailyTrend = $this->dailyTrend($user, $period, $product, $country);
+        $dailyTrend = $this->dailyTrend($user, $period, $product, $country, $dateFrom, $dateTo);
 
         $chartData = $monthlyData->map(function ($item) {
             $dateObj = Carbon::parse($item->month.'-01');
@@ -497,16 +501,21 @@ class DashboardReportService
      *
      * @return array<int, array<string, mixed>>
      */
-    private function dailyTrend(User $user, ?string $period, ?string $product, ?string $country): array
+    private function dailyTrend(User $user, ?string $period, ?string $product, ?string $country, ?string $dateFrom = null, ?string $dateTo = null): array
     {
         $end = Carbon::today();
-        $start = match ($period) {
-            'today' => $end->copy(),
-            'last7Days' => $end->copy()->subDays(6),
-            'thisMonth' => $end->copy()->startOfMonth(),
-            'last30Days', null => $end->copy()->subDays(29),
-            default => $end->copy()->subDays(29),
-        };
+        if ($dateFrom && $dateTo) {
+            $start = Carbon::parse($dateFrom)->startOfDay();
+            $end = Carbon::parse($dateTo)->endOfDay();
+        } else {
+            $start = match ($period) {
+                'today' => $end->copy(),
+                'last7Days' => $end->copy()->subDays(6),
+                'thisMonth' => $end->copy()->startOfMonth(),
+                'last30Days', null => $end->copy()->subDays(29),
+                default => $end->copy()->subDays(29),
+            };
+        }
         $days = $start->diffInDays($end) + 1;
         $previousStart = $start->copy()->subDays($days);
         $previousEnd = $start->copy()->subDay();
@@ -573,8 +582,12 @@ class DashboardReportService
         return $query;
     }
 
-    private function applyPeriodFilter(Builder $query, ?string $period): Builder
+    private function applyPeriodFilter(Builder $query, ?string $period, ?string $dateFrom = null, ?string $dateTo = null): Builder
     {
+        if ($dateFrom && $dateTo) {
+            return $query->whereBetween('order_date', [Carbon::parse($dateFrom)->startOfDay(), Carbon::parse($dateTo)->endOfDay()]);
+        }
+
         return match ($period) {
             'today' => $query->whereDate('order_date', Carbon::today()),
             'last7Days' => $query->where('order_date', '>=', Carbon::today()->subDays(6)),
@@ -606,7 +619,9 @@ class DashboardReportService
         User $user,
         ?string $period = null,
         ?string $product = null,
-        ?string $country = null
+        ?string $country = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null
     ): string
     {
         $role = strtolower(trim((string) $user->roles));
@@ -614,13 +629,15 @@ class DashboardReportService
         $fallback = strtolower(trim((string) CountryAccess::userCountryName($user)));
 
         return sprintf(
-            'dashboard-report:v7:user:%s:role:%s:session-country:%s:period:%s:country-filter:%s:product:%s',
+            'dashboard-report:v8:user:%s:role:%s:session-country:%s:period:%s:country-filter:%s:product:%s:from:%s:to:%s',
             $user->getKey(),
             $role,
             $selectedCountry ?: $fallback,
             $period ?? 'allTime',
             strtolower(trim((string) $country)) ?: 'all',
-            strtolower(trim((string) $product)) ?: 'all'
+            strtolower(trim((string) $product)) ?: 'all',
+            $dateFrom ?: 'none',
+            $dateTo ?: 'none'
         );
     }
 }

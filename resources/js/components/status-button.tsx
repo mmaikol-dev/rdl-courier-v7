@@ -113,7 +113,7 @@ export function StatusButton({
 
   const tone =
     status === "error"
-      ? "bg-destructive/10 text-destructive shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-destructive)_30%,transparent)]"
+      ? "bg-red-500/10 text-red-600 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-red-500)_30%,transparent)] dark:text-red-400"
       : variant === "primary"
         ? "bg-primary text-primary-foreground hover:bg-primary/90"
         : variant === "ghost"
@@ -144,7 +144,7 @@ export function StatusButton({
           onClick?.(e);
         }}
         className={`cursor-pointer disabled:cursor-default aria-disabled:cursor-default inline-flex items-center justify-center whitespace-nowrap rounded-full font-medium transition-[background-color,color,box-shadow,scale,padding] duration-300 active:scale-[0.97] motion-reduce:active:scale-100 ${
-          sm ? `h-7 text-xs ${variant === "ghost" ? "px-2.5" : "px-3"}` : "h-9 px-4 text-sm"
+          sm ? `h-7 text-[12px] ${variant === "ghost" ? "px-2.5" : "px-3"}` : "h-9 px-4 text-[13px]"
         } ${FOCUS} ${tone} ${className}`}
         {...props}
       >

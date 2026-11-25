@@ -314,6 +314,8 @@ export default function ProductsPage() {
 
     const userStoreAddress = auth?.user?.store_address || '';
     const isGlobalCountryUser = ['g.o.d', 'merchant'].includes((auth?.user?.roles || '').trim().toLowerCase());
+    const isMerchantUser = (auth?.user?.roles || '').trim().toLowerCase() === 'merchant';
+    const merchantName = auth?.user?.name || '';
     const dashboardCountry = pageProps.selectedCountry || '';
 
     const [filter, setFilter] = React.useState(filters?.search || '');
@@ -415,6 +417,7 @@ export default function ProductsPage() {
             },
             {
                 preserveState: true,
+                preserveScroll: true,
                 onSuccess: () => {
                     setCreatingProduct(false);
                     setFormValues({});
@@ -437,6 +440,7 @@ export default function ProductsPage() {
         delete productDetails.quantity;
         router.put(`/products/${editingProduct.slug}`, productDetails, {
             preserveState: true,
+            preserveScroll: true,
             onSuccess: () => {
                 setEditingProduct(null);
                 setFormValues({});
@@ -460,6 +464,7 @@ export default function ProductsPage() {
             { quantity_change: finalChange },
             {
                 preserveState: true,
+                preserveScroll: true,
                 onSuccess: () => {
                     setUpdatingProduct(null);
                     setQuantityChange(null);
@@ -480,6 +485,7 @@ export default function ProductsPage() {
         setIsDeleting(true);
         router.delete(`/products/${deletingProduct.slug}`, {
             preserveState: true,
+            preserveScroll: true,
             onSuccess: () => {
                 setDeletingProduct(null);
                 toast.success('Product deleted successfully!');
@@ -784,7 +790,10 @@ export default function ProductsPage() {
                                     className="shrink-0"
                                     onClick={() => {
                                         setEditingProduct(null);
-                                        setFormValues({ country: dashboardCountry });
+                                        setFormValues({
+                                            country: dashboardCountry,
+                                            ...(isMerchantUser && merchantName ? { merchant: merchantName } : {}),
+                                        });
                                         setCreatingProduct(true);
                                     }}
                                 >
@@ -900,7 +909,11 @@ export default function ProductsPage() {
                                                                 onSelect={() => {
                                                                     setCreatingProduct(false);
                                                                     setEditingProduct(product);
-                                                                    setFormValues(product);
+                                                                    setFormValues(
+                                                                        isMerchantUser && merchantName && !product.merchant
+                                                                            ? { ...product, merchant: merchantName }
+                                                                            : product,
+                                                                    );
                                                                 }}
                                                             >
                                                                 <Edit /> Edit product

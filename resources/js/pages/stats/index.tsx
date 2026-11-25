@@ -1,16 +1,14 @@
 import AppLayout from '@/layouts/app-layout';
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
 import { type BreadcrumbItem, type SharedData } from '@/types';
-import { useState } from 'react';
+import { format } from 'date-fns';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
   Calendar,
-  CheckCircle2,
-  Clock3,
   DollarSign,
   Filter,
-  LineChart,
   MapPin,
   Package,
   ShoppingCart,
@@ -22,25 +20,25 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select } from '@/components/select';
 import { ProductFilter } from '@/components/product-filter';
+import { ComboChart } from '@/components/combo-chart';
+import { DonutChart } from '@/components/donut-chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart as RechartsLineChart,
-  Pie,
-  PieChart as RechartsPieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import type { DateRange } from 'react-day-picker';
 
 const COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--primary)', 'var(--success)', 'var(--destructive)'];
 
@@ -155,6 +153,8 @@ type FilterOptions = {
 type Filters = {
   date_range?: string;
   date_field?: 'order_date' | 'delivery_date';
+  date_from?: string;
+  date_to?: string;
   cc_email?: string;
   merchant?: string;
   status?: string;
@@ -192,6 +192,7 @@ const dateRangeLabels: Record<string, string> = {
   this_year: 'This year',
   last_30_days: 'Last 30 days',
   last_90_days: 'Last 90 days',
+  custom: 'Custom range',
 };
 
 const dateFieldLabels: Record<'order_date' | 'delivery_date', string> = {
@@ -269,12 +270,20 @@ function StatsLoadingSkeleton() {
 
 export default function StatsDashboard() {
   const { statsReport } = usePage<{ statsReport?: StatsPageProps }>().props;
+  const [showFilters, setShowFilters] = useState(false);
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Statistics Dashboard" />
       <Deferred data="statsReport" fallback={<StatsLoadingSkeleton />}>
-        {() => statsReport ? <StatsDashboardContent {...statsReport} /> : null}
+        {() => statsReport ? (
+          <StatsDashboardContent
+            {...statsReport}
+            showFilters={showFilters}
+            onToggleFilters={() => setShowFilters((value) => !value)}
+            onCloseFilters={() => setShowFilters(false)}
+          />
+        ) : null}
       </Deferred>
     </AppLayout>
   );
@@ -297,11 +306,17 @@ function StatsDashboardContent({
   recentOrders,
   filterOptions,
   filters,
-}: StatsPageProps) {
-  const [showFilters, setShowFilters] = useState(false);
-
+  showFilters,
+  onToggleFilters,
+  onCloseFilters,
+}: StatsPageProps & {
+  showFilters: boolean;
+  onToggleFilters: () => void;
+  onCloseFilters: () => void;
+}) {
   const { selectedCurrency } = usePage<SharedData>().props;
   const currencyCode = selectedCurrency || 'KES';
+  const [draftFilters, setDraftFilters] = useState<Filters>(filters);
   const formatMoney = (value: number) =>
     new Intl.NumberFormat('en-' + (currencyCode === 'KES' ? 'KE' : currencyCode === 'TZS' ? 'TZ' : currencyCode === 'UGX' ? 'UG' : currencyCode === 'ZMW' ? 'ZM' : 'KE'), {
       style: 'currency',
@@ -310,8 +325,30 @@ function StatsDashboardContent({
       maximumFractionDigits: 0,
     }).format(Number(value || 0));
 
+  const [customDateOpen, setCustomDateOpen] = useState(false);
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(() => {
+    if (!filters.date_from || !filters.date_to) return undefined;
+    const from = new Date(`${filters.date_from}T00:00:00`);
+    const to = new Date(`${filters.date_to}T00:00:00`);
+    return Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) ? undefined : { from, to };
+  });
+
+  useEffect(() => {
+    setDraftFilters(filters);
+  }, [filters]);
+
+  useEffect(() => {
+    if (!filters.date_from || !filters.date_to) {
+      setCustomDateRange(undefined);
+      return;
+    }
+    const from = new Date(`${filters.date_from}T00:00:00`);
+    const to = new Date(`${filters.date_to}T00:00:00`);
+    setCustomDateRange(Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) ? undefined : { from, to });
+  }, [filters.date_from, filters.date_to]);
+
   const handleFilterChange = (key: keyof Filters, value?: string | null) => {
-    const nextFilters: Record<string, string> = { ...filters } as Record<string, string>;
+    const nextFilters: Record<string, string> = { ...draftFilters } as Record<string, string>;
 
     if (!value || value === 'all_time') {
       delete nextFilters[key];
@@ -319,25 +356,55 @@ function StatsDashboardContent({
       nextFilters[key] = value;
     }
 
-    router.get('/stats', nextFilters, {
-      preserveState: true,
-      preserveScroll: true,
-    });
+    if (key === 'date_range' && value !== 'custom') {
+      delete nextFilters.date_from;
+      delete nextFilters.date_to;
+    }
+
+    setDraftFilters(nextFilters);
+  };
+
+  const applyCustomDateRange = () => {
+    if (!customDateRange?.from || !customDateRange?.to) return;
+    const nextFilters: Record<string, string> = { ...draftFilters } as Record<string, string>;
+    nextFilters.date_range = 'custom';
+    nextFilters.date_from = format(customDateRange.from, 'yyyy-MM-dd');
+    nextFilters.date_to = format(customDateRange.to, 'yyyy-MM-dd');
+    setDraftFilters(nextFilters);
+    setCustomDateOpen(false);
+  };
+
+  const applyFilters = () => {
+    const nextFilters = Object.fromEntries(Object.entries(draftFilters).filter(([, value]) => Boolean(value)));
+    router.get('/stats', nextFilters, { preserveState: true, preserveScroll: true });
+    onCloseFilters();
   };
 
   const clearAllFilters = () => {
-    router.get('/stats', {}, {
-      preserveState: true,
-      preserveScroll: true,
-    });
+    setDraftFilters({});
+    setCustomDateRange(undefined);
+    if (!showFilters) onToggleFilters();
   };
 
-  const activeFiltersCount = Object.entries(filters).filter(([key, value]) => {
+  const activeFiltersCount = Object.entries(draftFilters).filter(([key, value]) => {
     if (!value) return false;
     if (key === 'date_field' && value === 'order_date') return false;
     return true;
   }).length;
   const topStatus = ordersByStatus[0];
+  const comboDays = dailyTrend
+    .filter((item) => Number.isFinite(new Date(item.date).getTime()))
+    .map((item) => ({
+      key: item.date,
+      label: compactDate(item.date),
+      title: new Date(item.date).toLocaleDateString(undefined, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+      value: item.orders,
+    }));
   const topAgent = agentPerformance[0];
   const topMerchant = ordersByMerchant[0];
   const attentionCount =
@@ -358,8 +425,8 @@ function StatsDashboardContent({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            <ProductFilter options={filterOptions.productOptions} value={filters.product} preserveState preserveScroll />
-            <Button variant="outline" className="h-8 rounded-lg" onClick={() => setShowFilters((value) => !value)}>
+            <ProductFilter options={filterOptions.productOptions} value={draftFilters.product} onChange={(value) => handleFilterChange('product', value)} />
+            <Button variant="outline" className="h-8 rounded-lg" onClick={onToggleFilters}>
               <Filter className="mr-2 h-4 w-4" />
               Filters
               {activeFiltersCount > 0 && (
@@ -402,81 +469,130 @@ function StatsDashboardContent({
           </ResponsiveContainer>
         </ChartCard>
 
-        <Dialog open={showFilters} onOpenChange={setShowFilters}>
-          <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+        <Dialog modal={false} open={showFilters} onOpenChange={(open) => { if (!open) onCloseFilters(); }}>
+          <DialogContent
+            className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"
+            onInteractOutside={(event) => {
+              const floatingPicker = event.composedPath().some(
+                (node) => node instanceof Element && (
+                  node.hasAttribute('data-hairline-floating') ||
+                  node.getAttribute('data-slot') === 'popover-content'
+                ),
+              );
+              if (floatingPicker) {
+                event.preventDefault();
+              }
+            }}
+          >
             <DialogHeader>
               <DialogTitle>Filter the dashboard</DialogTitle>
               <DialogDescription>Reduce the dataset before charts and tables render.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 lg:grid-cols-3">
-                <FilterSelect
-                  icon={<Calendar className="h-4 w-4" />}
-                  label="Date column"
-                  value={filters.date_field || 'order_date'}
-                  onChange={(value) => handleFilterChange('date_field', value)}
-                  options={[
-                    { value: 'order_date', label: 'Order date' },
-                    { value: 'delivery_date', label: 'Delivery date' },
-                  ]}
-                />
-                <FilterSelect
-                  icon={<Calendar className="h-4 w-4" />}
-                  label="Date range"
-                  value={filters.date_range || 'all_time'}
-                  onChange={(value) => handleFilterChange('date_range', value)}
-                  options={Object.entries(dateRangeLabels).map(([value, label]) => ({ value, label }))}
-                />
-                <FilterSelect
-                  icon={<User className="h-4 w-4" />}
-                  label="Agent"
-                  value={filters.cc_email || ''}
-                  onChange={(value) => handleFilterChange('cc_email', value)}
-                  placeholder={`All agents (${filterOptions.ccEmails.length})`}
-                  options={filterOptions.ccEmails.map((value) => ({ value, label: value }))}
-                />
-                <FilterSelect
-                  icon={<Store className="h-4 w-4" />}
-                  label="Merchant"
-                  value={filters.merchant || ''}
-                  onChange={(value) => handleFilterChange('merchant', value)}
-                  placeholder={`All merchants (${filterOptions.merchants.length})`}
-                  options={filterOptions.merchants.map((value) => ({ value, label: value }))}
-                />
-                <FilterSelect
-                  icon={<Package className="h-4 w-4" />}
-                  label="Status"
-                  value={filters.status || ''}
-                  onChange={(value) => handleFilterChange('status', value)}
-                  placeholder={`All statuses (${filterOptions.statuses.length})`}
-                  options={filterOptions.statuses.map((value) => ({ value, label: value }))}
-                />
-                <FilterSelect
-                  icon={<MapPin className="h-4 w-4" />}
-                  label="Country"
-                  value={filters.country || ''}
-                  onChange={(value) => handleFilterChange('country', value)}
-                  placeholder={`All countries (${filterOptions.countries.length})`}
-                  options={filterOptions.countries.map((value) => ({ value, label: value }))}
-                />
-              </div>
-
-              {activeFiltersCount > 0 && (
-                <div className="flex flex-wrap gap-2 border-t pt-4">
-                  {filters.date_range && filters.date_range !== 'all_time' && (
-                    <FilterChip label="Date" value={dateRangeLabels[filters.date_range] ?? filters.date_range} />
-                  )}
-                  {filters.date_field && filters.date_field !== 'order_date' && (
-                    <FilterChip label="Using" value={dateFieldLabels[filters.date_field]} />
-                  )}
-                  {filters.cc_email && <FilterChip label="Agent" value={filters.cc_email} />}
-                  {filters.merchant && <FilterChip label="Merchant" value={filters.merchant} />}
-                  {filters.status && <FilterChip label="Status" value={filters.status} />}
-                  {filters.country && <FilterChip label="Country" value={filters.country} />}
-                  {filters.product && <FilterChip label="Product" value={filters.product} />}
-                </div>
-              )}
+            <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 lg:grid-cols-3">
+              <FilterSelect
+                icon={<Calendar className="h-4 w-4" />}
+                label="Date column"
+                      value={draftFilters.date_field || 'order_date'}
+                onChange={(value) => handleFilterChange('date_field', value)}
+                options={[
+                  { value: 'order_date', label: 'Order date' },
+                  { value: 'delivery_date', label: 'Delivery date' },
+                ]}
+              />
+              <Popover open={customDateOpen} onOpenChange={setCustomDateOpen}>
+                <PopoverAnchor asChild>
+                  <div>
+                    <FilterSelect
+                      icon={<Calendar className="h-4 w-4" />}
+                      label="Date range"
+                      value={draftFilters.date_range || 'all_time'}
+                      onChange={(value) => {
+                        if (value === 'custom') {
+                          setCustomDateOpen(true);
+                          return;
+                        }
+                        setCustomDateOpen(false);
+                        handleFilterChange('date_range', value);
+                      }}
+                      options={Object.entries(dateRangeLabels).map(([value, label]) => ({ value, label }))}
+                    />
+                  </div>
+                </PopoverAnchor>
+                <PopoverContent align="start" className="w-auto p-3">
+                  <div className="space-y-3">
+                    <CalendarPicker
+                      initialFocus
+                      mode="range"
+                      defaultMonth={customDateRange?.from}
+                      selected={customDateRange}
+                      onSelect={setCustomDateRange}
+                      numberOfMonths={2}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setCustomDateOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="button" size="sm" disabled={!customDateRange?.from || !customDateRange?.to} onClick={applyCustomDateRange}>
+                        Apply
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <FilterSelect
+                icon={<User className="h-4 w-4" />}
+                label="Agent"
+                value={draftFilters.cc_email}
+                onChange={(value) => handleFilterChange('cc_email', value)}
+                options={filterOptions.ccEmails.map((email) => ({ value: email, label: email }))}
+                placeholder="All agents"
+              />
+              <FilterSelect
+                icon={<Store className="h-4 w-4" />}
+                label="Merchant"
+                value={draftFilters.merchant}
+                onChange={(value) => handleFilterChange('merchant', value)}
+                options={filterOptions.merchants.map((merchant) => ({ value: merchant, label: merchant }))}
+                placeholder="All merchants"
+              />
+              <FilterSelect
+                icon={<AlertTriangle className="h-4 w-4" />}
+                label="Order status"
+                value={draftFilters.status}
+                onChange={(value) => handleFilterChange('status', value)}
+                options={filterOptions.statuses.map((status) => ({ value: status, label: status }))}
+                placeholder="All statuses"
+              />
+              <FilterSelect
+                icon={<MapPin className="h-4 w-4" />}
+                label="Country"
+                value={draftFilters.country}
+                onChange={(value) => handleFilterChange('country', value)}
+                options={filterOptions.countries.map((country) => ({ value: country, label: country }))}
+                placeholder="All countries"
+              />
             </div>
+            {activeFiltersCount > 0 && (
+              <div className="border-t pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Active filters:</span>
+                  {Object.entries(draftFilters).map(([key, value]) =>
+                    value && (key !== 'date_field' || value !== 'order_date') ? (
+                      <Badge key={key} variant="secondary" className="flex max-w-full items-center gap-1">
+                        <span className="truncate">{key === 'date_field' ? 'Date column' : key.replace('_', ' ')}: {key === 'date_field' ? dateFieldLabels[value] ?? value : key === 'date_range' ? dateRangeLabels[value] ?? value : value}</span>
+                        <X className="h-3 w-3 cursor-pointer" onClick={() => handleFilterChange(key as keyof Filters, key === 'date_field' ? 'order_date' : undefined)} />
+                      </Badge>
+                    ) : null
+                  )}
+                </div>
+              </div>
+            )}
+            </div>
+            <DialogFooter>
+              {activeFiltersCount > 0 && <Button variant="ghost" onClick={clearAllFilters}><X className="mr-1.5 h-4 w-4" />Clear all</Button>}
+              <Button onClick={applyFilters}>Apply filters</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -568,33 +684,15 @@ function StatsDashboardContent({
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.4fr_1fr]">
               <ChartCard
                 title="Daily trend"
-                description="Volume, delivered orders, and revenue over time"
+                description="Orders with a 7-day rolling average"
                 empty={dailyTrend.length === 0}
               >
-                <ResponsiveContainer width="100%" height={260}>
-                  <RechartsLineChart data={dailyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="date"
-                      tickFormatter={(value) => compactDate(value)}
-                      minTickGap={24}
-                      style={{ fontSize: 11 }}
-                    />
-                    <YAxis yAxisId="left" style={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" style={{ fontSize: 11 }} />
-                    <Tooltip
-                      labelFormatter={(value) => compactDate(String(value))}
-                      formatter={(value: number, name: string) => [
-                        name === 'revenue' ? formatMoney(Number(value)) : Number(value).toLocaleString(),
-                        name === 'orders' ? 'Orders' : name === 'delivered' ? 'Delivered' : 'Revenue',
-                      ]}
-                    />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="orders" stroke="var(--chart-1)" strokeWidth={2} dot={false} />
-                    <Line yAxisId="left" type="monotone" dataKey="delivered" stroke="var(--chart-2)" strokeWidth={2} dot={false} />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="var(--chart-3)" strokeWidth={2} dot={false} />
-                  </RechartsLineChart>
-                </ResponsiveContainer>
+                <ComboChart
+                  title="Daily orders"
+                  days={comboDays}
+                  rolling={7}
+                  format={{ maximumFractionDigits: 0 }}
+                />
               </ChartCard>
 
               <ChartCard
@@ -602,24 +700,18 @@ function StatsDashboardContent({
                 description="How the current order pool is split"
                 empty={ordersByStatus.length === 0}
               >
-                <ResponsiveContainer width="100%" height={260}>
-                  <RechartsPieChart>
-                    <Pie
-                      data={ordersByStatus}
-                      dataKey="total"
-                      nameKey="status"
-                      innerRadius={62}
-                      outerRadius={105}
-                      paddingAngle={3}
-                    >
-                      {ordersByStatus.map((entry, index) => (
-                        <Cell key={entry.status} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number, _name, item) => [`${value.toLocaleString()} orders`, item.payload.status]} />
-                    <Legend />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
+                <DonutChart
+                  title="Status distribution"
+                  description="How the current order pool is split"
+                  centerLabel="Orders"
+                  data={ordersByStatus.map((item, index) => ({
+                    id: `${item.status}-${index}`,
+                    label: item.status,
+                    value: item.total,
+                    color: COLORS[index % COLORS.length],
+                  }))}
+                  format={{ maximumFractionDigits: 0 }}
+                />
               </ChartCard>
             </div>
 
@@ -941,40 +1033,30 @@ function FilterSelect({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value?: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
   placeholder?: string;
 }) {
   return (
-    <label className="block space-y-2">
+    <div className="min-w-0 space-y-2">
       <span className="flex items-center gap-2 text-sm font-medium">
         {icon}
         {label}
       </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+      <Select
+        label={label}
+        hideLabel
+        value={value || ''}
+        onValueChange={onChange}
+        placeholder={placeholder}
+        options={options}
+      />
+    </div>
   );
 }
 
-function FilterChip({ label, value }: { label: string; value: string }) {
-  return (
-    <Badge variant="outline" className="border-border bg-muted/50 text-foreground">
-      {label}: {value}
-    </Badge>
-  );
-}
+
 
 function ChartCard({
   title,

@@ -2,7 +2,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ControlStrip, DashboardHeader, Footnote, Inspector, Panel, SegmentedChips, Slider, SplitLayout } from '@/components/api-dashboard/blueprint';
+import { ControlStrip, DashboardHeader, Footnote, Inspector, Panel, SegmentedChips, SplitLayout } from '@/components/api-dashboard/blueprint';
+import { Sparkline } from '@/components/sparkline';
+import { ComboChart } from '@/components/combo-chart';
+import { TimeOverlap } from '@/components/time-overlap';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Deferred, Head, Link } from '@inertiajs/react';
@@ -27,6 +30,21 @@ const views: View[] = ['Health', 'Latency', 'Access logs'];
 const methods: LogMethod[] = ['All', 'GET', 'POST', 'PUT', 'DELETE'];
 const statuses: LogStatus[] = ['All', '2xx', '3xx', '4xx', '5xx'];
 const latencyMetrics: LatencyMetric[] = ['Average', 'Slowest'];
+const SLO_MAX = 1200;
+const SLO_DAY = Date.UTC(2026, 0, 1);
+
+function latencyHours(value: number) {
+    return Math.max(0, Math.min(24, (SLO_MAX - value) / 50));
+}
+
+function sloDate(slo: number) {
+    return new Date(SLO_DAY + latencyHours(slo) * 60 * 60 * 1000);
+}
+
+function sloFromDate(date: Date) {
+    const hours = date.getUTCHours() + date.getUTCMinutes() / 60;
+    return Math.max(100, Math.min(SLO_MAX, Math.round((SLO_MAX - hours * 50) / 100) * 100));
+}
 
 function formatDate(value: string | null) {
     if (!value) return 'Never';
@@ -54,17 +72,79 @@ function StateIcon({ state }: { state: 'Healthy' | 'Degraded' | 'Down' }) {
     return <Check aria-label="Endpoint healthy" className="size-4" />;
 }
 
-function Metric({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: typeof Activity }) {
-    return <Panel className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-2 truncate font-mono text-2xl font-semibold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Icon aria-label={label} className="size-4 shrink-0 text-muted-foreground" /></div></Panel>;
+function Metric({ label, value, detail, icon: Icon, trend, trendLabel, trendColor = 'muted' }: { label: string; value: string; detail: string; icon: typeof Activity; trend?: number[]; trendLabel?: string; trendColor?: 'auto' | 'primary' | 'muted' }) {
+    return <Panel className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p><div className="mt-2 flex items-end gap-2"><p className="truncate font-mono text-2xl font-semibold tabular-nums">{value}</p>{trend && trend.length > 1 && <Sparkline data={trend} width={72} height={24} variant="area" color={trendColor} showScrubber={false} showLastPoint={false} label={trendLabel ?? `${label} over the last 24 hours`} className="mb-1 shrink-0" />}</div><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><Icon aria-label={label} className="size-4 shrink-0 text-muted-foreground" /></div></Panel>;
 }
 
-function TrafficTrace({ data }: { data: ChartPoint[] }) {
-    const max = Math.max(...data.map((point) => point.requests), 1);
-    return <div className="flex h-28 items-end gap-1 border-b border-l px-2 pb-1" role="img" aria-label="Hourly API requests over the last 24 hours">
-        {data.map((point, index) => <div key={`${point.time}-${index}`} className="group relative flex h-full min-w-1 flex-1 items-end" title={`${point.time}: ${point.requests} requests, ${point.errors} errors, ${point.latency} ms average`}>
-            <div className="w-full rounded-t-sm bg-foreground/70 transition-opacity group-hover:bg-foreground" style={{ height: `${Math.max((point.requests / max) * 100, point.requests ? 4 : 0)}%` }} />
-        </div>)}
-    </div>;
+function TrafficCombo({ data }: { data: ChartPoint[] }) {
+    const days = React.useMemo(() => data.map((point, index) => ({
+        key: `${point.time}-${index}`,
+        label: point.time,
+        title: `${point.time} · ${point.requests.toLocaleString()} requests · ${point.errors} errors · ${point.latency} ms avg`,
+        value: point.requests,
+    })), [data]);
+
+    return <ComboChart title="API requests" days={days} rolling={3} series={['Requests by hour', '3-hour average']} />;
+}
+
+function demoTime(hoursAgo: number) {
+    return new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function buildDemoData(): DashboardData {
+    const requests = [22, 18, 14, 9, 6, 5, 8, 16, 31, 49, 62, 70, 66, 74, 80, 77, 88, 97, 101, 94, 82, 69, 51, 38];
+    const errors = [0, 1, 0, 0, 1, 0, 1, 2, 3, 2, 4, 3, 2, 5, 6, 4, 3, 7, 5, 4, 2, 3, 1, 0];
+    const latency = [186, 172, 164, 158, 149, 143, 151, 168, 192, 214, 238, 246, 229, 257, 268, 251, 274, 291, 305, 287, 262, 241, 218, 199];
+    const chart = requests.map((value, index) => ({ time: demoTime(23 - index).slice(11, 16), requests: value, errors: errors[index], latency: latency[index] }));
+    const integrations: IntegrationRow[] = [
+        { id: 1, name: 'Checkout sync', merchant: 'Acme Store', email: 'ops@acme.test', active: true, last_used_at: demoTime(0.1), requests: 520, errors: 8, latency: 184 },
+        { id: 2, name: 'Stock feeder', merchant: 'Acme Store', email: 'ops@acme.test', active: true, last_used_at: demoTime(0.3), requests: 180, errors: 21, latency: 312 },
+        { id: 3, name: 'Customer mirror', merchant: 'Acme Store', email: 'ops@acme.test', active: true, last_used_at: demoTime(1.5), requests: 160, errors: 0, latency: 126 },
+        { id: 4, name: 'Legacy importer', merchant: 'Acme Store', email: 'ops@acme.test', active: false, last_used_at: demoTime(48), requests: 0, errors: 0, latency: 0 },
+    ];
+    const endpointStats: EndpointStat[] = [
+        { path: '/v1/orders', method: 'GET', requests: 520, errors: 8, latency: 184, slowest: 812, last_seen: demoTime(0.1) },
+        { path: '/v1/orders', method: 'POST', requests: 180, errors: 21, latency: 312, slowest: 1180, last_seen: demoTime(0.3) },
+        { path: '/v1/inventory', method: 'GET', requests: 160, errors: 0, latency: 126, slowest: 340, last_seen: demoTime(0.5) },
+        { path: '/v1/customers', method: 'GET', requests: 110, errors: 3, latency: 406, slowest: 940, last_seen: demoTime(0.7) },
+        { path: '/v1/webhooks', method: 'POST', requests: 90, errors: 14, latency: 528, slowest: 1480, last_seen: demoTime(1.1) },
+        { path: '/v1/health', method: 'GET', requests: 70, errors: 2, latency: 42, slowest: 96, last_seen: demoTime(0.2) },
+        { path: '/v1/reports', method: 'GET', requests: 97, errors: 11, latency: 684, slowest: 1920, last_seen: demoTime(2.4) },
+    ];
+    const logs: LogRow[] = Array.from({ length: 18 }, (_, index) => {
+        const endpoint = endpointStats[index % endpointStats.length];
+        const status = index % 7 === 0 ? 500 : index % 5 === 0 ? 404 : 200;
+        return {
+            id: index + 1,
+            integration: integrations[index % 3].name,
+            method: endpoint.method,
+            path: endpoint.path,
+            status_code: status,
+            duration_ms: endpoint.latency + (index % 4) * 37,
+            requested_at: demoTime(index * 0.7),
+        };
+    });
+    const totalRequests = requests.reduce((sum, value) => sum + value, 0);
+    const totalErrors = errors.reduce((sum, value) => sum + value, 0);
+
+    return {
+        stats: {
+            requests: totalRequests,
+            errors: totalErrors,
+            latency: Math.round(latency.reduce((sum, value) => sum + value, 0) / latency.length),
+            success_rate: Math.round(((totalRequests - totalErrors) / totalRequests) * 1000) / 10,
+            active_integrations: integrations.filter((integration) => integration.active).length,
+            total_integrations: integrations.length,
+        },
+        chart,
+        logs,
+        integrations,
+        externalConnections: [
+            { id: 1, provider: 'Storeep', name: 'Nairobi flagship', merchant: 'Acme Store', active: true, has_error: false, last_error_at: null, last_activity_at: demoTime(0.4) },
+            { id: 2, provider: 'Storeep', name: 'Mombasa branch', merchant: 'Acme Store', active: true, has_error: true, last_error_at: demoTime(1.2), last_activity_at: demoTime(1.2) },
+        ],
+        endpointStats,
+    };
 }
 
 function MerchantApiDashboardSkeleton() {
@@ -76,13 +156,16 @@ function MerchantApiDashboardSkeleton() {
 }
 
 export default function MerchantApiDashboard({ canManage, dashboardData }: { canManage: boolean; dashboardData: DashboardData }) {
+    const [demo, setDemo] = React.useState(true);
+    const demoData = React.useMemo(() => buildDemoData(), []);
+    const data = demo ? demoData : dashboardData;
     return <Deferred data="dashboardData" fallback={<MerchantApiDashboardSkeleton />}>
-        {() => <MerchantApiDashboardContent canManage={canManage} {...dashboardData} />}
+        {() => <MerchantApiDashboardContent canManage={canManage} demo={demo} onToggleDemo={() => setDemo((current) => !current)} {...data} />}
     </Deferred>;
 }
 
-function MerchantApiDashboardContent({ canManage, stats, chart, logs, integrations, externalConnections, endpointStats }: {
-    canManage: boolean; stats: Stats; chart: ChartPoint[]; logs: LogRow[]; integrations: IntegrationRow[]; externalConnections: ExternalConnection[]; endpointStats: EndpointStat[];
+function MerchantApiDashboardContent({ canManage, demo, onToggleDemo, stats, chart, logs, integrations, externalConnections, endpointStats }: {
+    canManage: boolean; demo: boolean; onToggleDemo: () => void; stats: Stats; chart: ChartPoint[]; logs: LogRow[]; integrations: IntegrationRow[]; externalConnections: ExternalConnection[]; endpointStats: EndpointStat[];
 }) {
     const [view, setView] = React.useState<View>('Health');
     const [selectedEndpoint, setSelectedEndpoint] = React.useState(0);
@@ -94,6 +177,12 @@ function MerchantApiDashboardContent({ canManage, stats, chart, logs, integratio
     const [selectedLogId, setSelectedLogId] = React.useState<number | null>(logs[0]?.id ?? null);
 
     const sortedEndpoints = React.useMemo(() => [...endpointStats].sort((a, b) => latencyMetric === 'Average' ? b.latency - a.latency : b.slowest - a.slowest), [endpointStats, latencyMetric]);
+    const sloPeople = React.useMemo(() => endpointStats.map((endpoint) => ({
+        id: `${endpoint.method}-${endpoint.path}`,
+        name: `${endpoint.method} ${endpoint.path}`,
+        timeZone: 'UTC',
+        hours: [0, latencyHours(latencyMetric === 'Average' ? endpoint.latency : endpoint.slowest)] as [number, number],
+    })), [endpointStats, latencyMetric]);
     const healthEndpoints = endpointStats;
     const activeEndpoint = healthEndpoints[selectedEndpoint] ?? healthEndpoints[0] ?? null;
     const filteredLogs = React.useMemo(() => logs.filter((log) => {
@@ -152,8 +241,12 @@ function MerchantApiDashboardContent({ canManage, stats, chart, logs, integratio
         { label: 'Last request', value: formatDate(activeEndpoint.last_seen) },
     ]} summary={`${activeEndpoint.errors} of ${activeEndpoint.requests} observed requests failed. Average response time is ${activeEndpoint.latency} ms against a ${slo} ms SLO.`} /> : <Inspector title="No endpoint selected" subtitle="Waiting for API traffic" rows={[]} summary="Once an integration makes a request, endpoint details will appear here." />;
 
-    const latencyPanel = <Panel className="overflow-hidden">
-        <ControlStrip label="Latency target"><Slider label="SLO response time" min={100} max={1200} value={slo} onChange={setSlo} formatValue={(value) => `${value} ms`} className="sm:min-w-80" /></ControlStrip>
+    const sloPanel = <Panel className="overflow-hidden">
+        <TimeOverlap className="!rounded-none !shadow-none" title={`Merchant API SLO · ${slo} ms response time`} people={sloPeople} timeZone="UTC" day={SLO_DAY} value={sloDate(slo)} onValueChange={(date) => setSlo(sloFromDate(date))} duration={60} />
+        <Footnote>Each strip is inverted latency: its lit span ends at that endpoint’s observed response time. Drag the band to set the SLO in 100 ms steps; the green overlap is the target every endpoint currently meets.</Footnote>
+    </Panel>;
+
+    const rankEndpointsPanel = <Panel className="overflow-hidden">
         <ControlStrip label="Rank endpoints"><SegmentedChips label="Latency metric" values={latencyMetrics} value={latencyMetric} onChange={setLatencyMetric} /></ControlStrip>
         <div className="space-y-1 p-3 sm:p-4">
             {sortedEndpoints.length === 0 ? <div className="py-12 text-center text-sm text-muted-foreground">Latency data appears after the first API request.</div> : sortedEndpoints.map((endpoint) => {
@@ -209,14 +302,17 @@ function MerchantApiDashboardContent({ canManage, stats, chart, logs, integratio
         <Head title="API Dashboard" />
         <div className="w-full space-y-5 p-4 md:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <DashboardHeader title="API health" summary={summary} />
-                <Button asChild variant="outline"><Link href="/merchant-api-access"><KeyRound aria-label="API access settings" className="mr-2 size-4" />Manage API access</Link></Button>
+                <DashboardHeader title="API health" summary={demo ? 'Sample data preview · use the button on the right to return to live API activity.' : summary} />
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button variant={demo ? 'secondary' : 'outline'} aria-pressed={demo} onClick={onToggleDemo}>{demo ? 'Back to live data' : 'Preview demo data'}</Button>
+                    <Button asChild variant="outline"><Link href="/merchant-api-access"><KeyRound aria-label="API access settings" className="mr-2 size-4" />Manage API access</Link></Button>
+                </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Metric label="Requests · 24h" value={stats.requests.toLocaleString()} detail="Authenticated merchant API calls" icon={Activity} />
-                <Metric label="Response health" value={stats.success_rate === null ? '—' : `${stats.success_rate}%`} detail={`${stats.errors.toLocaleString()} responses with 4xx or 5xx`} icon={ShieldCheck} />
-                <Metric label="Average latency" value={`${stats.latency} ms`} detail="Across recorded requests" icon={Clock3} />
+                <Metric label="Requests · 24h" value={stats.requests.toLocaleString()} detail="Authenticated merchant API calls" icon={Activity} trend={chart.map((point) => point.requests)} trendColor="primary" trendLabel="Requests per hour over the last 24 hours" />
+                <Metric label="Response health" value={stats.success_rate === null ? '—' : `${stats.success_rate}%`} detail={`${stats.errors.toLocaleString()} responses with 4xx or 5xx`} icon={ShieldCheck} trend={chart.map((point) => point.errors)} trendLabel="Failed responses per hour over the last 24 hours" />
+                <Metric label="Average latency" value={`${stats.latency} ms`} detail="Across recorded requests" icon={Clock3} trend={chart.map((point) => point.latency)} trendLabel="Average latency by hour over the last 24 hours" />
                 <Metric label="Active integrations" value={`${stats.active_integrations} / ${stats.total_integrations}`} detail="Enabled merchant tokens" icon={Waypoints} />
             </div>
 
@@ -225,12 +321,12 @@ function MerchantApiDashboardContent({ canManage, stats, chart, logs, integratio
                 {view === 'Health' && <div className="grid gap-4 p-3 sm:p-4">
                     <SplitLayout main={healthPanel} inspector={healthInspector} />
                     <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-                        <Panel className="overflow-hidden"><div className="flex items-center justify-between gap-3 border-b px-4 py-3"><div><h2 className="text-sm font-semibold">Traffic trace</h2><p className="mt-1 text-xs text-muted-foreground">Request volume by hour · last 24 hours</p></div><span className="font-mono text-xs tabular-nums">{stats.requests.toLocaleString()} total</span></div><div className="p-4"><TrafficTrace data={chart} /><div className="mt-2 flex justify-between font-mono text-[10px] text-muted-foreground"><span>24h ago</span><span>Now</span></div></div></Panel>
+                        <TrafficCombo data={chart} />
                         <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Integration keys</h2><p className="mt-1 text-xs text-muted-foreground">Usage and connection state by token</p></div><div className="max-h-64 divide-y divide-border overflow-y-auto">{integrations.length === 0 ? <p className="p-5 text-sm text-muted-foreground">No integrations have been created.</p> : integrations.map((item) => <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{item.name}</p><p className="truncate text-[10px] text-muted-foreground">{canManage ? `${item.merchant ?? 'Merchant'} · ` : ''}used {formatDate(item.last_used_at)}</p></div><div className="shrink-0 text-right"><p className="font-mono text-xs tabular-nums">{item.requests} req</p><p className="text-[10px] text-muted-foreground">{item.errors} err · {item.latency} ms</p></div></div>)}</div><Footnote>Active integrations: {stats.active_integrations} of {stats.total_integrations}.</Footnote></Panel>
                     </div>
                     {externalConnections.length > 0 && <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Other API connections</h2><p className="mt-1 text-xs text-muted-foreground">Managed Storeep connection status and most recent sync</p></div><div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-3">{externalConnections.map((connection) => <div key={`${connection.provider}-${connection.id}`} className="bg-card p-4"><div className="flex items-center justify-between gap-3"><span className="font-mono text-xs">{connection.provider} / {connection.name}</span><span className="flex items-center gap-1.5 text-xs"><StateIcon state={!connection.active || connection.has_error ? 'Degraded' : 'Healthy'} />{!connection.active ? 'Disabled' : connection.has_error ? 'Sync error' : 'Connected'}</span></div><p className="mt-2 truncate text-[10px] text-muted-foreground">{canManage ? `${connection.merchant ?? 'Merchant'} · ` : ''}last sync {formatDate(connection.last_activity_at)}</p></div>)}</div></Panel>}
                 </div>}
-                {view === 'Latency' && <div className="grid gap-4 p-3 sm:p-4"><SplitLayout main={latencyPanel} inspector={latencyInspector} /></div>}
+                {view === 'Latency' && <div className="grid gap-4 p-3 sm:p-4"><SplitLayout main={sloPanel} inspector={latencyInspector} />{rankEndpointsPanel}</div>}
                 {view === 'Access logs' && <div className="grid gap-4 p-3 sm:p-4"><SplitLayout main={logsPanel} inspector={requestInspector} /></div>}
             </Panel>
         </div>

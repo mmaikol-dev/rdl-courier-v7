@@ -1,9 +1,9 @@
+import { Combobox, type ComboboxOption } from '@/components/combobox';
+import { MultiSelect, type MultiOption } from '@/components/multi-select';
+import { StatsBand } from '@/components/stats-band';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
@@ -11,7 +11,7 @@ import { csrfHeaders } from '@/lib/csrf';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { Deferred, Head, router, usePage } from '@inertiajs/react';
-import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
+import { Loader2, Sparkles, X } from 'lucide-react';
 import * as React from 'react';
 
 interface ProductOption {
@@ -25,7 +25,7 @@ interface ProductOption {
 interface OrderRow {
     id: number;
     order_no: string | null;
-    order_date: string | null;
+    delivery_date: string | null;
     client_name: string | null;
     phone: string | null;
     address: string | null;
@@ -74,155 +74,77 @@ interface MatchResponse {
     deduction?: DeductionResult;
 }
 
+interface SkippedOrder {
+    id: number;
+    order_no: string | null;
+    reason: 'already_matched' | 'already_deducted';
+}
+
 interface BulkMatchResponse extends Omit<MatchResponse, 'order'> {
     orders?: OrderMatchUpdate[];
     deductions?: DeductionResult[];
+    skipped?: SkippedOrder[];
 }
+
+const statusColors: Record<string, string> = {
+    Scheduled: 'bg-status-scheduled text-status-scheduled-foreground border-status-scheduled/40',
+    Dispatched: 'bg-status-dispatched text-status-dispatched-foreground border-status-dispatched',
+    Followup: 'bg-status-followup text-status-followup-foreground border-status-followup/40',
+    Duplicate: 'bg-accent text-foreground border-border',
+    Cancelled: 'bg-destructive/10 text-destructive border-destructive/30',
+    Pending: 'bg-warning/10 text-warning-foreground border-warning/30',
+    OutofStock: 'bg-warning/10 text-warning-foreground border-warning/30',
+    Expired: 'bg-warning/10 text-warning-foreground border-warning/30',
+    Returned: 'bg-destructive/10 text-destructive border-destructive/30',
+    WrongContact: 'bg-muted text-foreground border-border italic',
+    Delivered: 'bg-success/10 text-success border-success/30',
+    'New Orders': 'bg-muted text-muted-foreground border-border',
+};
 
 function firstValidationError(errors?: Record<string, string[]>): string | undefined {
     return errors ? Object.values(errors).flat()[0] : undefined;
 }
 
-function ProductPicker({
-    products,
-    value,
-    onChange,
-    placeholder,
-    disabled = false,
-    loading = false,
-}: {
-    products: ProductOption[];
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-    disabled?: boolean;
-    loading?: boolean;
-}) {
-    const [open, setOpen] = React.useState(false);
-    const selected = products.find((product) => String(product.id) === value);
-    const label = selected ? `${selected.name}${selected.merchant ? ` · ${selected.merchant}` : ''}` : placeholder;
+function canBulkMatchOrder(order: OrderRow): boolean {
+    return order.inventory_product_id === null && !order.inventory_deducted_at;
+}
 
+function option(value: string, label: string, description?: string, keywords: string[] = []): ComboboxOption {
+    return { value, label, description, keywords };
+}
+
+function FilterColumn({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
     return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    type="button"
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    disabled={disabled || loading}
-                    className="w-full justify-between gap-2 font-normal"
-                >
-                    <span className={cn('truncate text-left', !selected && 'text-muted-foreground')}>{label}</span>
-                    {loading ? (
-                        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-                    ) : (
-                        <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
-                    )}
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[min(28rem,calc(100vw-2rem))] p-0" align="start">
-                <Command>
-                    <CommandInput placeholder="Search inventory products..." />
-                    <CommandList>
-                        <CommandEmpty>No inventory products found.</CommandEmpty>
-                        <CommandGroup>
-                            <CommandItem
-                                value="__no_match__"
-                                onSelect={() => {
-                                    onChange('');
-                                    setOpen(false);
-                                }}
-                            >
-                                <Check className={cn('mr-2 size-4', value === '' ? 'opacity-100' : 'opacity-0')} />
-                                No product matched
-                            </CommandItem>
-                            {products.map((product) => {
-                                const id = String(product.id);
-                                const optionLabel = `${product.name}${product.merchant ? ` · ${product.merchant}` : ''}`;
-                                return (
-                                    <CommandItem
-                                        key={product.id}
-                                        value={`${optionLabel} ${product.merchant ?? ''} ${product.country ?? ''}`}
-                                        onSelect={() => {
-                                            onChange(id);
-                                            setOpen(false);
-                                        }}
-                                    >
-                                        <Check className={cn('mr-2 size-4', value === id ? 'opacity-100' : 'opacity-0')} />
-                                        <span className="truncate">{optionLabel}</span>
-                                    </CommandItem>
-                                );
-                            })}
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
-            </PopoverContent>
-        </Popover>
+        <div className={cn('flex min-w-0 flex-col', className)}>
+            <span className="px-3 pb-1.5 text-[13px] font-medium text-foreground">{label}</span>
+            {children}
+        </div>
     );
 }
 
-function AgentPicker({
-    agents,
-    value,
-    onChange,
-    placeholder,
-}: {
-    agents: AgentOption[];
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-}) {
-    const [open, setOpen] = React.useState(false);
-    const selected = agents.find((agent) => String(agent.id) === value);
-    const label = selected ? selected.name : placeholder;
+function productOption(product: ProductOption): ComboboxOption {
+    const description = [product.code ? `#${product.code}` : null, product.merchant, product.country].filter(Boolean).join(' · ');
+    return option(String(product.id), product.name, description || 'Inventory product', [product.code ?? '', product.merchant ?? '', product.country ?? ''].filter(Boolean));
+}
 
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button type="button" variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between gap-2 font-normal">
-                    <span className={cn('truncate text-left', !selected && 'text-muted-foreground')}>{label}</span>
-                    <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[min(18rem,calc(100vw-2rem))] p-0" align="start">
-                <Command>
-                    <CommandInput placeholder="Search agents..." />
-                    <CommandList>
-                        <CommandEmpty>No agents found.</CommandEmpty>
-                        <CommandGroup>
-                            <CommandItem
-                                value="__all_agents__"
-                                onSelect={() => {
-                                    onChange('');
-                                    setOpen(false);
-                                }}
-                            >
-                                <Check className={cn('mr-2 size-4', value === '' ? 'opacity-100' : 'opacity-0')} />
-                                All agents
-                            </CommandItem>
-                            {agents.map((agent) => {
-                                const id = String(agent.id);
-                                return (
-                                    <CommandItem
-                                        key={agent.id}
-                                        value={agent.name}
-                                        onSelect={() => {
-                                            onChange(id);
-                                            setOpen(false);
-                                        }}
-                                    >
-                                        <Check className={cn('mr-2 size-4', value === id ? 'opacity-100' : 'opacity-0')} />
-                                        <span className="truncate">{agent.name}</span>
-                                    </CommandItem>
-                                );
-                            })}
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
-            </PopoverContent>
-        </Popover>
-    );
+function normalizeMatchText(value: string | null | undefined) {
+    return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function suggestProducts(order: OrderRow, products: ProductOption[]) {
+    const phrase = normalizeMatchText(order.product_name);
+    const words = phrase.split(' ').filter(Boolean);
+    if (!words.length) return [];
+
+    return products
+        .map((product) => {
+            const haystack = normalizeMatchText(product.name);
+            const hits = words.filter((word) => haystack.includes(word)).length;
+            return { product, score: hits / words.length + (haystack.includes(phrase) ? 1 : 0) };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2);
 }
 
 function OrdersTableSkeleton() {
@@ -248,15 +170,23 @@ export default function OrderProductMatching({
     orders,
     products,
     agents,
+    merchants,
+    orderProductNames,
+    statuses,
     filters,
 }: {
     orders?: PaginatedOrders;
     products: ProductOption[];
     agents: AgentOption[];
-    filters: { product_name: string; agent_id: number | null; per_page: number };
+    merchants: string[];
+    orderProductNames: string[];
+    statuses: string[];
+    filters: { product_names: string[]; merchant: string; status: string; agent_id: number | null; per_page: number };
 }) {
     const { flash } = usePage().props as { flash?: { success?: string; error?: string } };
-    const [productName, setProductName] = React.useState(filters.product_name ?? '');
+    const [productNames, setProductNames] = React.useState<string[]>(filters.product_names ?? []);
+    const [merchant, setMerchant] = React.useState(filters.merchant ?? '');
+    const [orderStatus, setOrderStatus] = React.useState(filters.status ?? '');
     const [agentId, setAgentId] = React.useState(filters.agent_id ? String(filters.agent_id) : '');
     const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
     const [bulkProductId, setBulkProductId] = React.useState('');
@@ -266,10 +196,12 @@ export default function OrderProductMatching({
     const [displayOrders, setDisplayOrders] = React.useState<OrderRow[]>(orders?.data ?? []);
 
     React.useEffect(() => {
-        setProductName(filters.product_name ?? '');
+        setProductNames(filters.product_names ?? []);
+        setMerchant(filters.merchant ?? '');
+        setOrderStatus(filters.status ?? '');
         setAgentId(filters.agent_id ? String(filters.agent_id) : '');
         setSelectedIds([]);
-    }, [filters.product_name, filters.agent_id, orders?.current_page]);
+    }, [filters.product_names, filters.merchant, filters.status, filters.agent_id, orders?.current_page]);
 
     React.useEffect(() => {
         setDisplayOrders(orders?.data ?? []);
@@ -280,12 +212,26 @@ export default function OrderProductMatching({
         if (flash?.error) toast.error(flash.error);
     }, [flash?.success, flash?.error]);
 
+    const productOptions = React.useMemo(() => products.map(productOption), [products]);
+    const agentOptions = React.useMemo(() => agents.map((agent) => option(String(agent.id), agent.name)), [agents]);
+    const merchantOptions = React.useMemo(() => merchants.map((item) => option(item, item)), [merchants]);
+    const statusOptions = React.useMemo(() => statuses.map((item) => option(item, item, undefined, [item.toLowerCase()])), [statuses]);
+    const orderProductNameOptions = React.useMemo<MultiOption[]>(() => orderProductNames.map((item) => ({ value: item, label: item })), [orderProductNames]);
+
+    const suggestionsByOrder = React.useMemo(() => {
+        const suggestions = new Map<number, ReturnType<typeof suggestProducts>>();
+        displayOrders.forEach((order) => {
+            if (canBulkMatchOrder(order)) suggestions.set(order.id, suggestProducts(order, products));
+        });
+        return suggestions;
+    }, [displayOrders, products]);
+
     const breadcrumbs = [
         { title: 'Orders', href: '/sheetorders' },
         { title: 'Order Product Matching', href: '/order-product-matching' },
     ];
 
-    const navigate = (params: Record<string, string | number | undefined>) => {
+    const navigate = (params: Record<string, string | number | string[] | undefined>) => {
         router.get('/order-product-matching', params, {
             preserveState: true,
             preserveScroll: true,
@@ -294,21 +240,20 @@ export default function OrderProductMatching({
         });
     };
 
-    const applyFilters = (overrides: { product_name?: string; agent_id?: string } = {}) => {
-        const nextProductName = (overrides.product_name ?? productName).trim();
+    const applyFilters = (overrides: { product_names?: string[]; merchant?: string; status?: string; agent_id?: string } = {}) => {
+        const nextProductNames = overrides.product_names ?? productNames;
+        const nextMerchant = overrides.merchant ?? merchant;
+        const nextStatus = overrides.status ?? orderStatus;
         const nextAgentId = overrides.agent_id ?? agentId;
 
         navigate({
-            product_name: nextProductName || undefined,
+            product_names: nextProductNames.length > 0 ? nextProductNames : undefined,
+            merchant: nextMerchant || undefined,
+            status: nextStatus || undefined,
             agent_id: nextAgentId || undefined,
             per_page: filters.per_page,
             page: 1,
         });
-    };
-
-    const search = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        applyFilters();
     };
 
     const toggleSelected = (orderId: number, checked: boolean) => {
@@ -317,11 +262,14 @@ export default function OrderProductMatching({
     };
 
     const pageOrderIds = displayOrders.map((order) => order.id);
-    const allPageSelected = pageOrderIds.length > 0 && pageOrderIds.every((id) => selectedIds.includes(id));
+    const matchablePageOrderIds = displayOrders.filter(canBulkMatchOrder).map((order) => order.id);
+    const allPageSelected = matchablePageOrderIds.length > 0 && matchablePageOrderIds.every((id) => selectedIds.includes(id));
+    const matchedOnPage = displayOrders.filter((order) => order.inventory_product_id !== null).length;
+    const unmatchedOnPage = displayOrders.length - matchedOnPage;
 
     const togglePageSelection = (checked: boolean) => {
         setBulkProductId('');
-        setSelectedIds((previous) => (checked ? [...new Set([...previous, ...pageOrderIds])] : previous.filter((id) => !pageOrderIds.includes(id))));
+        setSelectedIds((previous) => (checked ? [...new Set([...previous, ...matchablePageOrderIds])] : previous.filter((id) => !pageOrderIds.includes(id))));
     };
 
     const matchOne = async (order: OrderRow, inventoryProductId: string) => {
@@ -397,6 +345,9 @@ export default function OrderProductMatching({
                 throw new Error(result.message ?? firstValidationError(result.errors) ?? 'Could not match the selected orders.');
             }
 
+            const matchedCount = result.orders?.length ?? 0;
+            const skippedCount = result.skipped?.length ?? 0;
+            const skippedNote = skippedCount > 0 ? ` ${skippedCount} already matched order(s) were skipped.` : '';
             const updates = new Map((result.orders ?? []).map((order) => [order.id, order]));
             setDisplayOrders((current) => current.map((order) => ({ ...order, ...(updates.get(order.id) ?? {}) })));
             setSelectedIds([]);
@@ -406,12 +357,12 @@ export default function OrderProductMatching({
             const deducted = deductions.filter((deduction) => deduction.status === 'deducted');
             if (failed.length > 0) {
                 const failures = failed.map((deduction) => `${deduction.order_no ?? `#${deduction.order_id}`}: ${deduction.message ?? 'deduction failed'}`).join('; ');
-                toast.warning(`${ids.length} orders were matched. ${failed.length} delivered order(s) were not deducted: ${failures}`);
+                toast.warning(`${matchedCount} orders were matched. ${failed.length} delivered order(s) were not deducted: ${failures}${skippedNote}`);
             } else if (deducted.length > 0) {
                 const agentCount = deducted.filter((deduction) => deduction.agent_transfer_deducted).length;
-                toast.success(`${ids.length} orders matched; ${deducted.length} delivered order(s) deducted from warehouse${agentCount ? ` and ${agentCount} assigned agent transfer balance(s)` : ''}. Country WhatsApp messages were triggered.`);
+                toast.success(`${matchedCount} orders matched; ${deducted.length} delivered order(s) deducted from warehouse${agentCount ? ` and ${agentCount} assigned agent transfer balance(s)` : ''}. Country WhatsApp messages were triggered.${skippedNote}`);
             } else {
-                toast.success(`${ids.length} orders matched to the selected inventory product.`);
+                toast.success(`${matchedCount} orders matched to the selected inventory product.${skippedNote}`);
             }
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Could not match the selected orders.');
@@ -422,7 +373,9 @@ export default function OrderProductMatching({
 
     const visitPage = (page: number) =>
         navigate({
-            product_name: filters.product_name || undefined,
+            product_names: filters.product_names?.length ? filters.product_names : undefined,
+            merchant: filters.merchant || undefined,
+            status: filters.status || undefined,
             agent_id: filters.agent_id || undefined,
             per_page: filters.per_page,
             page,
@@ -432,60 +385,109 @@ export default function OrderProductMatching({
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Order Product Matching" />
             <main className="space-y-4 p-4 sm:p-6">
-                <header className="flex flex-col gap-1">
-                    <h1 className="text-xl font-semibold tracking-tight">Order Product Matching</h1>
-                    <p className="text-sm text-muted-foreground">
-                        Match order product names to inventory products. Matching does not change the order’s product name.
-                    </p>
+                <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="flex flex-col gap-1">
+                        <h1 className="text-xl font-semibold tracking-tight">Order Product Matching</h1>
+                        <p className="text-sm text-muted-foreground">
+                            Link inventory products to orders without changing the original details.
+                        </p>
+                    </div>
+                    <Badge variant="outline" className="w-fit rounded-full text-xs">Matching desk</Badge>
                 </header>
 
+                <section className="overflow-hidden rounded-xl border bg-card" aria-label="Live order stats">
+                    <StatsBand
+                        stats={[
+                            { value: orders?.total ?? 0, label: 'Total orders' },
+                            { value: matchedOnPage, label: 'Matched on page' },
+                            { value: unmatchedOnPage, label: 'Unmatched on page' },
+                            { value: selectedIds.length, label: 'Selected' },
+                        ]}
+                    />
+                </section>
+
                 <section className="overflow-hidden rounded-xl border bg-card">
-                    <form onSubmit={search} className="flex flex-col gap-3 border-b p-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                            <div className="relative w-full sm:max-w-sm">
-                                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input
-                                    value={productName}
-                                    onChange={(event) => setProductName(event.target.value)}
-                                    placeholder="Filter orders by product name..."
-                                    aria-label="Filter orders by product name"
-                                    className="pl-9"
-                                />
-                            </div>
-                            <div className="w-full sm:w-56">
-                                <AgentPicker
-                                    agents={agents}
-                                    value={agentId}
-                                    onChange={(value) => {
-                                        setAgentId(value);
-                                        applyFilters({ agent_id: value });
+                    <div className="overflow-x-auto border-b">
+                        <div className="flex min-w-[900px] items-end gap-3 p-3">
+                            <FilterColumn label="Merchant" className="min-w-0 flex-1">
+                                <Combobox
+                                    label="Merchant"
+                                    placeholder="All merchants"
+                                    options={merchantOptions}
+                                    value={merchant ? option(merchant, merchant) : null}
+                                    onValueChange={(value) => {
+                                        const next = value?.value ?? '';
+                                        setMerchant(next);
+                                        applyFilters({ merchant: next });
                                     }}
+                                    clearable
+                                    emptyMessage={() => 'No merchants found.'}
+                                />
+                            </FilterColumn>
+                            <FilterColumn label="Product names" className="min-w-0 flex-1">
+                                <MultiSelect
+                                    label="Product names"
+                                    hideLabel
+                                    placeholder="All product names"
+                                    options={orderProductNameOptions}
+                                    value={productNames}
+                                    onValueChange={(values) => {
+                                        setProductNames(values);
+                                        applyFilters({ product_names: values });
+                                    }}
+                                    maxShown={2}
+                                />
+                            </FilterColumn>
+                            <FilterColumn label="Status" className="min-w-0 flex-1">
+                                <Combobox
+                                    label="Status"
+                                    placeholder="All statuses"
+                                    options={statusOptions}
+                                    value={orderStatus ? option(orderStatus, orderStatus) : null}
+                                    onValueChange={(value) => {
+                                        const next = value?.value ?? '';
+                                        setOrderStatus(next);
+                                        applyFilters({ status: next });
+                                    }}
+                                    clearable
+                                    emptyMessage={() => 'No statuses found.'}
+                                />
+                            </FilterColumn>
+                            <FilterColumn label="Agent" className="min-w-0 flex-1">
+                                <Combobox
+                                    label="Agent"
                                     placeholder="All agents"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button type="submit" size="sm" disabled={isLoading}>
-                                {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
-                                Search orders
-                            </Button>
-                            {(filters.product_name || filters.agent_id) && (
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={isLoading}
-                                    onClick={() => {
-                                        setProductName('');
-                                        setAgentId('');
-                                        navigate({});
+                                    options={agentOptions}
+                                    value={agentId ? agentOptions.find((item) => item.value === agentId) ?? option(agentId, `Agent #${agentId}`) : null}
+                                    onValueChange={(value) => {
+                                        const next = value?.value ?? '';
+                                        setAgentId(next);
+                                        applyFilters({ agent_id: next });
                                     }}
-                                >
-                                    Clear
-                                </Button>
-                            )}
+                                    clearable
+                                    emptyMessage={() => 'No agents found.'}
+                                />
+                            </FilterColumn>
+                            <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label="Clear filters"
+                                title="Clear filters"
+                                className="h-7 w-7 shrink-0"
+                                disabled={isLoading || (!filters.product_names?.length && !filters.merchant && !filters.status && !filters.agent_id)}
+                                onClick={() => {
+                                    setProductNames([]);
+                                    setMerchant('');
+                                    setOrderStatus('');
+                                    setAgentId('');
+                                    navigate({});
+                                }}
+                            >
+                                {isLoading ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+                            </Button>
                         </div>
-                    </form>
+                    </div>
 
                     {selectedIds.length > 0 && (
                         <div className="flex flex-col gap-3 border-b bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -494,12 +496,15 @@ export default function OrderProductMatching({
                             </p>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                 <div className="w-full sm:w-80">
-                                    <ProductPicker
-                                        products={products}
-                                        value={bulkProductId}
-                                        onChange={setBulkProductId}
-                                        placeholder="Choose product for selected orders"
-                                        loading={bulkSaving}
+                                    <Combobox
+                                        label="Product for selected orders"
+                                        placeholder={bulkSaving ? 'Matching...' : 'Choose product for selected orders'}
+                                        options={productOptions}
+                                        value={bulkProductId ? productOptions.find((item) => item.value === bulkProductId) ?? null : null}
+                                        onValueChange={(value) => setBulkProductId(value?.value ?? '')}
+                                        disabled={bulkSaving}
+                                        clearable
+                                        emptyMessage={() => 'No inventory products found.'}
                                     />
                                 </div>
                                 <Button type="button" size="sm" onClick={matchSelected} disabled={!bulkProductId || bulkSaving}>
@@ -537,18 +542,19 @@ export default function OrderProductMatching({
                                                         <Checkbox
                                                             checked={allPageSelected}
                                                             onCheckedChange={(checked) => togglePageSelection(checked === true)}
-                                                            aria-label="Select all orders on this page"
+                                                            aria-label="Select all unmatched orders on this page"
+                                                            disabled={matchablePageOrderIds.length === 0}
                                                         />
                                                     </TableHead>
                                                     <TableHead>Order</TableHead>
-                                                    <TableHead>Order date</TableHead>
+                                                    <TableHead>Delivery date</TableHead>
                                                     <TableHead>Customer</TableHead>
                                                     <TableHead>Phone</TableHead>
                                                     <TableHead>Address</TableHead>
                                                     <TableHead>Qty</TableHead>
                                                     <TableHead>Amount</TableHead>
                                                     <TableHead>Status</TableHead>
-                                                    <TableHead>Order product name</TableHead>
+                                                    <TableHead>Product name</TableHead>
                                                     <TableHead>Merchant</TableHead>
                                                     <TableHead>Inventory product (ID)</TableHead>
                                                     <TableHead>Agent</TableHead>
@@ -569,14 +575,14 @@ export default function OrderProductMatching({
                                                                     checked={selectedIds.includes(order.id)}
                                                                     onCheckedChange={(checked) => toggleSelected(order.id, checked === true)}
                                                                     aria-label={`Select order ${order.order_no ?? order.id}`}
-                                                                    disabled={Boolean(order.inventory_deducted_at)}
+                                                                    disabled={!canBulkMatchOrder(order)}
                                                                 />
                                                             </TableCell>
                                                             <TableCell className="font-medium whitespace-nowrap">
                                                                 {order.order_no ?? `#${order.id}`}
                                                             </TableCell>
                                                             <TableCell className="whitespace-nowrap">
-                                                                {order.order_date?.slice(0, 10) || '—'}
+                                                                {order.delivery_date?.slice(0, 10) || '—'}
                                                             </TableCell>
                                                             <TableCell>
                                                                 <span className="block truncate" title={order.client_name ?? undefined}>
@@ -596,7 +602,15 @@ export default function OrderProductMatching({
                                                             <TableCell>{order.quantity ?? '—'}</TableCell>
                                                             <TableCell>{order.amount ?? '—'}</TableCell>
                                                             <TableCell>
-                                                                <Badge variant="outline">{order.status || 'New Orders'}</Badge>
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className={cn(
+                                                                        'rounded-full',
+                                                                        statusColors[order.status?.trim() || 'New Orders'] || 'bg-muted text-foreground border-border',
+                                                                    )}
+                                                                >
+                                                                    {order.status?.trim() || 'New Orders'}
+                                                                </Badge>
                                                             </TableCell>
                                                             <TableCell>
                                                                 <span className="block truncate" title={order.product_name ?? undefined}>
@@ -624,21 +638,44 @@ export default function OrderProductMatching({
                                                                         </p>
                                                                     </div>
                                                                 ) : (
-                                                                    <ProductPicker
-                                                                        products={products}
-                                                                        value={order.inventory_product_id ? String(order.inventory_product_id) : ''}
-                                                                        onChange={(value) => matchOne(order, value)}
-                                                                        placeholder="Select inventory product"
-                                                                        loading={savingOrderId === order.id}
-                                                                    />
-                                                                )}
-                                                                {order.linked_product && !order.inventory_deducted_at && (
-                                                                    <p
-                                                                        className="mt-1 truncate text-xs text-muted-foreground"
-                                                                        title={order.linked_product.name}
-                                                                    >
-                                                                        Current: {order.linked_product.name} · #{order.linked_product.id}
-                                                                    </p>
+                                                                    <div className="space-y-1">
+                                                                        {(suggestionsByOrder.get(order.id) ?? []).slice(0, 1).map(({ product }) => (
+                                                                            <button
+                                                                                key={`suggestion-${order.id}-${product.id}`}
+                                                                                type="button"
+                                                                                disabled={savingOrderId === order.id}
+                                                                                onClick={() => matchOne(order, String(product.id))}
+                                                                                className="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-primary/40 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                                                                                title={`Apply suggested match: ${product.name}`}
+                                                                            >
+                                                                                <Sparkles className="size-3 shrink-0" />
+                                                                                <span className="truncate">Best guess: {product.name}</span>
+                                                                            </button>
+                                                                        ))}
+                                                                        <Combobox
+                                                                            label={`Inventory product for order ${order.order_no ?? order.id}`}
+                                                                            placeholder={savingOrderId === order.id ? 'Saving...' : 'Select inventory product'}
+                                                                            options={productOptions}
+                                                                            value={
+                                                                                order.inventory_product_id
+                                                                                    ? productOptions.find((item) => item.value === String(order.inventory_product_id)) ?? null
+                                                                                    : null
+                                                                            }
+                                                                            onValueChange={(value) => matchOne(order, value?.value ?? '')}
+                                                                            disabled={savingOrderId === order.id}
+                                                                            clearable
+                                                                            emptyMessage={() => 'No inventory products found.'}
+                                                                            width={360}
+                                                                        />
+                                                                        {order.linked_product && (
+                                                                            <p
+                                                                                className="truncate text-xs text-muted-foreground"
+                                                                                title={order.linked_product.name}
+                                                                            >
+                                                                                Current: {order.linked_product.name} · #{order.linked_product.id}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
                                                                 )}
                                                             </TableCell>
                                                             <TableCell className="min-w-36">

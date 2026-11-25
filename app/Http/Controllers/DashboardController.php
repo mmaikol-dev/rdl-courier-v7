@@ -16,9 +16,18 @@ class DashboardController extends Controller
 
         $defaultRange = strtolower(trim((string) $user->roles)) === 'merchant' ? 'allTime' : 'last30Days';
         $range = $request->query('range', $request->query('period', $defaultRange));
-        $allowed = ['today', 'last7Days', 'last30Days', 'thisMonth', 'allTime'];
+        $allowed = ['today', 'last7Days', 'last30Days', 'thisMonth', 'allTime', 'custom'];
         $range = in_array($range, $allowed, true) ? $range : 'last30Days';
-        $period = $range === 'allTime' ? null : $range;
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
+        $dateFrom = is_string($dateFrom) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom) ? $dateFrom : null;
+        $dateTo = is_string($dateTo) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo) ? $dateTo : null;
+        if ($range === 'custom' && (! $dateFrom || ! $dateTo)) {
+            $range = $defaultRange;
+            $dateFrom = null;
+            $dateTo = null;
+        }
+        $period = $range === 'allTime' || $range === 'custom' ? null : $range;
 
         $isAgent = strtolower(trim((string) $user->roles)) === 'agent';
         $product = $isAgent ? null : $request->query('product');
@@ -32,10 +41,12 @@ class DashboardController extends Controller
                 : CountryAccess::userCountryName($user) ?? 'Assigned country');
         return Inertia::render('dashboard', [
             'dashboardReport' => Inertia::defer(
-                fn () => $reportService->build($user, $period, $product, $country),
+                fn () => $reportService->build($user, $period, $product, $country, $range === 'custom' ? $dateFrom : null, $range === 'custom' ? $dateTo : null),
                 'dashboardReport'
             ),
             'range' => $range,
+            'dateFrom' => $range === 'custom' ? $dateFrom : null,
+            'dateTo' => $range === 'custom' ? $dateTo : null,
             'country' => $country,
             'product' => $product,
             'countryLabel' => $countryLabel,

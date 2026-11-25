@@ -1058,4 +1058,80 @@ html[data-theme='claude'] :is(h1, h2, h3, h4) {
         0;
         }
     }
+  @keyframes ui-indeterminate {
+  from {
+    transform:
+        translateX(-100%);
+        }
+  to {
+    transform:
+        translateX(340%);
+        }
+    }
+  @keyframes ui-scan {
+  from {
+    transform:
+        translateX(-100%);
+        }
+  to {
+    transform:
+        translateX(250%);
+        }
+    }
+  @keyframes ui-fade-in {
+  from {
+    opacity:
+        0;
+        }
+  to {
+    opacity:
+        1;
+        }
+    }
+  @keyframes ui-progress {
+  from {
+    transform:
+        scaleX(0);
+        }
+  to {
+    transform:
+        scaleX(1);
+        }
+    }
+  @keyframes ui-empty-in {
+  from {
+    opacity:
+        0;
+    transform:
+        translateY(4px);
+    filter:
+        blur(4px);
+        }
+  to {
+    opacity:
+        1;
+    transform:
+        none;
+    filter:
+        none;
+        }
+    }
+  @keyframes ui-empty-out {
+  from {
+    opacity:
+        1;
+    transform:
+        none;
+    filter:
+        none;
+        }
+  to {
+    opacity:
+        0;
+    transform:
+        translateY(-4px);
+    filter:
+        blur(4px);
+        }
+    }
 }

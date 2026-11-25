@@ -10,7 +10,7 @@ class MerchantApiIntegration extends Model
 {
     protected $fillable = [
         'merchant_user_id', 'name', 'token_hash', 'token_prefix', 'scopes',
-        'webhook_url', 'webhook_secret', 'webhook_events', 'transfer_fields', 'is_active', 'last_used_at',
+        'webhook_url', 'webhook_secret', 'webhook_events', 'transfer_fields', 'cc_emails', 'cc_country_assignments', 'is_active', 'last_used_at',
     ];
 
     protected $hidden = ['token_hash', 'webhook_secret'];
@@ -19,6 +19,8 @@ class MerchantApiIntegration extends Model
         'scopes' => 'array',
         'webhook_events' => 'array',
         'transfer_fields' => 'array',
+        'cc_emails' => 'array',
+        'cc_country_assignments' => 'array',
         'webhook_secret' => 'encrypted',
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',

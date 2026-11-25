@@ -26,6 +26,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/lib/toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Blobatar } from '@blobatar/react';
+import 'blobatar/motion.css';
 import { CalendarDays, Check, ChevronsUpDown, Edit, Eye, EyeOff, Loader2, MapPin, Phone, Plus, Search, Store, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
@@ -455,9 +457,13 @@ export default function UsersPage() {
                     <Card key={user.id} className="group overflow-hidden border-border/70 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
                       <CardContent className="flex h-full flex-col p-3">
                         <div className="flex min-w-0 items-start gap-2.5">
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/15">
-                            {user.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'}
-                          </div>
+                          <Blobatar
+                            name={user.username || user.email || user.name}
+                            size={40}
+                            animate="hover"
+                            title={user.name}
+                            className="size-10 shrink-0 rounded-xl"
+                          />
                           <div className="min-w-0 flex-1 pt-0.5">
                             <p className="truncate text-sm font-semibold text-foreground" title={user.name}>{user.name}</p>
                             <p className="truncate text-xs text-muted-foreground" title={user.email}>{user.username ? `@${user.username} · ` : ''}{user.email}</p>

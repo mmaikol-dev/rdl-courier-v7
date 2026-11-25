@@ -27,8 +27,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Blobatar } from "@blobatar/react";
+import "blobatar/motion.css";
 import {
   Select,
   SelectContent,
@@ -113,7 +114,11 @@ export default function WhatsAppPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [agentFilter, setAgentFilter] = useState<string>("all");
-  const [readFilter, setReadFilter] = useState<"all" | "read" | "unread">("all");
+  const [readFilter, setReadFilter] = useState<"all" | "read" | "unread">(() => {
+    if (typeof window === "undefined") return "all";
+    const value = new URLSearchParams(window.location.search).get("read");
+    return value === "read" || value === "unread" ? value : "all";
+  });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -251,6 +256,16 @@ export default function WhatsAppPage() {
     setIsSearching(false);
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (readFilter === "all") url.searchParams.delete("read");
+    else url.searchParams.set("read", readFilter);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) window.history.replaceState(window.history.state, "", next);
+  }, [readFilter]);
+
   const markAsRead = (conv: Conversation) => {
     const phone = conv.phone.replace(/[^0-9]/g, '');
     fetch(`/chats/${phone}`, {
@@ -292,13 +307,6 @@ export default function WhatsAppPage() {
       default:
         return null;
     }
-  };
-
-  const getInitials = (name: string, phone: string) => {
-    if (name && name !== phone) {
-      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    }
-    return phone.slice(-2);
   };
 
   const formatTime = (dateString: string) => {
@@ -774,11 +782,13 @@ export default function WhatsAppPage() {
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <Avatar className="w-12 h-12">
-                          <AvatarFallback className="bg-gradient-to-br from-primary/30 to-primary text-primary-foreground font-medium">
-                            {getInitials(conv.client_name, conv.phone)}
-                          </AvatarFallback>
-                        </Avatar>
+                        <Blobatar
+                          name={conv.client_name || conv.phone}
+                          size={48}
+                          animate="hover"
+                          title={conv.client_name || conv.phone}
+                          className="size-12 shrink-0 rounded-full"
+                        />
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
@@ -839,11 +849,13 @@ export default function WhatsAppPage() {
               <div className="p-4 border-b bg-background/95 backdrop-blur-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-gradient-to-br from-primary/30 to-primary text-primary-foreground">
-                        {getInitials(selected.client_name, selected.phone)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <Blobatar
+                      name={selected.client_name || selected.phone}
+                      size={40}
+                      animate="always"
+                      title={selected.client_name || selected.phone}
+                      className="size-10 shrink-0 rounded-full"
+                    />
                     <div>
                       <h3 className="font-medium">
                         {selected.client_name || selected.phone}
