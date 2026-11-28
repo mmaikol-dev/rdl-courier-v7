@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Deduction;
 use App\Models\InventoryLog;
 use App\Models\Product;
 use App\Models\SheetOrder;
@@ -390,6 +391,18 @@ class InventoryDeductionController extends Controller
                     ]);
 
                     foreach ($entry['orders'] as $order) {
+                        if ($order->agent_id) {
+                            Deduction::create([
+                                'code' => 'AUTO-ORDER-' . $order->id,
+                                'product_id' => $product->id,
+                                'agent_id' => $order->agent_id,
+                                'quantity' => (int) $order->quantity,
+                                'reason' => 'Delivered order ' . ($order->order_no ?: '#' . $order->id),
+                                'deducted_by' => $user?->name ?? 'system',
+                                'country' => $order->country ?: $productCountry,
+                            ]);
+                        }
+
                         $order->forceFill([
                             'inventory_deducted_at' => now(),
                             'inventory_deducted_by' => $user?->id,
